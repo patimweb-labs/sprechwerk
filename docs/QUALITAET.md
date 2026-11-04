@@ -39,7 +39,8 @@ Hundertstel davon. Gemessen wird von „Client A sendet" bis „Client B hat den
 Rahmen" — also inklusive beider Aufgabenplanungen in Tokio, nicht nur der
 Serverarbeit. Die Zahl ist damit eher zu hoch als zu niedrig.
 
-Nachprüfen: `scripts/latenz.sh`.
+Nachprüfen: `scripts/latenz.sh` (Serverdurchlauf), `scripts/sprechprobe.sh`
+(ganzer Sprachpfad: Ton, Raumtreue, Rückkanal, Laufzeit).
 
 ## 3. Was die Sprachqualität bestimmt — und wo wir im Vergleich stehen
 
