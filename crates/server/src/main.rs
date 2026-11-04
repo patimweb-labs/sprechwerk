@@ -16,6 +16,75 @@ use std::time::Duration;
 /// Unterbefehl `beispiel` gibt eine Konfigurationsdatei aus.
 const BEISPIEL: &str = "beispiel";
 
+const HILFE: &str = r#"sprechwerk — Server
+
+  sprechwerk [konfigurationsdatei]   Server starten (Vorgabe: sprechwerk.toml)
+  sprechwerk beispiel                Beispielkonfiguration ausgeben
+  sprechwerk export <datei>          Zustand als Text schreiben
+  sprechwerk import <datei>          Zustand aus Text einspielen
+  sprechwerk sicherung               Sofortsicherung anlegen
+
+Konfiguration über Datei und Umgebungsvariablen (SPRECHWERK_*), siehe `beispiel`.
+"#;
+
+fn konfig_laden() -> anyhow::Result<konfig::Konfig> {
+    let pfad = std::env::var("SPRECHWERK_KONFIG").unwrap_or_else(|_| "sprechwerk.toml".to_string());
+    Ok(konfig::Konfig::laden(&pfad).with_context(|| format!("Konfiguration {pfad}"))?)
+}
+
+/// Lädt den Zustand für Betriebswerkzeuge. Eine Datenbank ohne Räume (frisch
+/// angelegt) bekommt den Empfangsraum, damit Export und Sicherung nie einen
+/// unbrauchbaren Zustand schreiben.
+fn zustand_laden(konfig: &konfig::Konfig) -> anyhow::Result<sprechwerk_core::State> {
+    let store = sprechwerk_store::Store::oeffnen(konfig.datenbank())?;
+    let standard_rolle = konfig.standard_rolle();
+    let name = konfig.server.name.clone();
+    let mut state = store.laden(|| sprechwerk_core::State::neu(name.clone(), standard_rolle, kern::jetzt_ms()))?;
+    if state.raeume.is_empty() {
+        state = sprechwerk_core::State::neu(name, standard_rolle, kern::jetzt_ms());
+    }
+    Ok(state)
+}
+
+fn betrieb_export(ziel: &str) -> anyhow::Result<()> {
+    let konfig = konfig_laden()?;
+    let state = zustand_laden(&konfig)?;
+    sprechwerk_store::Store::exportieren(&state, ziel)?;
+    println!("Zustand geschrieben: {ziel}");
+    Ok(())
+}
+
+fn betrieb_import(quelle: &str) -> anyhow::Result<()> {
+    let konfig = konfig_laden()?;
+    let state = sprechwerk_store::Store::importieren(quelle)?;
+    let mut store = sprechwerk_store::Store::oeffnen(konfig.datenbank())?;
+    // Vor dem Überschreiben sichern: ein Import ist der gefährlichste Befehl.
+    let sicherung = konfig
+        .sicherung
+        .verzeichnis
+        .join(format!("vor-import-{}.json", kern::jetzt_ms()));
+    if let Ok(alt) = store.laden(|| sprechwerk_core::State::neu("leer", state.standard_rolle, 0)) {
+        let _ = sprechwerk_store::Store::exportieren(&alt, &sicherung);
+    }
+    store.speichern(&state)?;
+    println!("Zustand eingespielt: {quelle}");
+    println!("Bisheriger Zustand gesichert: {}", sicherung.display());
+    Ok(())
+}
+
+fn betrieb_sicherung() -> anyhow::Result<()> {
+    let konfig = konfig_laden()?;
+    let state = zustand_laden(&konfig)?;
+    let pfad = sprechwerk_store::Store::sichern(
+        &state,
+        &konfig.sicherung.verzeichnis,
+        konfig.sicherung.behalten,
+        kern::jetzt_ms(),
+    )?;
+    println!("Sicherung: {}", pfad.display());
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
     let erster = args.next();
@@ -23,6 +92,27 @@ fn main() -> anyhow::Result<()> {
     if erster.as_deref() == Some(BEISPIEL) {
         print!("{}", konfig::Konfig::beispiel());
         return Ok(());
+    }
+
+    // Betriebswerkzeuge (**Festlegung SPEC §2**: der Text ist die Wahrheit,
+    // darum muss man ihn jederzeit herausgeben und zurücklesen können).
+    match erster.as_deref() {
+        Some("export") => {
+            let ziel = args.next().unwrap_or_else(|| "export.json".to_string());
+            return betrieb_export(&ziel);
+        }
+        Some("import") => {
+            let quelle = args
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("Aufruf: sprechwerk import <datei>"))?;
+            return betrieb_import(&quelle);
+        }
+        Some("sicherung") => return betrieb_sicherung(),
+        Some("hilfe") | Some("--hilfe") | Some("-h") => {
+            print!("{}", HILFE);
+            return Ok(());
+        }
+        _ => {}
     }
 
     let konfig_pfad = std::env::var("SPRECHWERK_KONFIG")

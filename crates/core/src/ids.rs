@@ -6,7 +6,6 @@
 //! des Vorgängers anzeigen, und genau dieser Fehler ist bei TeamSpeak
 //! berüchtigt (`clid`-Wiederverwendung).
 
-use serde::{Deserialize, Serialize};
 use std::fmt;
 
 macro_rules! kennung {
