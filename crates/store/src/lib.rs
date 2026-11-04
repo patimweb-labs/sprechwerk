@@ -3,7 +3,7 @@
 //! **Festlegung (SPEC §2): die Datenbank ist Betriebsmittel, der Text ist
 //! Wahrheit.** Konkret:
 //!
-//! * Der laufende Zustand liegt im Speicher (`sprechwerk_core::State`).
+//! * Der laufende Zustand liegt im Speicher (`sprechwerk_domain::State`).
 //! * Nach jeder Änderung wird er in die Datenbank geschrieben (Write-Through),
 //!   damit ein Absturz höchstens die letzte Änderung kostet.
 //! * `exportiern` schreibt den **kompletten** Zustand als JSON, mit
@@ -14,7 +14,7 @@
 //!   filterbar und ohne dieses Programm prüfbar.
 
 use rusqlite::{params, Connection, OptionalExtension};
-use sprechwerk_core::{AuditEntry, Ban, Member, MemberId, Message, MessageId, Role, Room, RoomId, State};
+use sprechwerk_domain::{AuditEntry, Ban, Member, MemberId, Message, MessageId, Role, Room, RoomId, State};
 use std::path::{Path, PathBuf};
 
 /// Fehler der Persistenz.
@@ -31,7 +31,7 @@ pub enum Error {
     #[error("Datei: {0}")]
     Io(#[from] std::io::Error),
     #[error("Zustand: {0}")]
-    Zustand(#[from] sprechwerk_core::Error),
+    Zustand(#[from] sprechwerk_domain::Error),
 }
 
 type Ergebnis<T> = Result<T, Error>;
@@ -151,8 +151,8 @@ impl Store {
                 }
                 "format_version" => {
                     let v: u32 = wert.parse().unwrap_or(0);
-                    if v > sprechwerk_core::state::FORMAT_VERSION {
-                        return Err(Error::Format(v, sprechwerk_core::state::FORMAT_VERSION));
+                    if v > sprechwerk_domain::state::FORMAT_VERSION {
+                        return Err(Error::Format(v, sprechwerk_domain::state::FORMAT_VERSION));
                     }
                     state.format_version = v;
                 }
@@ -465,10 +465,10 @@ impl Store {
     pub fn importieren(quelle: impl AsRef<Path>) -> Ergebnis<State> {
         let text = std::fs::read_to_string(quelle)?;
         let state: State = serde_json::from_str(&text)?;
-        if state.format_version > sprechwerk_core::state::FORMAT_VERSION {
+        if state.format_version > sprechwerk_domain::state::FORMAT_VERSION {
             return Err(Error::Format(
                 state.format_version,
-                sprechwerk_core::state::FORMAT_VERSION,
+                sprechwerk_domain::state::FORMAT_VERSION,
             ));
         }
         Ok(state)
@@ -519,7 +519,7 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sprechwerk_core::State;
+    use sprechwerk_domain::State;
 
     fn zustand() -> State {
         let mut s = State::neu("Testwerk", Role::Mitglied, 1_000);

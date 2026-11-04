@@ -5,3 +5,9 @@
 /data
 sicherungen/
 *.tmp
+
+# Oberfläche
+ui/node_modules/
+ui/dist/
+crates/desktop/target/
+crates/desktop/gen/

@@ -11,8 +11,8 @@
 //! steuern den Client.
 
 use anyhow::{Context, Result};
-use sprechwerk_client::{Schluessel, Verbindung};
-use sprechwerk_proto::{ClientFrame, Fehlercode, ServerFrame};
+use sprechwerk_adapters::{Schluessel, Verbindung};
+use sprechwerk_protocol::{ClientFrame, Fehlercode, ServerFrame};
 use std::net::SocketAddr;
 
 fn hilfe() {

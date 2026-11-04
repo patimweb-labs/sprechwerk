@@ -18,8 +18,8 @@
 use anyhow::Context;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use quinn::crypto::rustls::QuicServerConfig;
-use sprechwerk_core::MemberId;
-use sprechwerk_proto::{ClientFrame, Fehlercode, ServerFrame, PROTOKOLL_VERSION};
+use sprechwerk_domain::MemberId;
+use sprechwerk_protocol::{ClientFrame, Fehlercode, ServerFrame, PROTOKOLL_VERSION};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -115,7 +115,7 @@ fn gruppiere(hex: &str) -> String {
 }
 
 async fn schreibe<W: AsyncWrite + Unpin>(ziel: &mut W, frame: &ServerFrame) -> anyhow::Result<()> {
-    let bytes = sprechwerk_proto::schreibe_rahmen(frame)?;
+    let bytes = sprechwerk_protocol::schreibe_rahmen(frame)?;
     tokio::io::AsyncWriteExt::write_all(ziel, &bytes).await?;
     tokio::io::AsyncWriteExt::flush(ziel).await?;
     Ok(())
@@ -124,7 +124,7 @@ async fn schreibe<W: AsyncWrite + Unpin>(ziel: &mut W, frame: &ServerFrame) -> a
 /// Liest genau einen Rahmen (wartet, bis er vollständig ist).
 async fn lese<R: AsyncRead + Unpin>(quelle: &mut R, puffer: &mut Vec<u8>) -> anyhow::Result<Option<ClientFrame>> {
     loop {
-        if let Some((frame, verbraucht)) = sprechwerk_proto::lese_rahmen::<ClientFrame>(puffer)? {
+        if let Some((frame, verbraucht)) = sprechwerk_protocol::lese_rahmen::<ClientFrame>(puffer)? {
             puffer.drain(..verbraucht);
             return Ok(Some(frame));
         }

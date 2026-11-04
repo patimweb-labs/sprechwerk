@@ -1,0 +1,41 @@
+[package]
+name = "sprechwerk-desktop"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "sprechwerk: Fenster (Tauri 2), übersetzt Befehle in die Logik-Crates"
+
+[[bin]]
+name = "sprechwerk-desktop"
+path = "src/main.rs"
+
+[lib]
+name = "sprechwerk_desktop"
+path = "src/lib.rs"
+
+# Die Oberfläche hängt an Logik und Vertrag. Was rechnet, liegt dort und ist
+# dort geprüft — dieses Crate übersetzt nur zwischen Fenster und Logik.
+[dependencies]
+sprechwerk-domain = { path = "../domain" }
+sprechwerk-protocol = { path = "../protocol" }
+sprechwerk-adapters = { path = "../adapters" }
+sprechwerk-ipc = { path = "../ipc" }
+
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "net", "macros"] }
+thiserror = "2"
+anyhow = "1"
+
+[features]
+default = []
+# Ohne dieses Merkmal lädt das Programm die Entwicklungs-URL (Port 1423) statt
+# der eingebetteten Dateien — beim Ausliefern also mit diesem Merkmal bauen.
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[workspace]
+members = []

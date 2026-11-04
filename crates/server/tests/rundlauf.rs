@@ -4,8 +4,8 @@
 //! Programm so, wie Docker es startet (Konfiguration über Umgebung), verbindet
 //! zwei Clients und prüft, was sie voneinander sehen.
 
-use sprechwerk_client::{Schluessel, Verbindung};
-use sprechwerk_proto::{ClientFrame, ServerFrame};
+use sprechwerk_adapters::{Schluessel, Verbindung};
+use sprechwerk_protocol::{ClientFrame, ServerFrame};
 use std::net::SocketAddr;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
@@ -110,8 +110,8 @@ async fn zwei_clients_sehen_sich_und_texten() {
         .expect("Bosse meldet sich an");
 
     // Der erste Ankömmling ist Administrator, der zweite Mitglied.
-    assert_eq!(ada.rolle, sprechwerk_core::Role::Administrator);
-    assert_eq!(bosse.rolle, sprechwerk_core::Role::Mitglied);
+    assert_eq!(ada.rolle, sprechwerk_domain::Role::Administrator);
+    assert_eq!(bosse.rolle, sprechwerk_domain::Role::Mitglied);
 
     // Beide in den Empfangsraum.
     let raum = ada.raeume.first().expect("ein Raum").id;
@@ -170,7 +170,7 @@ async fn protokoll_ist_lesbar_und_rechte_werden_geprueft() {
     let absage = warte_auf(&mut bosse, |f| matches!(f, ServerFrame::Fehler { .. })).await;
     match absage {
         ServerFrame::Fehler { code, .. } => {
-            assert_eq!(code, sprechwerk_proto::Fehlercode::KeinRecht)
+            assert_eq!(code, sprechwerk_protocol::Fehlercode::KeinRecht)
         }
         anderes => panic!("unerwartet: {anderes:?}"),
     }
@@ -222,7 +222,7 @@ async fn protokoll_ist_lesbar_und_rechte_werden_geprueft() {
     let absage = warte_auf(&mut bosse, |f| matches!(f, ServerFrame::Fehler { .. })).await;
     match absage {
         ServerFrame::Fehler { code, .. } => {
-            assert_eq!(code, sprechwerk_proto::Fehlercode::KeinRecht)
+            assert_eq!(code, sprechwerk_protocol::Fehlercode::KeinRecht)
         }
         anderes => panic!("unerwartet: {anderes:?}"),
     }
@@ -275,7 +275,7 @@ async fn kennung_bleibt_ueber_verbindungen_und_rollen_haften_daran() {
     let bosse_ich = bosse.ich;
     ada.sende(ClientFrame::RolleSetzen {
         mitglied: bosse_ich,
-        rolle: sprechwerk_core::Role::Moderator,
+        rolle: sprechwerk_domain::Role::Moderator,
     })
     .await
     .unwrap();
@@ -287,7 +287,7 @@ async fn kennung_bleibt_ueber_verbindungen_und_rollen_haften_daran() {
     let wieder = Verbindung::oeffnen(server.adresse, &bosse_schluessel, "Bosse", None)
         .await
         .unwrap();
-    assert_eq!(wieder.rolle, sprechwerk_core::Role::Moderator);
+    assert_eq!(wieder.rolle, sprechwerk_domain::Role::Moderator);
     assert_eq!(wieder.ich, bosse_ich);
 }
 
@@ -356,7 +356,7 @@ async fn sprache_wird_nur_im_eigenen_raum_verteilt() {
 
     // Ada schickt einen Sprachrahmen in den Empfang.
     let _ = empfang;
-    let kopf = sprechwerk_proto::Sprachkopf::neu(1);
+    let kopf = sprechwerk_protocol::Sprachkopf::neu(1);
     let datagramm = kopf.schreiben(&[0xAA; 20]);
     ada.sprache_senden(bytes::Bytes::from(datagramm)).unwrap();
 
@@ -365,7 +365,7 @@ async fn sprache_wird_nur_im_eigenen_raum_verteilt() {
         .await
         .expect("Bosse bekommt den Rahmen")
         .expect("kein Fehler");
-    let (kopf_b, nutzlast) = sprechwerk_proto::Sprachkopf::lesen(&empfangen).expect("Kopf");
+    let (kopf_b, nutzlast) = sprechwerk_protocol::Sprachkopf::lesen(&empfangen).expect("Kopf");
     assert_eq!(kopf_b, kopf);
     assert_eq!(nutzlast, &[0xAA; 20]);
 

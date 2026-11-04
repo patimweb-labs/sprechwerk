@@ -12,7 +12,7 @@
 use anyhow::Context;
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use quinn::crypto::rustls::QuicClientConfig;
-use sprechwerk_proto::{ClientFrame, Raumansicht, ServerFrame, PROTOKOLL_VERSION};
+use sprechwerk_protocol::{ClientFrame, Raumansicht, ServerFrame, PROTOKOLL_VERSION};
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -131,17 +131,17 @@ pub struct Verbindung {
     recv: quinn::RecvStream,
     puffer: Vec<u8>,
     /// Die eigene Kennung nach der Anmeldung.
-    pub ich: sprechwerk_core::MemberId,
+    pub ich: sprechwerk_domain::MemberId,
     /// Rolle, die der Server vergeben hat.
-    pub rolle: sprechwerk_core::Role,
+    pub rolle: sprechwerk_domain::Role,
     /// Servername aus der Begrüßung.
     pub server_name: String,
     /// Raumliste aus der Begrüßung (wird bei Änderungen aktualisiert).
     pub raeume: Vec<Raumansicht>,
     /// Mitgliederliste aus der Begrüßung.
-    pub mitglieder: Vec<sprechwerk_proto::Mitgliedsansicht>,
+    pub mitglieder: Vec<sprechwerk_protocol::Mitgliedsansicht>,
     /// Verlauf des zuletzt besuchten Raums.
-    pub verlauf: Vec<sprechwerk_core::Message>,
+    pub verlauf: Vec<sprechwerk_domain::Message>,
 }
 
 impl Verbindung {
@@ -272,7 +272,7 @@ impl Verbindung {
     }
 
     /// Raum nach Position in der Liste (1 = erster).
-    pub fn raum_nach_nummer(&self, nummer: usize) -> Option<sprechwerk_core::RoomId> {
+    pub fn raum_nach_nummer(&self, nummer: usize) -> Option<sprechwerk_domain::RoomId> {
         self.raeume.get(nummer.saturating_sub(1)).map(|r| r.id)
     }
 
@@ -295,7 +295,7 @@ impl Verbindung {
 
 async fn schreibe(ziel: &mut quinn::SendStream, frame: &ClientFrame) -> anyhow::Result<()> {
     use tokio::io::AsyncWriteExt;
-    let bytes = sprechwerk_proto::schreibe_rahmen(frame)?;
+    let bytes = sprechwerk_protocol::schreibe_rahmen(frame)?;
     ziel.write_all(&bytes).await?;
     ziel.flush().await?;
     Ok(())
@@ -306,7 +306,7 @@ async fn lese(
     puffer: &mut Vec<u8>,
 ) -> anyhow::Result<Option<ServerFrame>> {
     loop {
-        if let Some((frame, verbraucht)) = sprechwerk_proto::lese_rahmen::<ServerFrame>(puffer)? {
+        if let Some((frame, verbraucht)) = sprechwerk_protocol::lese_rahmen::<ServerFrame>(puffer)? {
             puffer.drain(..verbraucht);
             return Ok(Some(frame));
         }

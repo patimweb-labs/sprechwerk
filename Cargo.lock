@@ -1101,23 +1101,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sprechwerk-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ed25519-dalek",
- "getrandom 0.2.17",
- "hex",
- "rand 0.8.8",
- "serde_json",
- "sprechwerk-client",
- "sprechwerk-core",
- "sprechwerk-proto",
- "tokio",
-]
-
-[[package]]
-name = "sprechwerk-client"
+name = "sprechwerk-adapters"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1127,13 +1111,29 @@ dependencies = [
  "hex",
  "quinn",
  "rustls",
- "sprechwerk-core",
- "sprechwerk-proto",
+ "sprechwerk-domain",
+ "sprechwerk-protocol",
  "tokio",
 ]
 
 [[package]]
-name = "sprechwerk-core"
+name = "sprechwerk-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ed25519-dalek",
+ "getrandom 0.2.17",
+ "hex",
+ "rand 0.8.8",
+ "serde_json",
+ "sprechwerk-adapters",
+ "sprechwerk-domain",
+ "sprechwerk-protocol",
+ "tokio",
+]
+
+[[package]]
+name = "sprechwerk-domain"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -1142,12 +1142,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "sprechwerk-proto"
+name = "sprechwerk-ipc"
 version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
- "sprechwerk-core",
+ "sprechwerk-domain",
+ "sprechwerk-protocol",
+]
+
+[[package]]
+name = "sprechwerk-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sprechwerk-domain",
  "thiserror",
  "uuid",
 ]
@@ -1167,9 +1177,9 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
- "sprechwerk-client",
- "sprechwerk-core",
- "sprechwerk-proto",
+ "sprechwerk-adapters",
+ "sprechwerk-domain",
+ "sprechwerk-protocol",
  "sprechwerk-store",
  "thiserror",
  "time",
@@ -1186,7 +1196,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
- "sprechwerk-core",
+ "sprechwerk-domain",
  "thiserror",
 ]
 

@@ -186,7 +186,7 @@ impl Konfig {
         if self.server.port == 0 {
             return Err(Fehler::Wert("port darf nicht 0 sein".into()));
         }
-        if sprechwerk_core::Role::aus_text(&self.server.standard_rolle).is_none() {
+        if sprechwerk_domain::Role::aus_text(&self.server.standard_rolle).is_none() {
             return Err(Fehler::Wert(format!(
                 "standard_rolle={} (erlaubt: administrator, moderator, mitglied, gast)",
                 self.server.standard_rolle
@@ -222,9 +222,9 @@ impl Konfig {
     }
 
     /// Standardrolle als Aufzählungswert.
-    pub fn standard_rolle(&self) -> sprechwerk_core::Role {
-        sprechwerk_core::Role::aus_text(&self.server.standard_rolle)
-            .unwrap_or(sprechwerk_core::Role::Mitglied)
+    pub fn standard_rolle(&self) -> sprechwerk_domain::Role {
+        sprechwerk_domain::Role::aus_text(&self.server.standard_rolle)
+            .unwrap_or(sprechwerk_domain::Role::Mitglied)
     }
 
     /// Adresse zum Lauschen.
@@ -284,7 +284,7 @@ mod tests {
         let k = Konfig::laden("/gibt/es/nicht.toml").unwrap();
         assert_eq!(k.server.port, 7443);
         assert_eq!(k.server.name, "Sprechwerk");
-        assert_eq!(k.standard_rolle(), sprechwerk_core::Role::Mitglied);
+        assert_eq!(k.standard_rolle(), sprechwerk_domain::Role::Mitglied);
     }
 
     #[test]

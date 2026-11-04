@@ -151,12 +151,14 @@ vielleicht, über WebTransport.
 **[A] Aufteilung in Crates:**
 
 ```
-core   Zustand: Räume, Rollen, Mitglieder, Nachrichten, Prüfprotokoll — kein Netz
-proto  Sprache auf der Leitung: Rahmen, Serialisierung, Versionierung
-store  SQLite + JSON-Export/-Import + Migrationen
-server QUIC-Listener, Befehlsausführung, Sicherung, Konfiguration
-cli    Referenzclient (zum Prüfen und für die Kommandozeile)
-client später: Fensteranwendung pro System
+domain   Zustand: Räume, Rollen, Mitglieder, Nachrichten, Prüfprotokoll — kein Netz
+protocol Sprache auf der Leitung: Rahmen, Serialisierung, Versionierung
+adapters Netz: QUIC-Verbindung, Anmeldung, Beweis (Ed25519); später Audio
+ipc      Vertrag zum Fenster: Befehle, Ereignisse, Modellstand
+store    SQLite + JSON-Export/-Import + Migrationen
+server   QUIC-Listener, Befehlsausführung, Sicherung, Konfiguration
+cli      Referenzclient (zum Prüfen und für die Kommandozeile)
+desktop  Fensteranwendung (Tauri 2, eigene Workspace) + ui/ (Vue 3 + TS)
 ```
 
 **[A] Sprache auf der Leitung:** JSON-Frames, längenpräfixiert (4 Byte,

@@ -1,12 +1,12 @@
 [package]
-name = "sprechwerk-client"
+name = "sprechwerk-adapters"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-sprechwerk-core.workspace = true
-sprechwerk-proto.workspace = true
+sprechwerk-domain.workspace = true
+sprechwerk-protocol.workspace = true
 
 anyhow.workspace = true
 tokio.workspace = true

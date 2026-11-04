@@ -9,9 +9,9 @@ name = "sprechwerk-cli"
 path = "src/main.rs"
 
 [dependencies]
-sprechwerk-core.workspace = true
-sprechwerk-proto.workspace = true
-sprechwerk-client.workspace = true
+sprechwerk-domain.workspace = true
+sprechwerk-protocol.workspace = true
+sprechwerk-adapters.workspace = true
 
 anyhow.workspace = true
 tokio.workspace = true

@@ -5,7 +5,7 @@
 //! Protokollsprache, nicht nur Serialisierung (**Festlegung SPEC §7**).
 
 use serde::{Deserialize, Serialize};
-use sprechwerk_core::{Message, Role, RoomId};
+use sprechwerk_domain::{Message, Role, RoomId};
 
 /// Fehlercodes. Klein gehalten und stabil: ein Code, ein Satz.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,7 +56,7 @@ pub struct Raumansicht {
 /// Ein Mitglied, wie es der Client sieht.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Mitgliedsansicht {
-    pub id: sprechwerk_core::MemberId,
+    pub id: sprechwerk_domain::MemberId,
     pub name: String,
     pub rolle: Role,
     pub raum: Option<RoomId>,
@@ -152,7 +152,7 @@ pub enum ClientFrame {
     /// Text in den aktuellen Raum schreiben.
     Text { text: String },
     /// Nachricht löschen.
-    NachrichtLoeschen { nachricht: sprechwerk_core::MessageId },
+    NachrichtLoeschen { nachricht: sprechwerk_domain::MessageId },
     /// Raum anlegen.
     RaumAnlegen {
         name: String,
@@ -171,7 +171,7 @@ pub enum ClientFrame {
     RaumLoeschen { raum: RoomId },
     /// Rolle setzen.
     RolleSetzen {
-        mitglied: sprechwerk_core::MemberId,
+        mitglied: sprechwerk_domain::MemberId,
         rolle: Role,
     },
     /// Sperren (Kennung und/oder Adresse).
@@ -201,7 +201,7 @@ pub enum ServerFrame {
         version: u16,
         server_name: String,
         /// Eigene Kennung.
-        ich: sprechwerk_core::MemberId,
+        ich: sprechwerk_domain::MemberId,
         rolle: Role,
         raeume: Vec<Raumansicht>,
         mitglieder: Vec<Mitgliedsansicht>,
@@ -224,13 +224,13 @@ pub enum ServerFrame {
     /// Neue Nachricht in einem Raum, in dem der Empfänger ist.
     Text { nachricht: Message },
     /// Nachricht wurde gelöscht.
-    NachrichtGeloescht { nachricht: sprechwerk_core::MessageId, hart: bool },
+    NachrichtGeloescht { nachricht: sprechwerk_domain::MessageId, hart: bool },
     /// Raumliste hat sich geändert (anlegen, umbenennen, verschieben, löschen).
     Raeume { raeume: Vec<Raumansicht> },
     /// Ein Mitglied hat sich geändert (Name, Rolle).
     MitgliedGeaendert { mitglied: Mitgliedsansicht },
     /// Prüfprotokoll.
-    Protokoll { eintraege: Vec<sprechwerk_core::AuditEntry> },
+    Protokoll { eintraege: Vec<sprechwerk_domain::AuditEntry> },
     /// Antwort auf ein Kommando ohne eigene Nutzlast.
     Ok,
     /// Fehler.

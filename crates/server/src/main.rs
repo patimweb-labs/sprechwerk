@@ -35,13 +35,13 @@ fn konfig_laden() -> anyhow::Result<konfig::Konfig> {
 /// Lädt den Zustand für Betriebswerkzeuge. Eine Datenbank ohne Räume (frisch
 /// angelegt) bekommt den Empfangsraum, damit Export und Sicherung nie einen
 /// unbrauchbaren Zustand schreiben.
-fn zustand_laden(konfig: &konfig::Konfig) -> anyhow::Result<sprechwerk_core::State> {
+fn zustand_laden(konfig: &konfig::Konfig) -> anyhow::Result<sprechwerk_domain::State> {
     let store = sprechwerk_store::Store::oeffnen(konfig.datenbank())?;
     let standard_rolle = konfig.standard_rolle();
     let name = konfig.server.name.clone();
-    let mut state = store.laden(|| sprechwerk_core::State::neu(name.clone(), standard_rolle, kern::jetzt_ms()))?;
+    let mut state = store.laden(|| sprechwerk_domain::State::neu(name.clone(), standard_rolle, kern::jetzt_ms()))?;
     if state.raeume.is_empty() {
-        state = sprechwerk_core::State::neu(name, standard_rolle, kern::jetzt_ms());
+        state = sprechwerk_domain::State::neu(name, standard_rolle, kern::jetzt_ms());
     }
     Ok(state)
 }
@@ -63,7 +63,7 @@ fn betrieb_import(quelle: &str) -> anyhow::Result<()> {
         .sicherung
         .verzeichnis
         .join(format!("vor-import-{}.json", kern::jetzt_ms()));
-    if let Ok(alt) = store.laden(|| sprechwerk_core::State::neu("leer", state.standard_rolle, 0)) {
+    if let Ok(alt) = store.laden(|| sprechwerk_domain::State::neu("leer", state.standard_rolle, 0)) {
         let _ = sprechwerk_store::Store::exportieren(&alt, &sicherung);
     }
     store.speichern(&state)?;

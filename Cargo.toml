@@ -1,10 +1,13 @@
 [workspace]
 resolver = "2"
+# Die Fensteranwendung ist Tauri und bringt eine eigene [workspace]-Tabelle mit.
+exclude = ["crates/desktop"]
 members = [
-    "crates/core",
-    "crates/proto",
+    "crates/domain",
+    "crates/protocol",
     "crates/store",
-    "crates/client",
+    "crates/adapters",
+    "crates/ipc",
     "crates/server",
     "crates/cli",
 ]
@@ -16,10 +19,11 @@ license = "MIT"
 rust-version = "1.80"
 
 [workspace.dependencies]
-sprechwerk-core = { path = "crates/core" }
-sprechwerk-proto = { path = "crates/proto" }
+sprechwerk-domain = { path = "crates/domain" }
+sprechwerk-protocol = { path = "crates/protocol" }
 sprechwerk-store = { path = "crates/store" }
-sprechwerk-client = { path = "crates/client" }
+sprechwerk-adapters = { path = "crates/adapters" }
+sprechwerk-ipc = { path = "crates/ipc" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

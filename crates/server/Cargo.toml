@@ -9,13 +9,13 @@ name = "sprechwerk"
 path = "src/main.rs"
 
 [dev-dependencies]
-sprechwerk-client.workspace = true
+sprechwerk-adapters.workspace = true
 bytes = "1"
 tokio.workspace = true
 
 [dependencies]
-sprechwerk-core.workspace = true
-sprechwerk-proto.workspace = true
+sprechwerk-domain.workspace = true
+sprechwerk-protocol.workspace = true
 sprechwerk-store.workspace = true
 
 anyhow.workspace = true

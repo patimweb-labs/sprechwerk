@@ -1,0 +1,12 @@
+[package]
+name = "sprechwerk-ipc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "sprechwerk: Vertrag zwischen Fenster und Logik (Befehle, Ereignisse, Modell)"
+
+[dependencies]
+sprechwerk-domain.workspace = true
+sprechwerk-protocol.workspace = true
+serde.workspace = true
+serde_json.workspace = true

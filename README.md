@@ -86,10 +86,10 @@ Store (`Store::importieren`).
 ## Aufbau
 
 ```
-crates/core    Zustand: Räume, Rollen, Mitglieder, Nachrichten, Protokoll
-crates/proto   Sprache auf der Leitung: Rahmen, Nachrichten, Sprachkopf
+crates/domain    Zustand: Räume, Rollen, Mitglieder, Nachrichten, Protokoll
+crates/protocol   Sprache auf der Leitung: Rahmen, Nachrichten, Sprachkopf
 crates/store   SQLite, Export/Import, Sicherungen
-crates/client  Verbindung, Anmeldung, Beweis (Ed25519)
+crates/adapters  Verbindung, Anmeldung, Beweis (Ed25519)
 crates/server  QUIC-Dienst, Konfiguration, Sicherung, Verteilung
 crates/cli     Referenzclient auf der Kommandozeile
 ```
@@ -100,7 +100,8 @@ prüfbar.
 ## Prüfen
 
 ```bash
-cargo test                 # 58 Tests: Zustand, Rahmen, Datenbank, Rundlauf
+cargo test --workspace     # 68 Tests: Zustand, Rahmen, Vertrag, Datenbank, Rundlauf
+npm --prefix ui run typecheck
 scripts/rundlauf.sh        # Server + zwei Clients von Hand
 ```
 

@@ -11,8 +11,8 @@
 //! hat den Rahmen". Das schließt die Aufgabenplanung beider Clients ein — also
 //! mehr als der reine Serverdurchlauf, und damit die ehrlichere Zahl.
 
-use sprechwerk_client::{Schluessel, Verbindung};
-use sprechwerk_proto::{ClientFrame, ServerFrame, Sprachkopf};
+use sprechwerk_adapters::{Schluessel, Verbindung};
+use sprechwerk_protocol::{ClientFrame, ServerFrame, Sprachkopf};
 use std::net::SocketAddr;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};

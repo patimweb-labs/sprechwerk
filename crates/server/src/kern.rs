@@ -5,8 +5,8 @@
 //! Zustand liegt hinter **einer** Sperre — es gibt keinen zweiten Ort, an dem
 //! Wahrheit stehen könnte (**Festlegung SPEC §2**).
 
-use sprechwerk_core::{MemberId, Role, RoomId, State};
-use sprechwerk_proto::{
+use sprechwerk_domain::{MemberId, Role, RoomId, State};
+use sprechwerk_protocol::{
     ClientFrame, Fehlercode, Mitgliedsansicht, Raumansicht, ServerFrame, Sprachkopf,
 };
 use sprechwerk_store::Store;
@@ -195,7 +195,7 @@ impl Kern {
         };
 
         let antwort = ServerFrame::Willkommen {
-            version: sprechwerk_proto::PROTOKOLL_VERSION,
+            version: sprechwerk_protocol::PROTOKOLL_VERSION,
             server_name: self.state.server_name.clone(),
             ich: id,
             rolle,
@@ -244,8 +244,8 @@ impl Kern {
                     }]
                 }
                 Err(e) => vec![Kern::fehler(match e {
-                    sprechwerk_core::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
-                    sprechwerk_core::Error::RaumUnbekannt => Fehlercode::Unbekannt,
+                    sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                    sprechwerk_domain::Error::RaumUnbekannt => Fehlercode::Unbekannt,
                     _ => Fehlercode::UngueltigeAnfrage,
                 })],
             },
@@ -285,8 +285,8 @@ impl Kern {
                     Vec::new() // der Absender bekommt sie über den Rundruf
                 }
                 Err(e) => vec![Kern::fehler(match e {
-                    sprechwerk_core::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
-                    sprechwerk_core::Error::NachrichtZuLang => Fehlercode::UngueltigeEingabe,
+                    sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                    sprechwerk_domain::Error::NachrichtZuLang => Fehlercode::UngueltigeEingabe,
                     _ => Fehlercode::UngueltigeAnfrage,
                 })],
             },
@@ -311,7 +311,7 @@ impl Kern {
                         vec![ServerFrame::Ok]
                     }
                     Err(e) => vec![Kern::fehler(match e {
-                        sprechwerk_core::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                        sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
                         _ => Fehlercode::Unbekannt,
                     })],
                 }
@@ -326,7 +326,7 @@ impl Kern {
                         vec![ServerFrame::Raeume { raeume }]
                     }
                     Err(e) => vec![Kern::fehler(match e {
-                        sprechwerk_core::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                        sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
                         _ => Fehlercode::UngueltigeEingabe,
                     })],
                 }
@@ -341,7 +341,7 @@ impl Kern {
                         vec![ServerFrame::Raeume { raeume }]
                     }
                     Err(e) => vec![Kern::fehler(match e {
-                        sprechwerk_core::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                        sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
                         _ => Fehlercode::UngueltigeEingabe,
                     })],
                 }
@@ -356,7 +356,7 @@ impl Kern {
                         vec![ServerFrame::Raeume { raeume }]
                     }
                     Err(e) => vec![Kern::fehler(match e {
-                        sprechwerk_core::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                        sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
                         _ => Fehlercode::UngueltigeEingabe,
                     })],
                 }
@@ -370,8 +370,8 @@ impl Kern {
                     vec![ServerFrame::Raeume { raeume }]
                 }
                 Err(e) => vec![Kern::fehler(match e {
-                    sprechwerk_core::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
-                    sprechwerk_core::Error::RaumNichtLeer => Fehlercode::UngueltigeAnfrage,
+                    sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                    sprechwerk_domain::Error::RaumNichtLeer => Fehlercode::UngueltigeAnfrage,
                     _ => Fehlercode::Unbekannt,
                 })],
             },
@@ -392,8 +392,8 @@ impl Kern {
                         }
                     }
                     Err(e) => vec![Kern::fehler(match e {
-                        sprechwerk_core::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
-                        sprechwerk_core::Error::LetzterAdministrator => Fehlercode::UngueltigeAnfrage,
+                        sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                        sprechwerk_domain::Error::LetzterAdministrator => Fehlercode::UngueltigeAnfrage,
                         _ => Fehlercode::Unbekannt,
                     })],
                 }
@@ -425,14 +425,14 @@ impl Kern {
                     vec![ServerFrame::Ok]
                 }
                 Err(e) => vec![Kern::fehler(match e {
-                    sprechwerk_core::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                    sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
                     _ => Fehlercode::UngueltigeEingabe,
                 })],
             },
 
             ClientFrame::Protokoll { ab, anzahl } => {
                 let m = self.state.mitglied(ich);
-                if !m.map(|m| sprechwerk_core::role::darf(m.rolle, sprechwerk_core::Capability::ProtokollLesen))
+                if !m.map(|m| sprechwerk_domain::role::darf(m.rolle, sprechwerk_domain::Capability::ProtokollLesen))
                     .unwrap_or(false)
                 {
                     return vec![Kern::fehler(Fehlercode::KeinRecht)];
@@ -468,7 +468,7 @@ impl Kern {
                 self.verworfen += 1;
                 return;
             };
-            let darf = sprechwerk_core::role::darf(m.rolle, sprechwerk_core::Capability::SpracheSenden);
+            let darf = sprechwerk_domain::role::darf(m.rolle, sprechwerk_domain::Capability::SpracheSenden);
             (m.raum, darf)
         };
         if !darf_sprechen {
