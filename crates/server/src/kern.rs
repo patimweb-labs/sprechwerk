@@ -38,6 +38,22 @@ pub struct Kern {
     pub store: Store,
     pub konfig: Konfig,
     pub teilnehmer: HashMap<MemberId, Teilnehmer>,
+    /// Zähler für Sprachrahmen (Betrieb und Messung).
+    sprachrahmen: u64,
+    sprachrahmen_verteilt: u64,
+    sprachrahmen_verworfen: u64,
+    /// Verworfene Datagramme (falscher Kopf, kein Rederecht, kein Raum).
+    verworfen: u64,
+}
+
+/// Zählerstand für Diagnose und Messung.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Zaehler {
+    pub sprachrahmen: u64,
+    pub verteilt: u64,
+    pub verworfen: u64,
+    pub abgelehnt: u64,
+    pub verbundene: usize,
 }
 
 impl Kern {
@@ -54,6 +70,10 @@ impl Kern {
             store: Store::oeffnen(konfig.datenbank())?,
             konfig,
             teilnehmer: HashMap::new(),
+            sprachrahmen: 0,
+            sprachrahmen_verteilt: 0,
+            sprachrahmen_verworfen: 0,
+            verworfen: 0,
         };
         if kern.state.raeume.is_empty() {
             kern.state = State::neu(name, standard_rolle, jetzt_ms());
@@ -432,37 +452,69 @@ impl Kern {
     /// anderen Anwesenden weiter — genau wie TeamSpeak es macht, nur ohne
     /// eigene Krypto und ohne handgebaute Fragmentierung.
     pub fn sprache(&mut self, von: MemberId, datagramm: &[u8]) {
+        // Kopf prüfen (Länge, Version, Codec). Der **Raum steht nicht im
+        // Datagramm** — er kommt aus dem Sitzungszustand. Damit kann niemand
+        // in einen fremden Raum hineinsprechen.
         let Some((kopf, _nutzlast)) = Sprachkopf::lesen(datagramm) else {
+            self.verworfen += 1;
             return;
         };
-        let (raum, darf_sprechen, ich_im_raum) = {
+        if kopf.version != 1 {
+            self.verworfen += 1;
+            return;
+        }
+        let (raum, darf_sprechen) = {
             let Some(m) = self.state.mitglied(von) else {
+                self.verworfen += 1;
                 return;
             };
-            let raum = m.raum;
             let darf = sprechwerk_core::role::darf(m.rolle, sprechwerk_core::Capability::SpracheSenden);
-            (raum, darf, raum)
+            (m.raum, darf)
         };
         if !darf_sprechen {
+            self.verworfen += 1;
             return;
         }
-        let Some(raum) = raum else { return };
-        if kopf.raum != raum.roh() as u32 {
-            // Falscher Raum im Kopf: verwerfen statt umleiten.
+        let Some(raum) = raum else {
+            self.verworfen += 1;
             return;
-        }
-        if let Some(t) = self.teilnehmer.get_mut(&von) {
-            t.letzter_rahmen = jetzt_ms();
-        }
-        let _ = ich_im_raum;
+        };
+
+        // Der Rahmen wird **einmal** in eine teilbare Form gebracht und dann an
+        // alle im Raum verteilt. Kein Kopieren je Empfänger, kein Warten.
+        let daten = bytes::Bytes::copy_from_slice(datagramm);
+        let mut verteilt = 0u32;
+        let mut verloren = 0u32;
         for (id, t) in &self.teilnehmer {
             if *id == von {
                 continue;
             }
             if self.state.mitglied(*id).and_then(|m| m.raum) == Some(raum) {
-                // Bewusst ohne Rückstau: Sprache darf verworfen werden.
-                let _ = t.conn.send_datagram(bytes::Bytes::copy_from_slice(datagramm));
+                match t.conn.send_datagram(daten.clone()) {
+                    Ok(()) => verteilt += 1,
+                    // Voller Sendepuffer heißt: die Leitung ist zu langsam.
+                    // Für Sprache ist Verwerfen richtig — Nachliefern wäre
+                    // schlimmer als Schweigen.
+                    Err(_) => verloren += 1,
+                }
             }
+        }
+        if let Some(t) = self.teilnehmer.get_mut(&von) {
+            t.letzter_rahmen = jetzt_ms();
+        }
+        self.sprachrahmen += 1;
+        self.sprachrahmen_verteilt += verteilt as u64;
+        self.sprachrahmen_verworfen += verloren as u64;
+    }
+
+    /// Zähler für den Betrieb (Sprache, Verworfene, Verbindungen).
+    pub fn zaehler(&self) -> Zaehler {
+        Zaehler {
+            sprachrahmen: self.sprachrahmen,
+            verteilt: self.sprachrahmen_verteilt,
+            verworfen: self.sprachrahmen_verworfen,
+            abgelehnt: self.verworfen,
+            verbundene: self.teilnehmer.len(),
         }
     }
 

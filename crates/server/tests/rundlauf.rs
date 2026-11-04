@@ -355,7 +355,8 @@ async fn sprache_wird_nur_im_eigenen_raum_verteilt() {
     warte_auf(&mut fremd, |f| matches!(f, ServerFrame::Betreten { .. })).await;
 
     // Ada schickt einen Sprachrahmen in den Empfang.
-    let kopf = sprechwerk_proto::Sprachkopf::neu(1, empfang);
+    let _ = empfang;
+    let kopf = sprechwerk_proto::Sprachkopf::neu(1);
     let datagramm = kopf.schreiben(&[0xAA; 20]);
     ada.sprache_senden(bytes::Bytes::from(datagramm)).unwrap();
 
@@ -365,7 +366,7 @@ async fn sprache_wird_nur_im_eigenen_raum_verteilt() {
         .expect("Bosse bekommt den Rahmen")
         .expect("kein Fehler");
     let (kopf_b, nutzlast) = sprechwerk_proto::Sprachkopf::lesen(&empfangen).expect("Kopf");
-    assert_eq!(kopf_b.raum, empfang.roh() as u32);
+    assert_eq!(kopf_b, kopf);
     assert_eq!(nutzlast, &[0xAA; 20]);
 
     // … Fremd (anderer Raum) darf ihn **nicht** bekommen.

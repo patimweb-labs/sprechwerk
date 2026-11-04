@@ -195,6 +195,33 @@ fn main() -> anyhow::Result<()> {
             });
         }
 
+        // Messung: Zählerstand im Takt protokollieren, wenn gewünscht.
+        if std::env::var("SPRECHWERK_MESSUNG").is_ok() {
+            let kern_messung = kern.clone();
+            tokio::spawn(async move {
+                let mut takt = tokio::time::interval(Duration::from_secs(10));
+                let (mut vor_rahmen, mut vor_verteilt, mut vor_verworfen) = (0u64, 0u64, 0u64);
+                loop {
+                    takt.tick().await;
+                    let z = {
+                        let k = kern_messung.lock().expect("Sperre");
+                        k.zaehler()
+                    };
+                    tracing::info!(
+                        rahmen = z.sprachrahmen - vor_rahmen,
+                        verteilt = z.verteilt - vor_verteilt,
+                        verloren = z.verworfen - vor_verworfen,
+                        abgelehnt = z.abgelehnt,
+                        verbundene = z.verbundene,
+                        "Sprachrahmen je 10 s"
+                    );
+                    vor_rahmen = z.sprachrahmen;
+                    vor_verteilt = z.verteilt;
+                    vor_verworfen = z.verworfen;
+                }
+            });
+        }
+
         // Signalbehandlung: bei SIGTERM/Ctrl-C noch einmal speichern.
         let kern_signal = kern.clone();
         tokio::spawn(async move {

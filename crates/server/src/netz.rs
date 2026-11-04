@@ -39,9 +39,14 @@ pub async fn lauschen(kern: Arc<Mutex<Kern>>) -> anyhow::Result<()> {
         .install_default()
         .ok();
 
-    let (adresse, daten) = {
+    let (adresse, daten, staukontrolle, sprachpuffer) = {
         let k = kern.lock().expect("Sperre");
-        (k.konfig.adresse(), k.konfig.server.daten.clone())
+        (
+            k.konfig.adresse(),
+            k.konfig.server.daten.clone(),
+            k.konfig.server.staukontrolle.clone(),
+            k.konfig.server.sprachpuffer_kib * 1024,
+        )
     };
 
     let zert = crate::tls::laden_oder_erzeugen(&daten)?;
@@ -57,9 +62,16 @@ pub async fn lauschen(kern: Arc<Mutex<Kern>>) -> anyhow::Result<()> {
 
     // Datagramme sind der Sprachpfad: großzügiger Puffer, straffe Fristen.
     let mut transport = quinn::TransportConfig::default();
-    transport.datagram_receive_buffer_size(Some(1 << 20));
+    transport.datagram_receive_buffer_size(Some(sprachpuffer));
+    transport.datagram_send_buffer_size(sprachpuffer);
     transport.max_idle_timeout(Some(Duration::from_secs(30).try_into()?));
     transport.keep_alive_interval(Some(Duration::from_secs(10)));
+    // Staukontrolle: BBR schätzt die Bandbreite, statt bei Verlust zu halbieren.
+    if staukontrolle == "bbr" {
+        transport.congestion_controller_factory(Arc::new(quinn::congestion::BbrConfig::default()));
+    } else {
+        transport.congestion_controller_factory(Arc::new(quinn::congestion::CubicConfig::default()));
+    }
     server_config.transport_config(Arc::new(transport));
 
     let adresse: std::net::SocketAddr = adresse.parse()?;

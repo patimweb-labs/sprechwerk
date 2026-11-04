@@ -69,31 +69,40 @@ pub struct Mitgliedsansicht {
 /// ```text
 /// [0] Version (1)
 /// [1] Codec   (0 = Opus)
-/// [2..3] Folge (u16, big-endian) — je Sprecher
-/// [4..7] Raumkennung (u32, big-endian) — untere 32 Bit der Raumkennung
-/// [8..]  Opus-Rahmen
+/// [2..3] Folge (u16, big-endian) — je Sprecher, läuft um
+/// [4..]  Opus-Rahmen
 /// ```
+///
+/// **Vier Byte, nicht acht.** Der Raum steht **nicht** im Kopf: der Server
+/// weiß aus dem Sitzungszustand, in welchem Raum der Sprecher sitzt. Das spart
+/// bei einem 20-ms-Opus-Rahmen (rund 80 Byte) fünf Prozent Nutzlast und macht
+/// zugleich das Umleiten in fremde Räume unmöglich — ein Client kann nicht
+/// behaupten, woanders zu sitzen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sprachkopf {
     pub version: u8,
     pub codec: u8,
     pub folge: u16,
-    pub raum: u32,
 }
 
 /// Länge des Sprachkopfs.
-pub const SPRACHKOPF_LEN: usize = 8;
+pub const SPRACHKOPF_LEN: usize = 4;
 
 /// Codec Nummer für Opus.
 pub const CODEC_OPUS: u8 = 0;
 
+/// Höchstgröße eines Sprach-Datagramms. QUIC-Datagramme müssen unter der
+/// Pfad-MTU bleiben (rund 1200 Byte); 60 ms Opus sind selbst bei 64 kbit/s
+/// nur 480 Byte, also ist hier reichlich Luft — und eine harte Grenze gegen
+/// Missbrauch.
+pub const MAX_SPRACHRAHMEN: usize = 1200;
+
 impl Sprachkopf {
-    pub fn neu(folge: u16, raum: RoomId) -> Self {
+    pub fn neu(folge: u16) -> Self {
         Self {
             version: 1,
             codec: CODEC_OPUS,
             folge,
-            raum: raum.roh() as u32,
         }
     }
 
@@ -102,20 +111,18 @@ impl Sprachkopf {
         aus.push(self.version);
         aus.push(self.codec);
         aus.extend_from_slice(&self.folge.to_be_bytes());
-        aus.extend_from_slice(&self.raum.to_be_bytes());
         aus.extend_from_slice(nutzlast);
         aus
     }
 
     pub fn lesen(bytes: &[u8]) -> Option<(Self, &[u8])> {
-        if bytes.len() < SPRACHKOPF_LEN {
+        if bytes.len() < SPRACHKOPF_LEN || bytes.len() > MAX_SPRACHRAHMEN {
             return None;
         }
         let kopf = Self {
             version: bytes[0],
             codec: bytes[1],
             folge: u16::from_be_bytes([bytes[2], bytes[3]]),
-            raum: u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
         };
         Some((kopf, &bytes[SPRACHKOPF_LEN..]))
     }
@@ -260,15 +267,16 @@ mod tests {
     }
 
     #[test]
-    fn sprachkopf_ist_umkehrbar() {
-        let raum = RoomId::aus_roh(0xABCD);
-        let kopf = Sprachkopf::neu(7, raum);
+    fn sprachkopf_ist_vier_byte_und_umkehrbar() {
+        let kopf = Sprachkopf::neu(7);
         let bytes = kopf.schreiben(&[1, 2, 3]);
-        assert_eq!(bytes.len(), SPRACHKOPF_LEN + 3);
+        assert_eq!(bytes.len(), 4 + 3);
         let (zurueck, nutzlast) = Sprachkopf::lesen(&bytes).unwrap();
         assert_eq!(zurueck, kopf);
         assert_eq!(nutzlast, &[1, 2, 3]);
-        assert_eq!(zurueck.raum, raum.roh() as u32);
+        // Aufschlag bei einem typischen Opus-Rahmen: 4 von 84 Byte.
+        let typisch = kopf.schreiben(&[0u8; 80]);
+        assert!(typisch.len() * 100 / 84 <= 101);
     }
 
     #[test]

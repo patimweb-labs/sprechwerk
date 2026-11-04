@@ -46,6 +46,15 @@ pub struct Server {
     pub verbindungen_je_adresse: usize,
     /// Aufbewahrung von Nachrichten in Tagen; 0 = unbegrenzt.
     pub aufbewahrung_tage: u64,
+    /// Staukontrolle für die Sprachverbindung: `bbr` oder `cubic`.
+    ///
+    /// Cubic halbiert bei Paketverlust die Senderate — gut für Dateien,
+    /// schlecht für Sprache. BBR schätzt die Bandbreite und reagiert
+    /// gleichmäßiger. Messen, nicht glauben (`scripts/latenz.sh`).
+    pub staukontrolle: String,
+    /// Sendepuffer für Sprache in KiB. Klein halten: bei Sprache ist
+    /// Verwerfen besser als Anstauen.
+    pub sprachpuffer_kib: usize,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -81,6 +90,8 @@ impl Default for Server {
             daten: PathBuf::from("/data"),
             verbindungen_je_adresse: 8,
             aufbewahrung_tage: 0,
+            staukontrolle: "bbr".to_string(),
+            sprachpuffer_kib: 64,
         }
     }
 }
@@ -149,6 +160,12 @@ impl Konfig {
         if let Some(w) = zahl("SPRECHWERK_AUFBEWAHRUNG_TAGE")? {
             self.server.aufbewahrung_tage = w;
         }
+        if let Some(w) = text("SPRECHWERK_STAUKONTROLLE") {
+            self.server.staukontrolle = w;
+        }
+        if let Some(w) = zahl("SPRECHWERK_SPRACHPUFFER_KIB")? {
+            self.server.sprachpuffer_kib = w;
+        }
         if let Some(w) = ja("SPRECHWERK_SICHERUNG_AKTIV") {
             self.sicherung.aktiv = w;
         }
@@ -174,6 +191,17 @@ impl Konfig {
                 "standard_rolle={} (erlaubt: administrator, moderator, mitglied, gast)",
                 self.server.standard_rolle
             )));
+        }
+        if !matches!(self.server.staukontrolle.as_str(), "bbr" | "cubic") {
+            return Err(Fehler::Wert(format!(
+                "staukontrolle={} (erlaubt: bbr, cubic)",
+                self.server.staukontrolle
+            )));
+        }
+        if self.server.sprachpuffer_kib < 8 || self.server.sprachpuffer_kib > 4096 {
+            return Err(Fehler::Wert(
+                "sprachpuffer_kib muss zwischen 8 und 4096 liegen".into(),
+            ));
         }
         if self.server.daten.as_os_str().is_empty() {
             return Err(Fehler::Wert("daten darf nicht leer sein".into()));
@@ -224,6 +252,8 @@ standard_rolle = "mitglied"   # administrator | moderator | mitglied | gast
 daten = "/data"
 verbindungen_je_adresse = 8
 aufbewahrung_tage = 0    # 0 = unbegrenzt
+staukontrolle = "bbr"    # bbr | cubic — bbr ist für Sprache gleichmäßiger
+sprachpuffer_kib = 64    # klein halten: verwerfen statt anstauen
 
 [sicherung]
 aktiv = true
