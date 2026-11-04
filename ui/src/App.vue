@@ -6,7 +6,7 @@
 //
 // Keine Leiste links: die Breite gehört dem Inhalt — im Gespräch sind das
 // Räume, Menschen und Verlauf.
-import { computed } from "vue";
+import { computed, onMounted, onUnmounted } from "vue";
 import * as UI from "@weppelmann/components";
 import {
   IconBrand,
@@ -20,13 +20,16 @@ import {
 } from "@weppelmann/icons";
 import {
   ansicht,
-  eigeneStumm,
   eigeneTaub,
+  eigenesHoeren,
+  eigenesMikrofon,
   einstellungen,
   geheZu,
+  lokalStumm,
   modell,
+  pegel,
+  sprechtaste,
   t,
-  stummschalten,
   trennen,
   verbunden,
   meineRolle,
@@ -34,12 +37,6 @@ import {
 import ServerView from "./views/ServerView.vue";
 import RaeumeView from "./views/RaeumeView.vue";
 import EinstellungenView from "./views/EinstellungenView.vue";
-
-/** Eigene Kennung, falls verbunden. */
-const eigeneId = computed(() => {
-  const v = modell.verbindung;
-  return v && v.art === "verbunden" ? v.ich : null;
-});
 
 const eigenerName = computed(() => {
   const v = modell.verbindung;
@@ -79,9 +76,65 @@ const verbindungsText = computed(() => {
 });
 
 async function mikrofonUmschalten() {
-  if (!eigeneId.value) return;
-  await stummschalten(eigeneId.value, false, !eigeneStumm.value);
+  await eigenesMikrofon(!lokalStumm.value);
 }
+
+/**
+ * Push-to-Talk: Taste gedrückt halten.
+ *
+ * Erkannt werden die Taste aus den Einstellungen (Leertaste, Strg links, Alt
+ * links) und die Maustasten 4/5. „Maus 4" ist `button === 3`, „Maus 5" ist
+ * `button === 4` — die Zählung im Browser beginnt bei 0.
+ */
+const TASTEN: Record<string, (e: KeyboardEvent) => boolean> = {
+  Leertaste: (e) => e.code === "Space",
+  "Strg links": (e) => e.code === "ControlLeft",
+  "Alt links": (e) => e.code === "AltLeft",
+};
+
+const MAUSTASTEN: Record<string, number> = { "Maus 4": 3, "Maus 5": 4 };
+
+function tastePasst(e: KeyboardEvent): boolean {
+  const pruefung = TASTEN[einstellungen.ptt_taste];
+  return pruefung ? pruefung(e) : false;
+}
+
+function beimTastendruck(e: KeyboardEvent) {
+  if (!tastePasst(e) || e.repeat) return;
+  e.preventDefault();
+  void sprechtaste(true);
+}
+
+function beimTastenloslassen(e: KeyboardEvent) {
+  if (!tastePasst(e)) return;
+  e.preventDefault();
+  void sprechtaste(false);
+}
+
+function beimMausdruck(e: MouseEvent) {
+  if (MAUSTASTEN[einstellungen.ptt_taste] !== e.button) return;
+  e.preventDefault();
+  void sprechtaste(true);
+}
+
+function beimMausloslassen(e: MouseEvent) {
+  if (MAUSTASTEN[einstellungen.ptt_taste] !== e.button) return;
+  void sprechtaste(false);
+}
+
+onMounted(() => {
+  window.addEventListener("keydown", beimTastendruck);
+  window.addEventListener("keyup", beimTastenloslassen);
+  window.addEventListener("mousedown", beimMausdruck);
+  window.addEventListener("mouseup", beimMausloslassen);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("keydown", beimTastendruck);
+  window.removeEventListener("keyup", beimTastenloslassen);
+  window.removeEventListener("mousedown", beimMausdruck);
+  window.removeEventListener("mouseup", beimMausloslassen);
+});
 
 /** Server verlassen: trennen und zur Serverliste zurück. */
 async function verlassenServer() {
@@ -90,8 +143,7 @@ async function verlassenServer() {
 }
 
 async function tonUmschalten() {
-  if (!eigeneId.value) return;
-  await stummschalten(eigeneId.value, true, !eigeneTaub.value);
+  await eigenesHoeren(!eigeneTaub.value);
 }
 </script>
 
@@ -112,10 +164,19 @@ async function tonUmschalten() {
 
       <div class="rechts">
         <template v-if="verbunden">
+          <!-- Eigener Pegel: zeigt, ob man über der Schwelle ist. Ohne
+               Sprechpfad bleibt der Balken stehen — dann läuft kein Mikrofon. -->
+          <div class="pegel" :title="t('app.level')">
+            <UI.WpLevelMeter
+              :level="pegel"
+              :threshold="einstellungen.schwelle"
+              :label="t('app.level')"
+            />
+          </div>
           <UI.WpIconButton
-            :icon="eigeneStumm ? IconMicOff : IconMic"
-            :label="eigeneStumm ? t('app.mic_unmute') : t('app.mic_mute')"
-            :active="!eigeneStumm"
+            :icon="lokalStumm ? IconMicOff : IconMic"
+            :label="lokalStumm ? t('app.mic_unmute') : t('app.mic_mute')"
+            :active="!lokalStumm"
             size="sm"
             variant="ghost"
             @press="mikrofonUmschalten"
@@ -128,7 +189,7 @@ async function tonUmschalten() {
             variant="ghost"
             @press="tonUmschalten"
           />
-          <UI.WpAvatar :name="eigenerName" size="sm" tone="accent" :muted="eigeneStumm" />
+          <UI.WpAvatar :name="eigenerName" size="sm" tone="accent" :muted="lokalStumm" />
           <span class="eigener">
             <span class="eigener__name">{{ eigenerName }}</span>
             <span class="eigener__rolle">{{ meineRolle }}</span>
@@ -189,6 +250,12 @@ async function tonUmschalten() {
   padding: 0 0 0 var(--wp-space-4);
   background: var(--wp-color-bg-panel);
   border-bottom: var(--wp-size-border) solid var(--wp-color-border-subtle);
+}
+
+/* Pegel in der Kopfzeile: schmal, damit er nicht mit dem Namen konkurriert. */
+.pegel {
+  width: 88px;
+  margin-right: var(--wp-space-1);
 }
 
 .marke {

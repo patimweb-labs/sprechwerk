@@ -89,12 +89,59 @@ spricht, nimmt die anderen trotzdem mit auf. Dagegen hilft nur Kopfhörer — od
 später ein AEC im Client (Kosten: eigener Baustein, hohe Rechenlast, nur mit
 Referenzsignal sinnvoll).
 
-## Was noch fehlt
+## Stand: gebaut und gemessen
 
-1. **Gerät und Codec bauen** (siehe oben) und den Pfad in `crates/desktop`
-   anschließen: `Audiopfad::starten`, `gesendet` → `Verbindung::sprache_senden`,
-   eingehende Datagramme → `zu_spielen`, Pegel → `Sprechsteuerung`.
-2. **Pegelanzeige** im Fenster (WpSlider zeigt die Schwelle, ein Balken den Pegel).
-3. **Messung**: Ende-zu-Ende-Latenz mit zwei Rechnern, Verlusttest mit
-   `tc netem loss 2%`, Vergleich gegen TeamSpeak mit demselben Ton.
-4. **Endezuende-Verschlüsselung** (ADR 0002) — erst nach der Messung entscheiden.
+Der Pfad ist **gebaut und läuft** — im Fenster und als Messwerkzeug.
+
+| Stück | Wo | Geprüft durch |
+|---|---|---|
+| Hochpass, Rauschunterdrückung, Noisegate | `adapters/src/klang.rs` | 7 Einzeltests (Rauschen sinkt, Sprache bleibt, Gate mit Hysterese) |
+| Vorlauf (60 ms), Jitter-Puffer, Sprechsteuerung | `adapters/src/sprechpfad.rs` | 13 Einzeltests |
+| Opus-Kodierung (Bindung an `libopus.so.0`) | `audio/src/opus.rs` | 4 Einzeltests (Ton kommt mit Energie zurück, Rahmen < 1200 Byte) |
+| Sendekette (Block → Datagramm) | `audio/src/senden.rs` | 5 Einzeltests (Vorlauf beim Öffnen, Folgenummern lückenlos, Gate) |
+| Empfang (je Sprecher Dekodierer + Jitter, Mischen) | `audio/src/empfang.rs` | 5 Einzeltests (zwei Sprecher gemischt, Doppelte verworfen) |
+| Gerät (Aufnahme/Wiedergabe über `parec`/`pacat`) | `audio/src/lib.rs` | 3 Einzeltests + Messung |
+| Fensteranbindung | `desktop/src/sprech.rs` | 5 Einzeltests |
+
+### Messung, 4. November 2026
+
+`scripts/sprechprobe.sh` (zwei Proben am selben Server, 440-Hz-Ton, 3 s):
+
+```
+Tondauer im Mitschnitt: 2960 ms (gesendet: 3000 ms)
+Frequenzanteile: 220 Hz: 21, 330 Hz: 95, 440 Hz: 7172, 660 Hz: 13, 880 Hz: 7
+Spitze: 16114 / 32767          (kein Anschlag, kein Verlust)
+Raum 9: laute Blöcke: 0        (Sprache verlässt den Raum nicht)
+Sprecher: angenommen 0         (kein Rückkanal an den Sprecher)
+Laufzeit durch den Server: p50 1,1 ms · p95 1,7 ms · p99 1,8 ms (n = 150)
+```
+
+Die Laufzeit ist der Weg **Client → Server → Client** auf demselben Rechner
+(Ankunftszeit minus Sendezeitpunkt, gemeinsame Uhr). Sie enthält QUIC, die
+Verteilung im Server und die Entschlüsselung, aber **nicht** die Puffer der
+Soundkarte: die kommen im Betrieb dazu (20 ms Aufnahmeblock, 60 ms
+Jitter-Puffer, 40 ms `pacat`-Latenz) — zusammen rund 120 ms bis zum Ohr, davon
+gehen 60 ms auf das Konto des Jitter-Puffers.
+
+Was der Pfad ausdrücklich **nicht** kann (bewusst, nicht vergessen):
+
+1. **Keine Echounterdrückung (AEC).** Wer über Lautsprecher spricht, nimmt die
+   anderen mit auf. Kopfhörer oder ein eigener AEC-Baustein.
+2. **Kein Spektral-Denoiser.** Die Rauschunterdrückung ist ein Pegel-Expander
+   über dem verfolgten Rauschboden (siehe oben) — Lüfter und Grundrauschen ja,
+   einzelne Geräusche nur teilweise.
+3. **Kein Verlusttest über echtes Netz** (`tc netem`): gemessen wurde auf dem
+   gleichen Rechner. Steht als nächster Schritt in `docs/QUALITAET.md`.
+4. **Keine Ende-zu-Ende-Verschlüsselung** (ADR 0002/0006) — offen.
+
+## Werkzeug: `scripts/sprechprobe.sh`
+
+Prüft den ganzen Weg ohne Mikrofon und ohne Kopfhörer: startet einen eigenen
+Server, lässt eine Probe einen Ton senden, eine zweite mitschneiden und eine
+dritte in einem anderen Raum sitzen. Geprüft werden Ankunft, Frequenz,
+Raumtreue, Rückkanal und Laufzeit. Rückgabewert 0 = bestanden.
+
+```bash
+scripts/sprechprobe.sh            # eigener Port 17443
+scripts/sprechprobe.sh 18000      # anderer Port
+```

@@ -379,7 +379,12 @@ async fn sprache_wird_nur_im_eigenen_raum_verteilt() {
         .expect("Bosse bekommt den Rahmen")
         .expect("kein Fehler");
     let (kopf_b, nutzlast) = sprechwerk_protocol::Sprachkopf::lesen(&empfangen).expect("Kopf");
-    assert_eq!(kopf_b, kopf);
+    assert_eq!(kopf_b.folge, kopf.folge);
+    assert_eq!(kopf_b.codec, kopf.codec);
+    assert_ne!(
+        kopf_b.von, 0,
+        "der Server stempelt die Sprecher-Nummer in den Kopf"
+    );
     assert_eq!(nutzlast, &[0xAA; 20]);
 
     // … Fremd (anderer Raum) darf ihn **nicht** bekommen.

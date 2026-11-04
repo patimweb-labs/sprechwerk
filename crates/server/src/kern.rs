@@ -7,7 +7,8 @@
 
 use sprechwerk_domain::{MemberId, Role, RoomId, State};
 use sprechwerk_protocol::{
-    ClientFrame, Fehlercode, Mitgliedsansicht, Raumansicht, ServerFrame, Sprachkopf,
+    ClientFrame, Fehlercode, Mitgliedsansicht, Raumansicht, ServerFrame, Sprachkopf, CODEC_OPUS,
+    SPRACHKOPF_LEN, SPRACHKOPF_VERSION,
 };
 use sprechwerk_store::Store;
 use std::collections::HashMap;
@@ -30,6 +31,8 @@ pub struct Teilnehmer {
     pub postfach: UnboundedSender<ServerFrame>,
     /// Zeitpunkt des letzten Sprachrahmens (für „spricht gerade").
     pub letzter_rahmen: i64,
+    /// Sprecher-Nummer, die im Sprachkopf steht (siehe `Sprachkopf::von`).
+    pub sprechnummer: u16,
 }
 
 /// Der gesamte laufende Zustand.
@@ -42,6 +45,8 @@ pub struct Kern {
     sprachrahmen: u64,
     sprachrahmen_verteilt: u64,
     sprachrahmen_verworfen: u64,
+    /// Nächste freie Sprecher-Nummer für den Sprachkopf.
+    naechste_sprechnummer: u16,
     /// Verworfene Datagramme (falscher Kopf, kein Rederecht, kein Raum).
     verworfen: u64,
 }
@@ -74,6 +79,7 @@ impl Kern {
             sprachrahmen_verteilt: 0,
             sprachrahmen_verworfen: 0,
             verworfen: 0,
+            naechste_sprechnummer: 1,
         };
         if kern.state.raeume.is_empty() {
             kern.state = State::neu(name, standard_rolle, jetzt_ms());
@@ -687,7 +693,7 @@ impl Kern {
             self.verworfen += 1;
             return;
         };
-        if kopf.version != 1 {
+        if kopf.version != SPRACHKOPF_VERSION || kopf.codec != CODEC_OPUS {
             self.verworfen += 1;
             return;
         }
@@ -713,7 +719,21 @@ impl Kern {
 
         // Der Rahmen wird **einmal** in eine teilbare Form gebracht und dann an
         // alle im Raum verteilt. Kein Kopieren je Empfänger, kein Warten.
-        let daten = bytes::Bytes::copy_from_slice(datagramm);
+        //
+        // Dabei wird die Sprecher-Nummer eingetragen: der Client schickt
+        // `von = 0`, der Server setzt die Nummer, die er diesem Teilnehmer
+        // vergeben hat. Der Empfänger braucht sie, um je Sprecher einen
+        // eigenen Dekodierer zu führen.
+        let nummer = self
+            .teilnehmer
+            .get(&von)
+            .map(|t| t.sprechnummer)
+            .unwrap_or(0);
+        let mut kopie = datagramm.to_vec();
+        if kopie.len() >= SPRACHKOPF_LEN {
+            kopie[4..6].copy_from_slice(&nummer.to_be_bytes());
+        }
+        let daten = bytes::Bytes::from(kopie);
         let mut verteilt = 0u32;
         let mut verloren = 0u32;
         for (id, t) in &self.teilnehmer {
@@ -736,6 +756,17 @@ impl Kern {
         self.sprachrahmen += 1;
         self.sprachrahmen_verteilt += verteilt as u64;
         self.sprachrahmen_verworfen += verloren as u64;
+    }
+
+    /// Vergibt die nächste Sprecher-Nummer für den Sprachkopf.
+    ///
+    /// Sie gilt je **Verbindung**, nicht je Mensch: nach einem neuen Anmelden
+    /// bekommt der Client eine neue Nummer, und der Empfänger baut sich dafür
+    /// einen frischen Dekodierer. 0 bleibt reserviert für „noch nicht gesetzt".
+    pub fn sprechnummer_vergeben(&mut self) -> u16 {
+        let nummer = self.naechste_sprechnummer;
+        self.naechste_sprechnummer = self.naechste_sprechnummer.wrapping_add(1).max(1);
+        nummer
     }
 
     /// Zähler für den Betrieb (Sprache, Verworfene, Verbindungen).

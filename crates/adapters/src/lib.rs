@@ -9,6 +9,7 @@
 //! Kennung ein Besitznachweis. Wer die Schlüsseldatei kopiert, ist derselbe
 //! Mensch; das ist die bewusst gewählte Schwäche („Kennung ist mitnehmbar").
 
+pub mod klang;
 pub mod sprechpfad;
 
 use anyhow::Context;
@@ -288,6 +289,13 @@ impl Verbindung {
     /// Raum nach Position in der Liste (1 = erster).
     pub fn raum_nach_nummer(&self, nummer: usize) -> Option<sprechwerk_domain::RoomId> {
         self.raeume.get(nummer.saturating_sub(1)).map(|r| r.id)
+    }
+
+    /// Eine Kopie der QUIC-Verbindung, um Datagramme **getrennt** vom
+    /// Steuerstrom zu lesen. Zwei Leser auf demselben Strom wären ein Fehler;
+    /// Datagramme dagegen haben ihren eigenen Pfad.
+    pub fn datagramm_quelle(&self) -> quinn::Connection {
+        self.conn.clone()
     }
 
     /// Schickt ein Sprach-Datagramm.

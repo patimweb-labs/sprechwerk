@@ -10,13 +10,15 @@ statt aus einem Gefühl.
 |---|---|---|
 | Serverdurchlauf eines Sprachrahmens, p99 | < 1 000 µs | **28 µs** (gemessen) |
 | Beitritt bis „Willkommen", p95 | < 100 ms | **1,3 ms** (gemessen) |
-| Aufschlag durch den Sprachkopf | < 6 % eines 20-ms-Rahmens | **4,8 %** (4 von 84 Byte) |
-| Ende-zu-Ende im LAN, p99 | < 60 ms | offen (Client fehlt) |
+| Aufschlag durch den Sprachkopf | < 8 % eines 20-ms-Rahmens | **7 %** (6 von 86 Byte) |
+| Ende-zu-Ende im LAN, p99 | < 60 ms | **p95 1,7 ms** durch den Server; Puffer der Soundkarte (20 + 60 + 40 ms) kommen im Betrieb dazu |
 | Ende-zu-Ende über WAN, p99 | < 120 ms | offen |
-| Verlust 5 %, hörbare Aussetzer | keine | offen (FEC + Puffer im Client) |
-| Bandbreite je Sprecher | ≤ 34 kbit/s | offen (Opus 32 kbit/s + Kopf) |
+| Verlust 5 %, hörbare Aussetzer | keine | FEC an, Verdeckung eingebaut — **nicht im Netz gemessen** |
+| Bandbreite je Sprecher | ≤ 34 kbit/s | **32 kbit/s** eingestellt (Opus VBR, Kopf 6 Byte je 20 ms) |
 
-Die drei „offen" hängen am Client — der Server hat seinen Teil erledigt.
+Der Client ist gebaut; die Tonmessung steht in [`AUDIO.md`](AUDIO.md).
+Was noch fehlt: ein **Verlusttest über ein echtes Netz** (`tc netem loss 5%`)
+und der Vergleich gegen TeamSpeak mit demselben Ton.
 
 ## 2. Was gemessen ist (2026-11-04, dieselbe Maschine, Loopback)
 

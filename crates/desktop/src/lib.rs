@@ -11,6 +11,7 @@ pub mod anwendung;
 pub mod audio;
 pub mod commands;
 pub mod einstellungen;
+pub mod sprech;
 
 use anwendung::Anwendung;
 use std::sync::Arc;
@@ -29,10 +30,28 @@ pub fn run() {
             let fenster = app.handle().clone();
             // Nach jeder Änderung geht der **ganze** Stand ans Fenster
             // (AGENTS.md §2.1: die Oberfläche ist `render(modell)`).
-            let anwendung = Anwendung::starten(schluessel_pfad, move |zustand| {
+            let sprech = Arc::new(sprech::Sprechbetrieb::neu());
+            let anwendung = Anwendung::starten(schluessel_pfad, sprech.clone(), move |zustand| {
                 let _ = fenster.emit("zustand", &zustand);
             });
             app.manage(Arc::new(anwendung));
+            app.manage(sprech.clone());
+
+            // Pegel für die Anzeige: eigener Zeitgeber, 10 × je Sekunde.
+            // (Der Stand kommt sonst nur bei Änderungen — ein Pegel ändert sich
+            // ständig und gehört deshalb nicht in `zustand`.)
+            let pegel_fenster = app.handle().clone();
+            let pegel_sprech = sprech.clone();
+            std::thread::Builder::new()
+                .name("sprechwerk-pegel".into())
+                .spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    if !pegel_sprech.laeuft() {
+                        continue;
+                    }
+                    let _ = pegel_fenster.emit("pegel", pegel_sprech.pegel());
+                })
+                .ok();
 
             let einstellungen_pfad = verzeichnis.join("einstellungen.json");
             app.manage(einstellungen::EinstellungenPfad(einstellungen_pfad));
@@ -54,6 +73,13 @@ pub fn run() {
             commands::aus_raum_werfen,
             commands::trennen_mitglied,
             commands::sperren,
+            commands::audio_starten,
+            commands::audio_stoppen,
+            commands::audio_stand,
+            commands::audio_einstellen,
+            commands::sprechtaste,
+            commands::mikrofon_stumm,
+            commands::hoeren_aus,
             commands::audio_geraete,
             commands::audio_pegel,
             commands::audio_testton,

@@ -3316,13 +3316,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "sprechwerk-audio"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "sprechwerk-adapters",
+ "sprechwerk-protocol",
+ "tokio",
+]
+
+[[package]]
 name = "sprechwerk-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "serde",
  "serde_json",
  "sprechwerk-adapters",
+ "sprechwerk-audio",
  "sprechwerk-domain",
  "sprechwerk-ipc",
  "sprechwerk-protocol",

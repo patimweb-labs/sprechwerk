@@ -72,26 +72,36 @@ pub struct Mitgliedsansicht {
 /// Kopf eines Sprach-Datagramms.
 ///
 /// ```text
-/// [0] Version (1)
-/// [1] Codec   (0 = Opus)
-/// [2..3] Folge (u16, big-endian) — je Sprecher, läuft um
-/// [4..]  Opus-Rahmen
+/// [0]     Version (2)
+/// [1]     Codec   (0 = Opus)
+/// [2..3]  Folge   (u16, big-endian) — je Sprecher, läuft um
+/// [4..5]  von     (u16, big-endian) — Sprecher, **vom Server gesetzt**
+/// [6..]   Opus-Rahmen
 /// ```
 ///
-/// **Vier Byte, nicht acht.** Der Raum steht **nicht** im Kopf: der Server
-/// weiß aus dem Sitzungszustand, in welchem Raum der Sprecher sitzt. Das spart
-/// bei einem 20-ms-Opus-Rahmen (rund 80 Byte) fünf Prozent Nutzlast und macht
-/// zugleich das Umleiten in fremde Räume unmöglich — ein Client kann nicht
+/// **Sechs Byte.** Der Client schickt `von = 0`; der Server trägt die Nummer
+/// des Sprechers ein. Warum überhaupt: der Empfänger braucht für **jeden
+/// Sprecher einen eigenen Dekodierer und Jitter-Puffer**. Ohne diese Nummer
+/// würde ein einziger Dekodierer Rahmen verschiedener Stimmen vermischen — das
+/// klingt wie Rauschen.
+///
+/// Der **Raum** steht weiterhin nicht im Kopf: der Server weiß aus dem
+/// Sitzungszustand, wo der Sprecher sitzt, und ein Client kann nicht
 /// behaupten, woanders zu sitzen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sprachkopf {
     pub version: u8,
     pub codec: u8,
     pub folge: u16,
+    /// Sprecher-Nummer, vom Server gesetzt (0 = noch nicht gesetzt).
+    pub von: u16,
 }
 
 /// Länge des Sprachkopfs.
-pub const SPRACHKOPF_LEN: usize = 4;
+pub const SPRACHKOPF_LEN: usize = 6;
+
+/// Aktuelle Version des Sprachkopfs.
+pub const SPRACHKOPF_VERSION: u8 = 2;
 
 /// Codec Nummer für Opus.
 pub const CODEC_OPUS: u8 = 0;
@@ -105,10 +115,17 @@ pub const MAX_SPRACHRAHMEN: usize = 1200;
 impl Sprachkopf {
     pub fn neu(folge: u16) -> Self {
         Self {
-            version: 1,
+            version: SPRACHKOPF_VERSION,
             codec: CODEC_OPUS,
             folge,
+            von: 0,
         }
+    }
+
+    /// Setzt die Sprecher-Nummer (macht der Server beim Weiterleiten).
+    pub fn mit_von(mut self, von: u16) -> Self {
+        self.von = von;
+        self
     }
 
     pub fn schreiben(&self, nutzlast: &[u8]) -> Vec<u8> {
@@ -116,6 +133,7 @@ impl Sprachkopf {
         aus.push(self.version);
         aus.push(self.codec);
         aus.extend_from_slice(&self.folge.to_be_bytes());
+        aus.extend_from_slice(&self.von.to_be_bytes());
         aus.extend_from_slice(nutzlast);
         aus
     }
@@ -128,6 +146,7 @@ impl Sprachkopf {
             version: bytes[0],
             codec: bytes[1],
             folge: u16::from_be_bytes([bytes[2], bytes[3]]),
+            von: u16::from_be_bytes([bytes[4], bytes[5]]),
         };
         Some((kopf, &bytes[SPRACHKOPF_LEN..]))
     }
@@ -302,16 +321,23 @@ mod tests {
     }
 
     #[test]
-    fn sprachkopf_ist_vier_byte_und_umkehrbar() {
+    fn sprachkopf_ist_sechs_byte_und_umkehrbar() {
         let kopf = Sprachkopf::neu(7);
         let bytes = kopf.schreiben(&[1, 2, 3]);
-        assert_eq!(bytes.len(), 4 + 3);
+        assert_eq!(bytes.len(), SPRACHKOPF_LEN + 3);
+        assert_eq!(SPRACHKOPF_LEN, 6, "Version, Codec, Folge, Sprecher");
         let (zurueck, nutzlast) = Sprachkopf::lesen(&bytes).unwrap();
         assert_eq!(zurueck, kopf);
         assert_eq!(nutzlast, &[1, 2, 3]);
-        // Aufschlag bei einem typischen Opus-Rahmen: 4 von 84 Byte.
+        // Sprecher-Nummer setzt der Server — sie muss mit ankommen.
+        let gestempelt = kopf.mit_von(7).schreiben(&[1, 2]);
+        assert_eq!(Sprachkopf::lesen(&gestempelt).unwrap().0.von, 7);
+        // Aufschlag bei einem typischen Opus-Rahmen: 6 von 86 Byte.
         let typisch = kopf.schreiben(&[0u8; 80]);
-        assert!(typisch.len() * 100 / 84 <= 101);
+        assert!(
+            typisch.len() * 100 / 86 <= 101,
+            "Kopf muss unter 10 % Aufschlag bleiben"
+        );
     }
 
     #[test]

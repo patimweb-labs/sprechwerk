@@ -212,12 +212,14 @@ async fn bediene(verbindung: quinn::Connection, kern: Arc<Mutex<Kern>>) -> anyho
         } else {
             match k.anmelden(&kennung, &name, &adresse) {
                 Ok((ich, antwort)) => {
+                    let sprechnummer = k.sprechnummer_vergeben();
                     k.teilnehmer.insert(
                         ich,
                         crate::kern::Teilnehmer {
                             conn: verbindung.clone(),
                             postfach: postfach.clone(),
                             letzter_rahmen: 0,
+                            sprechnummer,
                         },
                     );
                     tracing::info!(mitglied = %ich, name, %adresse, "angemeldet");

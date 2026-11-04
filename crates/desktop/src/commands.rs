@@ -10,6 +10,9 @@
 
 use crate::anwendung::Anwendung;
 use crate::einstellungen::{Einstellungen, EinstellungenPfad};
+use crate::sprech::Sprechbetrieb;
+use serde::Serialize;
+use sprechwerk_audio::Sendeeinstellungen;
 use sprechwerk_ipc::{Antwort, Zustand};
 use std::sync::Arc;
 use tauri::State;
@@ -24,11 +27,22 @@ pub fn zustand(anwendung: State<'_, Arc<Anwendung>>) -> Zustand {
 #[tauri::command]
 pub async fn verbinden(
     anwendung: State<'_, Arc<Anwendung>>,
+    sprech: State<'_, Arc<Sprechbetrieb>>,
+    pfad: State<'_, EinstellungenPfad>,
     server: String,
     name: String,
     passwort: Option<String>,
 ) -> Result<String, String> {
-    anwendung.verbinden(server, name, passwort).await
+    let ergebnis = anwendung.verbinden(server, name, passwort).await;
+    if ergebnis.is_ok() {
+        // Der Sprechpfad gehört zur Verbindung: ohne Verbindung kein Ton.
+        // Ein Fehler hier darf das Verbinden nicht scheitern lassen — dann
+        // steht eben nur das Mikrofon stumm, und die Meldung sagt warum.
+        if let Err(fehler) = audio_starten_mit(&sprech, &Einstellungen::laden(&pfad.0)) {
+            return Ok(format!("{}|{fehler}", ergebnis.unwrap_or_default()));
+        }
+    }
+    ergebnis
 }
 
 /// Trennt die Verbindung.
@@ -224,6 +238,105 @@ pub async fn sperren(
     {
         Antwort::Fehler { text } => Err(text),
         _ => Ok(()),
+    }
+}
+
+/// Stand des Sprechpfads (die Oberfläche fragt ihn im Takt ab).
+#[derive(Debug, Clone, Serialize)]
+pub struct AudioStand {
+    /// Läuft Aufnahme und Wiedergabe?
+    pub laeuft: bool,
+    /// Mikrofonpegel 0–100.
+    pub pegel: u8,
+    /// Eigenes Mikrofon stumm?
+    pub stumm: bool,
+    /// Eigener Ton aus?
+    pub taub: bool,
+}
+
+/// Startet den Sprechpfad mit den gespeicherten Einstellungen.
+#[tauri::command]
+pub fn audio_starten(
+    sprech: State<'_, Arc<Sprechbetrieb>>,
+    pfad: State<'_, EinstellungenPfad>,
+) -> Result<(), String> {
+    audio_starten_mit(&sprech, &Einstellungen::laden(&pfad.0))
+}
+
+/// Beendet den Sprechpfad.
+#[tauri::command]
+pub fn audio_stoppen(sprech: State<'_, Arc<Sprechbetrieb>>) -> Result<(), String> {
+    sprech.stoppen();
+    Ok(())
+}
+
+/// Stand des Sprechpfads.
+#[tauri::command]
+pub fn audio_stand(sprech: State<'_, Arc<Sprechbetrieb>>) -> AudioStand {
+    AudioStand {
+        laeuft: sprech.laeuft(),
+        pegel: sprech.pegel(),
+        stumm: sprech.ist_stumm(),
+        taub: sprech.ist_taub(),
+    }
+}
+
+/// Push-to-Talk: Taste gedrückt (`true`) oder losgelassen (`false`).
+#[tauri::command]
+pub fn sprechtaste(sprech: State<'_, Arc<Sprechbetrieb>>, an: bool) -> Result<(), String> {
+    sprech.taste_setzen(an);
+    Ok(())
+}
+
+/// Eigenes Mikrofon stummschalten.
+#[tauri::command]
+pub fn mikrofon_stumm(sprech: State<'_, Arc<Sprechbetrieb>>, an: bool) -> Result<(), String> {
+    sprech.stumm_setzen(an);
+    Ok(())
+}
+
+/// Eigenen Ton abschalten („taub"): nichts wird abgespielt.
+#[tauri::command]
+pub fn hoeren_aus(sprech: State<'_, Arc<Sprechbetrieb>>, an: bool) -> Result<(), String> {
+    sprech.taub_setzen(an);
+    Ok(())
+}
+
+/// Wendet geänderte Einstellungen auf den laufenden Sprechpfad an.
+///
+/// Schwelle, Rauschunterdrückung, Noisegate und Push-to-Talk wirken sofort.
+/// Ein anderes **Gerät** verlangt einen Neustart des Pfads — das prüft
+/// `audio_starten_mit` am Gerätenamen.
+#[tauri::command]
+pub fn audio_einstellen(
+    sprech: State<'_, Arc<Sprechbetrieb>>,
+    einstellungen: Einstellungen,
+) -> Result<(), String> {
+    sprech.push_to_talk_setzen(einstellungen.push_to_talk);
+    sprech.wende_an(
+        Some(einstellungen.mikrofon.clone()),
+        Some(einstellungen.lautsprecher.clone()),
+        sende_einstellungen(&einstellungen),
+    )
+}
+
+/// Startet den Pfad mit den übergebenen Einstellungen.
+fn audio_starten_mit(sprech: &Sprechbetrieb, einstellungen: &Einstellungen) -> Result<(), String> {
+    sprech.push_to_talk_setzen(einstellungen.push_to_talk);
+    sprech.starten(
+        Some(einstellungen.mikrofon.clone()),
+        Some(einstellungen.lautsprecher.clone()),
+        sende_einstellungen(einstellungen),
+    )
+}
+
+/// Übersetzt die Fenstereinstellungen in die Sprache des Audiopfads.
+fn sende_einstellungen(einstellungen: &Einstellungen) -> Sendeeinstellungen {
+    Sendeeinstellungen {
+        entrauschen: einstellungen.rauschunterdrueckung,
+        noisegate: einstellungen.noisegate,
+        schwelle: einstellungen.schwelle,
+        vorlauf_ms: einstellungen.vorlauf_ms as u32,
     }
 }
 

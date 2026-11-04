@@ -10,6 +10,7 @@
 //! das Fenster darf nie blockieren, und ein Netzfehler darf die Oberfläche
 //! nicht anhalten.
 
+use crate::sprech::Sprechbetrieb;
 use sprechwerk_adapters::{Schluessel, Verbindung as Netz};
 use sprechwerk_ipc::{abbilden, Antwort, Befehl, Zustand};
 use std::path::PathBuf;
@@ -34,6 +35,7 @@ enum Auftrag {
 pub struct Anwendung {
     auftrag: mpsc::UnboundedSender<Auftrag>,
     zustand: Arc<Mutex<Zustand>>,
+    sprech: Arc<Sprechbetrieb>,
 }
 
 impl Anwendung {
@@ -41,7 +43,7 @@ impl Anwendung {
     ///
     /// `melde` wird nach jeder Änderung mit dem vollständigen Stand aufgerufen
     /// (im Fenster: Ereignis `zustand`).
-    pub fn starten<F>(schluessel_pfad: PathBuf, melde: F) -> Self
+    pub fn starten<F>(schluessel_pfad: PathBuf, sprech: Arc<Sprechbetrieb>, melde: F) -> Self
     where
         F: Fn(Zustand) + Send + 'static,
     {
@@ -49,6 +51,7 @@ impl Anwendung {
         let zustand = Arc::new(Mutex::new(Zustand::neu()));
 
         let zustand_thread = zustand.clone();
+        let sprech_thread = sprech.clone();
         std::thread::Builder::new()
             .name("sprechwerk-verbindung".to_string())
             .spawn(move || {
@@ -62,11 +65,20 @@ impl Anwendung {
                         return;
                     }
                 };
-                laufzeit.block_on(lauf(rx, zustand_thread, schluessel_pfad, melde));
+                laufzeit.block_on(lauf(rx, zustand_thread, sprech_thread, schluessel_pfad, melde));
             })
             .expect("Verbindungsthread");
 
-        Self { auftrag: tx, zustand }
+        Self {
+            auftrag: tx,
+            zustand,
+            sprech,
+        }
+    }
+
+    /// Der Sprechbetrieb (für die Befehle des Fensters).
+    pub fn sprech(&self) -> Arc<Sprechbetrieb> {
+        self.sprech.clone()
     }
 
     /// Der zuletzt gemeldete Stand.
@@ -128,24 +140,40 @@ where
 async fn lauf<F>(
     mut rx: mpsc::UnboundedReceiver<Auftrag>,
     zustand: Arc<Mutex<Zustand>>,
+    sprech: Arc<Sprechbetrieb>,
     schluessel_pfad: PathBuf,
     melde: F,
 ) where
     F: Fn(Zustand) + Send + 'static,
 {
     let mut netz: Option<Netz> = None;
+    // Kommende Sprache aus dem Netz (eigene Aufgabe, eigener Pfad).
+    let mut sprache: Option<mpsc::UnboundedReceiver<Vec<u8>>> = None;
 
     loop {
         let mut auftrag: Option<Auftrag> = None;
         let mut rahmen: Option<anyhow::Result<Option<sprechwerk_protocol::ServerFrame>>> = None;
 
         match netz.as_mut() {
-            Some(verbindung) => {
-                tokio::select! {
-                    a = rx.recv() => auftrag = a,
-                    f = verbindung.empfang() => rahmen = Some(f),
+            Some(verbindung) => match sprache.as_mut() {
+                Some(hoeren) => {
+                    tokio::select! {
+                        a = rx.recv() => auftrag = a,
+                        f = verbindung.empfang() => rahmen = Some(f),
+                        d = hoeren.recv() => {
+                            if let Some(d) = d {
+                                sprech.hoeren(d);
+                            }
+                        }
+                    }
                 }
-            }
+                None => {
+                    tokio::select! {
+                        a = rx.recv() => auftrag = a,
+                        f = verbindung.empfang() => rahmen = Some(f),
+                    }
+                }
+            },
             None => auftrag = rx.recv().await,
         }
 
@@ -165,6 +193,8 @@ async fn lauf<F>(
                         neu_melden = true;
                     }
                     netz = None;
+                    sprache = None;
+                    sprech.stoppen();
                 }
                 Err(fehler) => {
                     if let Ok(mut z) = zustand.lock() {
@@ -172,6 +202,8 @@ async fn lauf<F>(
                         neu_melden = true;
                     }
                     netz = None;
+                    sprache = None;
+                    sprech.stoppen();
                 }
             }
             if neu_melden {
@@ -244,6 +276,44 @@ async fn lauf<F>(
                         let verlauf = verbindung.verlauf.clone();
                         let ich = verbindung.ich;
                         let rolle = verbindung.rolle;
+
+                        // Sprache: eingehende Datagramme in einer eigenen Aufgabe
+                        // lesen (der Steuerstrom gehört der Leseschleife oben).
+                        let quelle = verbindung.datagramm_quelle();
+                        let (tx_sprache, rx_sprache) = mpsc::unbounded_channel::<Vec<u8>>();
+                        tokio::spawn(async move {
+                            loop {
+                                match quelle.read_datagram().await {
+                                    Ok(d) => {
+                                        if tx_sprache.send(d.to_vec()).is_err() {
+                                            break;
+                                        }
+                                    }
+                                    // Verbindung zu: Aufgabe beenden.
+                                    Err(_) => break,
+                                }
+                            }
+                        });
+
+                        // Ausgehende Sprache: der Sprechpfad legt fertige
+                        // Datagramme ab, hier gehen sie ins Netz.
+                        let sendequelle = verbindung.datagramm_quelle();
+                        let sprech_senden = sprech.clone();
+                        tokio::spawn(async move {
+                            loop {
+                                while let Some(d) = sprech_senden.naechstes_datagramm() {
+                                    if sendequelle
+                                        .send_datagram(bytes::Bytes::from(d))
+                                        .is_err()
+                                    {
+                                        return;
+                                    }
+                                }
+                                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                            }
+                        });
+
+                        sprache = Some(rx_sprache);
                         netz = Some(verbindung);
                         if let Ok(mut z) = zustand.lock() {
                             abbilden::verarbeite(
@@ -293,6 +363,8 @@ async fn lauf<F>(
                     if let Some(v) = netz.take() {
                         v.schliessen();
                     }
+                    sprache = None;
+                    sprech.stoppen();
                     if let Ok(mut z) = zustand.lock() {
                         abbilden::getrennt(&mut z, None);
                     }

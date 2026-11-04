@@ -1,228 +1,379 @@
-// SPDX-License-Identifier: MIT
-// Copyright (C) 2026 Patrick Weppelmann
-
-//! Soundkarte und Codec.
+//! Aufnahme, Wiedergabe, Codec — der Sprachpfad des Fensters.
 //!
-//! **Schnitt:** dieses Crate holt Ton vom Gerät, kodiert mit Opus und gibt ihn
-//! an den Aufrufer; in der Gegenrichtung dekodiert es und schreibt ihn auf das
-//! Ausgabegerät. Was **wann** gesendet wird (Push-to-Talk, Vorlauf,
-//! Jitter-Puffer, Schwelle) entscheidet `sprechwerk_adapters::sprechpfad` —
-//! dort liegt die Logik und dort ist sie geprüft.
+//! # Aufbau
 //!
-//! **Bauvoraussetzungen** (siehe `docs/AUDIO.md`): ALSA-Entwicklungspaket,
-//! `pkg-config`, `cmake` (für das gebündelte Opus). Ohne sie baut dieses Crate
-//! nicht — deshalb steht es nicht im Arbeitsbereich.
+//! ```text
+//! Mikrofon ──► parec ──► 20-ms-Blöcke ──► Sender (klang + Opus + Vorlauf) ──► Datagramme
+//! Datagramme ──► Empfänger (Jitter + Opus je Sprecher) ──► Mischen ──► pacat ──► Lautsprecher
+//! ```
+//!
+//! **Die Rechnerei liegt woanders und ist dort geprüft:**
+//! `sprechwerk_adapters::klang` (Hochpass, Rauschunterdrückung, Noisegate),
+//! `sprechwerk_adapters::sprechpfad` (Vorlauf, Jitter-Puffer, Sprechsteuerung),
+//! hier `senden` und `empfang` (Kette und Mischung), `opus` (Codec-Bindung).
+//! Dieses Modul fügt nur das Gerät hinzu: zwei Kindprozesse von
+//! PipeWire/PulseAudio (`parec`, `pacat`).
+//!
+//! **Warum Kindprozesse und nicht ALSA direkt?** Der Pfad muss auf jedem Rechner
+//! bauen, ohne Entwicklungspakete. `parec`/`pacat` sprechen mit demselben
+//! Server wie die Oberfläche, brauchen keine Übersetzungszeit für
+//! Geräteauswahl und sind im Betrieb erprobt. Der Preis: ein Prozess mehr je
+//! Richtung — gemessen wird er in `scripts/sprechprobe.sh`.
 
-use anyhow::{Context, Result};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex};
+/// Zähler für Fehlersuche (wie viele Blöcke die Aufnahme verarbeitet hat).
+pub static BLOECKE: AtomicU64 = AtomicU64::new(0);
 
-/// Opus-Einstellungen. Mono, 20 ms Rahmen — wie im Protokoll festgelegt.
-pub const ABTASTRATE: u32 = 48_000;
-pub const KANAELE: u16 = 1;
-pub const RAHMEN_MS: u32 = 20;
-pub const BITRATE: i32 = 32_000;
+pub mod empfang;
+pub mod opus;
+pub mod pcm;
+pub mod senden;
 
-/// Ein Gerät, wie es die Oberfläche anbietet.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Geraet {
-    pub name: String,
-    pub ist_vorgabe: bool,
+pub use empfang::Empfänger;
+pub use senden::{Sendeeinstellungen, Sender};
+
+use anyhow::{anyhow, Context, Result};
+use std::io::{BufReader, Read, Write};
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
+use std::sync::mpsc::{Receiver, Sender as Kanal};
+use std::sync::{mpsc, Arc};
+use std::time::{Duration, Instant};
+
+/// Zeit eines Blocks (20 ms) — der Takt des ganzen Pfads.
+pub const TAKT: Duration = Duration::from_millis(20);
+
+/// Was die Oberfläche zur Laufzeit umschalten darf.
+///
+/// Alles über Atomics: die Soundkarten-Threads lesen sie ohne Sperre, die
+/// Oberfläche schreibt sie ohne Warten.
+#[derive(Debug)]
+pub struct Steuerung {
+    /// Eigenes Mikrofon stumm.
+    stumm: AtomicBool,
+    /// Push-to-Talk gedrückt.
+    taste: AtomicBool,
+    /// Push-to-Talk aktiv (sonst offenes Mikrofon).
+    push_to_talk: AtomicBool,
+    /// Eigener Ton aus („taub"): nichts wird abgespielt.
+    taub: AtomicBool,
 }
 
-/// Verfügbare Aufnahmegeräte.
-pub fn aufnahmegeraete() -> Result<Vec<Geraet>> {
-    let host = cpal::default_host();
-    let vorgabe = host.default_input_device().and_then(|d| d.name().ok());
-    let mut liste = Vec::new();
-    for geraet in host.input_devices().context("Aufnahmegeräte")? {
-        if let Ok(name) = geraet.name() {
-            liste.push(Geraet {
-                ist_vorgabe: Some(&name) == vorgabe.as_ref(),
-                name,
-            });
+impl Default for Steuerung {
+    fn default() -> Self {
+        Self::neu()
+    }
+}
+
+impl Steuerung {
+    pub fn neu() -> Self {
+        Self {
+            stumm: AtomicBool::new(false),
+            taste: AtomicBool::new(false),
+            push_to_talk: AtomicBool::new(false),
+            taub: AtomicBool::new(false),
         }
     }
-    Ok(liste)
-}
 
-/// Verfügbare Wiedergabegeräte.
-pub fn wiedergabegeraete() -> Result<Vec<Geraet>> {
-    let host = cpal::default_host();
-    let vorgabe = host.default_output_device().and_then(|d| d.name().ok());
-    let mut liste = Vec::new();
-    for geraet in host.output_devices().context("Wiedergabegeräte")? {
-        if let Ok(name) = geraet.name() {
-            liste.push(Geraet {
-                ist_vorgabe: Some(&name) == vorgabe.as_ref(),
-                name,
-            });
-        }
+    pub fn stumm_setzen(&self, an: bool) {
+        self.stumm.store(an, Ordering::Relaxed);
     }
-    Ok(liste)
+
+    pub fn ist_stumm(&self) -> bool {
+        self.stumm.load(Ordering::Relaxed)
+    }
+
+    pub fn taste_setzen(&self, an: bool) {
+        self.taste.store(an, Ordering::Relaxed);
+    }
+
+    pub fn push_to_talk_setzen(&self, an: bool) {
+        self.push_to_talk.store(an, Ordering::Relaxed);
+    }
+
+    pub fn taub_setzen(&self, an: bool) {
+        self.taub.store(an, Ordering::Relaxed);
+    }
+
+    /// Sind die eigenen Ohren zu?
+    pub fn ist_taub(&self) -> bool {
+        self.taub.load(Ordering::Relaxed)
+    }
+
+    /// Darf in diesem Moment gesendet werden?
+    pub fn senden_erlaubt(&self) -> bool {
+        if self.stumm.load(Ordering::Relaxed) {
+            return false;
+        }
+        if self.push_to_talk.load(Ordering::Relaxed) {
+            return self.taste.load(Ordering::Relaxed);
+        }
+        true
+    }
 }
 
-/// Ein laufender Audiopfad.
-pub struct Audiopfad {
-    aufnahme: cpal::Stream,
-    wiedergabe: cpal::Stream,
-    /// Fertig kodierte Rahmen (20 ms) für den Netzteil.
-    pub gesendet: Receiver<Vec<u8>>,
-    /// Rahmen, die abgespielt werden sollen.
-    pub zu_spielen: Sender<Vec<u8>>,
-    /// Zuletzt gemessener Pegel 0–100 (für die Sprechschwelle).
-    pub pegel: Arc<Mutex<u8>>,
+/// Ein laufender Sprachpfad mit Gerät.
+pub struct Pfad {
+    steuerung: Arc<Steuerung>,
+    /// Fertige Datagramme für das Netz.
+    zu_senden: Receiver<Vec<u8>>,
+    /// Eingehende Datagramme aus dem Netz.
+    zu_hoeren: Kanal<Vec<u8>>,
+    /// Pegel des Mikrofons 0–100.
+    pegel: Arc<AtomicU8>,
+    /// Läuft der Pfad noch?
+    laeuft: Arc<AtomicBool>,
+    /// Umstellen der Sendeseite.
+    einstellungen: Kanal<Sendeeinstellungen>,
+    kinder: Vec<Child>,
+    name_aufnahme: String,
+    name_wiedergabe: String,
 }
 
-impl Audiopfad {
+impl Pfad {
     /// Startet Aufnahme und Wiedergabe.
-    pub fn starten(mikrofon: Option<&str>, lautsprecher: Option<&str>) -> Result<Self> {
-        let host = cpal::default_host();
+    ///
+    /// `mikrofon`/`lautsprecher` sind Gerätekennungen wie
+    /// `alsa_input.usb-…` (leer = Vorgabe des Systems).
+    pub fn starten(
+        mikrofon: Option<&str>,
+        lautsprecher: Option<&str>,
+        einstellungen: Sendeeinstellungen,
+    ) -> Result<Self> {
+        let steuerung = Arc::new(Steuerung::neu());
+        let pegel = Arc::new(AtomicU8::new(0));
+        let laeuft = Arc::new(AtomicBool::new(true));
 
         // ---- Aufnahme ------------------------------------------------
-        let eingang = match mikrofon.filter(|n| !n.is_empty()) {
-            Some(name) => host
-                .input_devices()?
-                .find(|g| g.name().map(|n| n == name).unwrap_or(false))
-                .with_context(|| format!("Mikrofon „{name}" nicht gefunden"))?,
-            None => host.default_input_device().context("kein Mikrofon")?,
-        };
-        let eingerichtet = eingang.default_input_config()?;
-        let eingang_rate = eingerichtet.sample_rate().0;
-        let eingang_kanaele = eingerichtet.channels() as usize;
+        let quelle = mikrofon.unwrap_or("");
+        if quelle.ends_with(".monitor") {
+            return Err(anyhow!(
+                "„{quelle}“ ist ein Monitor (Wiedergabe), kein Mikrofon — \
+                 sonst hört man die eigene Ausgabe"
+            ));
+        }
+        let mut aufnahme_kind = starte_parec(quelle)?;
+        let aufnahme_aus = aufnahme_kind
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow!("parec liefert nichts"))?;
 
-        let mut kodierer = audiopus::coder::Encoder::new(
-            ABTASTRATE,
-            audiopus::Channels::Mono,
-            audiopus::Application::Voip,
-        )?;
-        kodierer.set_bitrate(audiopus::Bitrate::BitsPerSecond(BITRATE))?;
-
-        let (sender, gesendet) = std::sync::mpsc::channel::<Vec<u8>>();
-        let pegel = Arc::new(Mutex::new(0u8));
-        let pegel_schreib = pegel.clone();
-
-        // Ein Opus-Rahmen ist 20 ms; bei 48 kHz sind das 960 Abtastwerte.
-        const RAHMEN_SAMPLES: usize = (ABTASTRATE as usize / 1000) * RAHMEN_MS as usize;
-        let mut sammler: Vec<f32> = Vec::with_capacity(RAHMEN_SAMPLES);
-        let mut zwischen: Vec<f32> = Vec::new();
-
-        let aufnahme = eingang.build_input_stream(
-            &eingerichtet.config(),
-            move |daten: &[f32], _| {
-                // Auf Mono heruntermischen und auf 48 kHz bringen (einfache
-                // lineare Umrechnung; bei 48 kHz ist es ein Durchreichen).
-                zwischen.clear();
-                for rahmen in daten.chunks(eingang_kanaele) {
-                    zwischen.push(rahmen.iter().sum::<f32>() / eingang_kanaele as f32);
-                }
-                let umgerechnet = umrechnen(&zwischen, eingang_rate, ABTASTRATE);
-                sammler.extend_from_slice(&umgerechnet);
-
-                // Pegel für die Sprechschwelle (einfacher Spitzenwert).
-                if let Some(spitze) = sammler.last() {
-                    let wert = (spitze.abs() * 100.0).clamp(0.0, 100.0) as u8;
-                    if let Ok(mut p) = pegel_schreib.lock() {
-                        *p = (*p * 3 + wert) / 4; // geglättet
+        let (sende_tx, zu_senden) = mpsc::channel::<Vec<u8>>();
+        let (stell_tx, stell_rx) = mpsc::channel::<Sendeeinstellungen>();
+        {
+            let steuerung = steuerung.clone();
+            let pegel = pegel.clone();
+            let laeuft = laeuft.clone();
+            let mut sender = Sender::neu(einstellungen)?;
+            let name = quelle.to_string();
+            std::thread::Builder::new()
+                .name("sprechwerk-aufnahme".into())
+                .spawn(move || {
+                    let mut leser = BufReader::new(aufnahme_aus);
+                    let mut roh = vec![0u8; pcm::RAHMEN_BYTES];
+                    while laeuft.load(Ordering::Relaxed) {
+                        // Neue Einstellungen übernehmen, wenn welche da sind.
+                        while let Ok(neu) = stell_rx.try_recv() {
+                            sender.einstellen(neu);
+                        }
+                        if let Err(fehler) = leser.read_exact(&mut roh) {
+                            eprintln!("Aufnahme ({name}): Lesen fehlgeschlagen: {fehler}");
+                            break; // parec beendet (Gerät weg)
+                        }
+                        BLOECKE.fetch_add(1, Ordering::Relaxed);
+                        let werte = pcm::bytes_nach_i16(&roh);
+                        let mut block = pcm::nach_f32(&werte);
+                        let erlaubt = steuerung.senden_erlaubt();
+                        match sender.block(&mut block, erlaubt) {
+                            Ok(datagramme) => {
+                                pegel.store(sender.pegel(), Ordering::Relaxed);
+                                for d in datagramme {
+                                    if sende_tx.send(d).is_err() {
+                                        return;
+                                    }
+                                }
+                            }
+                            Err(fehler) => {
+                                eprintln!("Aufnahme ({name}): {fehler}");
+                                break;
+                            }
+                        }
                     }
-                }
-
-                while sammler.len() >= RAHMEN_SAMPLES {
-                    let block: Vec<f32> = sammler.drain(..RAHMEN_SAMPLES).collect();
-                    let pcm: Vec<i16> = block
-                        .iter()
-                        .map(|s| (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
-                        .collect();
-                    let mut ziel = vec![0u8; 4000];
-                    if let Ok(len) = kodierer.encode(&pcm, &mut ziel) {
-                        ziel.truncate(len);
-                        let _ = sender.send(ziel);
-                    }
-                }
-            },
-            |fehler| eprintln!("Aufnahme: {fehler}"),
-            None,
-        )?;
-        aufnahme.play()?;
+                    tracing_stumm(&name);
+                })
+                .context("Aufnahmethread")?;
+        }
 
         // ---- Wiedergabe ----------------------------------------------
-        let ausgang = match lautsprecher.filter(|n| !n.is_empty()) {
-            Some(name) => host
-                .output_devices()?
-                .find(|g| g.name().map(|n| n == name).unwrap_or(false))
-                .with_context(|| format!("Wiedergabe „{name}" nicht gefunden"))?,
-            None => host.default_output_device().context("keine Wiedergabe")?,
-        };
-        let aus_config = ausgang.default_output_config()?;
-        let (zu_spielen, empfangen) = std::sync::mpsc::channel::<Vec<u8>>();
-
-        let mut dekodierer = audiopus::coder::Decoder::new(ABTASTRATE, audiopus::Channels::Mono)?;
-        let mut warteschlange: Vec<f32> = Vec::new();
-        let mut pcm_puffer = vec![0i16; 5760];
-
-        let wiedergabe = ausgang.build_output_stream(
-            &aus_config.config(),
-            move |ziel: &mut [f32], _| {
-                // Alles abholen, was in der Zwischenzeit kam, dekodieren und
-                // in die Warteschlange legen.
-                while let Ok(rahmen) = empfangen.try_recv() {
-                    if let Ok(len) = dekodierer.decode(&rahmen, &mut pcm_puffer, false) {
-                        warteschlange.extend(
-                            pcm_puffer[..len].iter().map(|s| *s as f32 / i16::MAX as f32),
-                        );
+        let ziel = lautsprecher.unwrap_or("");
+        let mut wiedergabe_kind = starte_pacat(ziel)?;
+        let mut wiedergabe_ein = wiedergabe_kind
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow!("pacat nimmt nichts an"))?;
+        let (hoer_tx, zu_hoeren_channel) = mpsc::channel::<Vec<u8>>();
+        {
+            let laeuft = laeuft.clone();
+            let steuerung = steuerung.clone();
+            std::thread::Builder::new()
+                .name("sprechwerk-wiedergabe".into())
+                .spawn(move || {
+                    let mut empfaenger = Empfänger::neu();
+                    let mut takt = Instant::now();
+                    while laeuft.load(Ordering::Relaxed) {
+                        while let Ok(d) = zu_hoeren_channel.try_recv() {
+                            // Taub: nichts annehmen. So kommt gar nichts erst in
+                            // den Puffer, statt dass es nur stumm geschaltet wird.
+                            if !steuerung.ist_taub() {
+                                empfaenger.nimm(&d);
+                            }
+                        }
+                        let block = if steuerung.ist_taub() {
+                            vec![0i16; pcm::RAHMEN_SAMPLES]
+                        } else {
+                            empfaenger.naechster_block()
+                        };
+                        if wiedergabe_ein
+                            .write_all(&pcm::i16_nach_bytes(&block))
+                            .is_err()
+                        {
+                            break; // pacat beendet
+                        }
+                        // Fester Takt: 20 ms je Block, Drift wird ausgeglichen.
+                        takt += TAKT;
+                        let jetzt = Instant::now();
+                        if takt > jetzt {
+                            std::thread::sleep(takt - jetzt);
+                        } else {
+                            takt = jetzt;
+                        }
                     }
-                }
-                for (i, platz) in ziel.iter_mut().enumerate() {
-                    *platz = warteschlange.get(i).copied().unwrap_or(0.0);
-                }
-                // Verbrauchtes entfernen; bei Unterlauf bleibt Stille.
-                let verbraucht = ziel.len().min(warteschlange.len());
-                warteschlange.drain(..verbraucht);
-            },
-            |fehler| eprintln!("Wiedergabe: {fehler}"),
-            None,
-        )?;
-        wiedergabe.play()?;
+                })
+                .context("Wiedergabethread")?;
+        }
+
+        // Der Aufnahmeprozess läuft im Hintergrund; `try_wait` räumt Zombies.
+        let _ = aufnahme_kind.try_wait();
 
         Ok(Self {
-            aufnahme,
-            wiedergabe,
-            gesendet,
-            zu_spielen,
+            steuerung,
+            zu_senden,
+            zu_hoeren: hoer_tx,
             pegel,
+            laeuft,
+            einstellungen: stell_tx,
+            kinder: vec![aufnahme_kind, wiedergabe_kind],
+            name_aufnahme: quelle.to_string(),
+            name_wiedergabe: ziel.to_string(),
         })
     }
 
-    /// Aktueller Pegel 0–100.
-    pub fn pegel(&self) -> u8 {
-        self.pegel.lock().map(|p| *p).unwrap_or(0)
+    /// Die Steuerung (Stumm, Push-to-Talk) — darf überall benutzt werden.
+    pub fn steuerung(&self) -> Arc<Steuerung> {
+        self.steuerung.clone()
     }
 
-    /// Beendet beide Ströme.
-    pub fn stoppen(self) {
-        let _ = self.aufnahme.pause();
-        let _ = self.wiedergabe.pause();
+    /// Neue Einstellungen für die Sendeseite.
+    pub fn einstellen(&self, einstellungen: Sendeeinstellungen) {
+        let _ = self.einstellungen.send(einstellungen);
+    }
+
+    /// Nächstes fertiges Datagramm (oder `None`).
+    pub fn naechstes_datagramm(&self) -> Option<Vec<u8>> {
+        self.zu_senden.try_recv().ok()
+    }
+
+    /// Ein Datagramm aus dem Netz zur Wiedergabe geben.
+    pub fn hoeren(&self, datagramm: Vec<u8>) {
+        let _ = self.zu_hoeren.send(datagramm);
+    }
+
+    /// Wie viele Aufnahmeblöcke verarbeitet wurden (Fehlersuche/Betrieb).
+    pub fn bloecke() -> u64 {
+        BLOECKE.load(Ordering::Relaxed)
+    }
+
+    /// Mikrofonpegel 0–100.
+    pub fn pegel(&self) -> u8 {
+        self.pegel.load(Ordering::Relaxed)
+    }
+
+    /// Welche Geräte benutzt werden (für Meldungen).
+    pub fn geraete(&self) -> (String, String) {
+        let lesbar = |s: &str| {
+            if s.is_empty() {
+                "Vorgabe des Systems".to_string()
+            } else {
+                s.to_string()
+            }
+        };
+        (lesbar(&self.name_aufnahme), lesbar(&self.name_wiedergabe))
+    }
+
+    /// Beendet beide Richtungen.
+    pub fn stoppen(mut self) {
+        self.laeuft.store(false, Ordering::Relaxed);
+        for kind in self.kinder.iter_mut() {
+            let _ = kind.kill();
+            let _ = kind.wait();
+        }
     }
 }
 
-/// Wandelt eine Abtastrate in eine andere (linear, für Sprachsignale genügend).
-fn umrechnen(eingang: &[f32], von: u32, nach: u32) -> Vec<f32> {
-    if von == nach {
-        return eingang.to_vec();
+impl Drop for Pfad {
+    fn drop(&mut self) {
+        self.laeuft.store(false, Ordering::Relaxed);
+        for kind in self.kinder.iter_mut() {
+            let _ = kind.kill();
+            let _ = kind.wait();
+        }
     }
-    let verhaeltnis = nach as f64 / von as f64;
-    let laenge = (eingang.len() as f64 * verhaeltnis).round() as usize;
-    let mut aus = Vec::with_capacity(laenge);
-    for i in 0..laenge {
-        let pos = i as f64 / verhaeltnis;
-        let index = pos.floor() as usize;
-        let rest = (pos - index as f64) as f32;
-        let a = eingang.get(index).copied().unwrap_or(0.0);
-        let b = eingang.get(index + 1).copied().unwrap_or(a);
-        aus.push(a + (b - a) * rest);
+}
+
+fn tracing_stumm(name: &str) {
+    eprintln!("Aufnahme beendet ({name})");
+}
+
+/// Startet `parec` und liefert den Prozess mit offener Ausgabe.
+fn starte_parec(quelle: &str) -> Result<Child> {
+    let mut befehl = Command::new("parec");
+    befehl.args([
+        "--format=s16le",
+        "--rate=48000",
+        "--channels=1",
+        "--raw",
+        "--latency-msec=20",
+    ]);
+    if !quelle.is_empty() {
+        befehl.arg(format!("--device={quelle}"));
     }
-    aus
+    befehl
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .stdin(Stdio::null())
+        .spawn()
+        .with_context(|| "parec startet nicht (ist PipeWire/PulseAudio installiert?)")
+}
+
+/// Startet `pacat` und liefert den Prozess mit offener Eingabe.
+fn starte_pacat(ziel: &str) -> Result<Child> {
+    let mut befehl = Command::new("pacat");
+    befehl.args([
+        "--playback",
+        "--format=s16le",
+        "--rate=48000",
+        "--channels=1",
+        "--raw",
+        "--latency-msec=40",
+    ]);
+    if !ziel.is_empty() {
+        befehl.arg(format!("--device={ziel}"));
+    }
+    befehl
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .with_context(|| "pacat startet nicht (ist PipeWire/PulseAudio installiert?)")
 }
 
 #[cfg(test)]
@@ -230,16 +381,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gleiche_rate_wird_durchgereicht() {
-        let daten = vec![0.1, 0.2, 0.3];
-        assert_eq!(umrechnen(&daten, 48_000, 48_000), daten);
+    fn stumm_verbietet_senden() {
+        let s = Steuerung::neu();
+        assert!(s.senden_erlaubt(), "offenes Mikrofon sendet");
+        s.stumm_setzen(true);
+        assert!(!s.senden_erlaubt());
+        s.stumm_setzen(false);
+        assert!(s.senden_erlaubt());
     }
 
     #[test]
-    fn verdoppelte_rate_verdoppelt_die_laenge() {
-        let daten = vec![0.0, 1.0, 0.0, 1.0];
-        let aus = umrechnen(&daten, 24_000, 48_000);
-        assert_eq!(aus.len(), 8);
-        assert!((aus[1] - 0.5).abs() < 0.01, "Zwischenwert wird eingefügt");
+    fn push_to_talk_verlangt_die_taste() {
+        let s = Steuerung::neu();
+        s.push_to_talk_setzen(true);
+        assert!(!s.senden_erlaubt(), "ohne Taste nichts");
+        s.taste_setzen(true);
+        assert!(s.senden_erlaubt(), "mit Taste senden");
+        s.taste_setzen(false);
+        assert!(!s.senden_erlaubt());
+        // Stumm schlägt die Taste.
+        s.taste_setzen(true);
+        s.stumm_setzen(true);
+        assert!(!s.senden_erlaubt(), "stumm hat Vorrang");
+    }
+
+    #[test]
+    fn monitor_als_mikrofon_wird_abgelehnt() {
+        let ergebnis = Pfad::starten(
+            Some("alsa_output.kopfhoerer.monitor"),
+            None,
+            Sendeeinstellungen::default(),
+        );
+        let fehler = ergebnis.err().expect("muss abgelehnt werden");
+        assert!(fehler.to_string().contains("Monitor"), "{fehler}");
     }
 }

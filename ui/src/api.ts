@@ -118,10 +118,26 @@ const echtApi = {
   audioPegel: (geraet: string, millisekunden: number) =>
     invoke<number>("audio_pegel", { geraet, millisekunden }),
   audioTestton: (geraet: string) => invoke<void>("audio_testton", { geraet }),
+  audioStarten: () => invoke<void>("audio_starten"),
+  audioStoppen: () => invoke<void>("audio_stoppen"),
+  audioStand: () => invoke<AudioStand>("audio_stand"),
+  audioEinstellen: (einstellungen: Einstellungen) =>
+    invoke<void>("audio_einstellen", { einstellungen }),
+  sprechtaste: (an: boolean) => invoke<void>("sprechtaste", { an }),
+  mikrofonStumm: (an: boolean) => invoke<void>("mikrofon_stumm", { an }),
+  hoerenAus: (an: boolean) => invoke<void>("hoeren_aus", { an }),
   einstellungenLesen: () => invoke<Einstellungen>("einstellungen_lesen"),
   einstellungenSpeichern: (einstellungen: Einstellungen) =>
     invoke<void>("einstellungen_speichern", { einstellungen }),
 };
+
+/** Stand des Sprechpfads (Mikrofon/Wiedergabe laufen). */
+export interface AudioStand {
+  laeuft: boolean;
+  pegel: number;
+  stumm: boolean;
+  taub: boolean;
+}
 
 /** Ein wählbares Audiogerät. */
 export interface Geraet {

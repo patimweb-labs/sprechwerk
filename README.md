@@ -25,13 +25,27 @@ Protokollebene).
 * **Dauerhafter Text** mit Verlauf, Löschen (Verfasser weich, Moderator hart).
 * **Prüfprotokoll**: wer, wann, was, vorher/nachher — auch abgelehnte
   Versuche.
-* **Sprache**: der Server verteilt Rahmen im Raum und prüft das Rederecht.
-  Er mischt nichts.
+* **Sprache, hörbar und gemessen**: Aufnahme (PipeWire/PulseAudio), Hochpass,
+  Rauschunterdrückung, Noisegate, Opus 32 kbit/s, 60-ms-Vorlauf statt
+  PTT-Wartezeit, Jitter-Puffer je Sprecher, Mischen im Client. Der Server
+  verteilt nur und prüft das Rederecht — er mischt nichts. Laufzeit durch den
+  Server: **p95 1,7 ms** (`scripts/sprechprobe.sh`).
+* **Fenster**: Tauri 2 mit Vue, drei Farbschemata, vier Sprachen, Pegelanzeige,
+  Push-to-Talk, Gerätewahl, Klickdummy für die Oberfläche ohne Server.
 * **Betrieb**: Konfiguration über Datei und Umgebung, Sicherung nach Plan im
   Textformat, Aufbewahrungsfrist, ein Container.
 
 Noch nicht umgesetzt (bewusst später): Dateien, Status, Video,
-Bildschirmfreigabe, Emojis, Suche, Fensteranwendung, Audio-Aufnahme im Client.
+Bildschirmfreigabe, Emojis, Suche, Sperrliste im Fenster.
+
+## Ton prüfen (ohne Mikrofon)
+
+```bash
+scripts/sprechprobe.sh
+```
+
+Startet einen eigenen Server, schickt einen 440-Hz-Ton durch den Sprachpfad,
+schneidet ihn mit, prüft Frequenz, Raumtreue, Rückkanal und Laufzeit.
 
 ## Schnellstart
 
@@ -43,6 +57,11 @@ SPRECHWERK_DATEN=/tmp/sprechwerk ./target/release/sprechwerk
 
 # Client in einem zweiten Terminal
 ./target/release/sprechwerk-cli --server 127.0.0.1:7443 --name Ada --raum 1
+
+# Fenster (braucht die Oberfläche: ui/) — baut eigenständig
+cd ui && npm install && npm run build && cd ..
+cargo build --manifest-path crates/desktop/Cargo.toml --features custom-protocol
+./crates/desktop/target/debug/sprechwerk-desktop
 ```
 
 Der Server zeigt beim Start seinen Zertifikat-Fingerabdruck. Der **erste**

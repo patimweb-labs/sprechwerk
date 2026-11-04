@@ -41,6 +41,15 @@ export const ansicht = ref<"server" | "raeume" | "einstellungen">(istDummy ? "ra
 
 export const laeuft = ref(false);
 
+/** Mikrofonpegel 0–100 (eigenes Gerät, kommt 10 × je Sekunde). */
+export const pegel = ref(0);
+
+/** Läuft der Sprechpfad (Mikrofon und Wiedergabe offen)? */
+export const hoerbar = ref(false);
+
+/** Eigenes Mikrofon lokal stumm (wirkt sofort, ohne Serverrunde). */
+export const lokalStumm = ref(false);
+
 /** Verbunden? */
 export const verbunden = computed(() => modell.verbindung?.art === "verbunden");
 
@@ -111,6 +120,11 @@ export async function verbindeEreignisse() {
     await listen<Zustand>("zustand", (ereignis) => {
       Object.assign(modell, ereignis.payload);
     });
+    // Pegel ist ein eigener Strom: er ändert sich ständig und würde den
+    // Modellstand fluten.
+    await listen<number>("pegel", (ereignis) => {
+      pegel.value = ereignis.payload;
+    });
   } catch (fehler) {
     modell.meldung = `Ereignisse nicht abonnierbar: ${String(fehler)}`;
   }
@@ -120,6 +134,8 @@ export async function verbindeEreignisse() {
 export async function speichere() {
   try {
     await api.einstellungenSpeichern({ ...einstellungen });
+    // Ton-Einstellungen wirken sofort, nicht erst beim nächsten Verbinden.
+    await wendeAudioEinstellungen();
   } catch (fehler) {
     modell.meldung = `Einstellungen nicht speicherbar: ${String(fehler)}`;
   }
@@ -141,6 +157,61 @@ export const eigeneTaub = computed(() => {
   const id = modell.verbindung?.art === "verbunden" ? modell.verbindung.ich : null;
   return modell.mitglieder.find((m) => m.id === id)?.taub ?? false;
 });
+
+/**
+ * Eigenes Mikrofon stummschalten.
+ *
+ * Zwei Dinge zugleich: der **Sprechpfad** hört sofort auf zu senden (ohne
+ * Serverrunde, also ohne Verzögerung), und der **Server** führt den Zustand,
+ * damit die anderen das Symbol sehen.
+ */
+export async function eigenesMikrofon(an: boolean) {
+  lokalStumm.value = an;
+  if (!istDummy) await api.mikrofonStumm(an).catch(() => undefined);
+  const id = modell.verbindung?.art === "verbunden" ? modell.verbindung.ich : null;
+  if (id) await api.stummschalten(id, false, an).catch(() => undefined);
+}
+
+/** Eigenen Ton abschalten (taub): nichts wird abgespielt. */
+export async function eigenesHoeren(an: boolean) {
+  if (!istDummy) await api.hoerenAus(an).catch(() => undefined);
+  const id = modell.verbindung?.art === "verbunden" ? modell.verbindung.ich : null;
+  if (id) await api.stummschalten(id, true, an).catch(() => undefined);
+}
+
+/** Push-to-Talk: Taste gedrückt oder losgelassen. */
+export async function sprechtaste(an: boolean) {
+  if (!verbunden.value || !einstellungen.push_to_talk || istDummy) return;
+  await api.sprechtaste(an).catch(() => undefined);
+}
+
+/** Stand des Sprechpfads holen (nach dem Verbinden, nach Gerätewechsel). */
+export async function holeAudioStand() {
+  if (istDummy) {
+    hoerbar.value = verbunden.value;
+    pegel.value = 0;
+    return;
+  }
+  try {
+    const stand = await api.audioStand();
+    hoerbar.value = stand.laeuft;
+    pegel.value = stand.pegel;
+    lokalStumm.value = stand.stumm;
+  } catch {
+    hoerbar.value = false;
+  }
+}
+
+/** Wendet geänderte Audioeinstellungen an (Schwelle, Gate, Geräte). */
+export async function wendeAudioEinstellungen() {
+  if (istDummy) return;
+  try {
+    await api.audioEinstellen({ ...einstellungen });
+    await holeAudioStand();
+  } catch (fehler) {
+    modell.meldung = `Ton: ${String(fehler)}`;
+  }
+}
 
 /** Verbindet zu einem gemerkten Server (aus der Serverliste). */
 export async function verbindeMit(server: string, name?: string) {
@@ -173,6 +244,7 @@ export async function verbinden() {
   try {
     await api.verbinden(einstellungen.server, einstellungen.name, einstellungen.passwort);
     await api.einstellungenSpeichern({ ...einstellungen });
+    await holeAudioStand();
   } catch (fehler) {
     modell.meldung = String(fehler);
   } finally {
@@ -182,6 +254,9 @@ export async function verbinden() {
 
 export async function trennen() {
   await api.trennen();
+  if (!istDummy) await api.audioStoppen().catch(() => undefined);
+  hoerbar.value = false;
+  pegel.value = 0;
   // Nach dem Trennen gehört der Blick der Serverliste.
   ansicht.value = "server";
 }

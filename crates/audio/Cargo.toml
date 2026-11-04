@@ -3,23 +3,29 @@ name = "sprechwerk-audio"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "sprechwerk: Soundkarte und Opus — Aufnahme, Wiedergabe, Vorlauf"
+description = "sprechwerk: Aufnahme, Wiedergabe, Opus, Vorlauf"
 
-# **Nicht im Arbeitsbereich.** Dieses Crate braucht Systempakete
-# (`alsa-lib`, `pkg-config`, `cmake` für das gebündelte Opus) und wird deshalb
-# getrennt gebaut:
+# **Warum kein `cpal` und kein gebündeltes Opus?**
+# `cpal` braucht `alsa-lib-devel`, `audiopus` baut Opus mit `cmake`. Beides
+# fehlt auf vielen Rechnern, und ein Audiopfad, der sich nicht bauen lässt, ist
+# kein Audiopfad. Dieses Crate spricht deshalb direkt mit dem laufenden
+# PipeWire/PulseAudio (`parec`/`pacat` — dieselbe Schnittstelle, die auch
+# `pactl` benutzt) und bindet das **vorhandene** `libopus.so.0` ein.
 #
-#   sudo dnf install alsa-lib-devel pkgconf-pkg-config cmake
-#   cargo build --manifest-path crates/audio/Cargo.toml
-#
-# Die prüfbare Logik (Vorlauf, Jitter-Puffer, Sprechtaste) liegt bewusst in
-# `crates/adapters/src/sprechpfad.rs` und läuft ohne Soundkarte.
+# Nötig ist damit nur: PipeWire oder PulseAudio (also das, was für Ton ohnehin
+# läuft) und `libopus` (auf jeder Distribution mit PipeWire vorhanden).
 
 [dependencies]
 sprechwerk-adapters = { path = "../adapters" }
+sprechwerk-protocol = { path = "../protocol" }
 anyhow = "1"
-cpal = "0.15"
-audiopus = { version = "0.3.0-rc.0", features = [] }
+bytes = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 
-[workspace]
-members = []
+[lib]
+name = "sprechwerk_audio"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sprechprobe"
+path = "src/bin/sprechprobe.rs"

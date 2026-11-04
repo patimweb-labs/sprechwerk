@@ -10,6 +10,7 @@ members = [
     "crates/ipc",
     "crates/server",
     "crates/cli",
+    "crates/audio",
 ]
 
 [workspace.package]
