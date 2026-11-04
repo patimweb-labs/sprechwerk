@@ -186,7 +186,11 @@ impl Kern {
             .state
             .anmelden(kennung, name, jetzt)
             .map_err(|_| Kern::fehler(Fehlercode::AnmeldungAbgelehnt))?;
-        let rolle = self.state.mitglied(id).map(|m| m.rolle).unwrap_or(Role::Gast);
+        let rolle = self
+            .state
+            .mitglied(id)
+            .map(|m| m.rolle)
+            .unwrap_or(Role::Gast);
 
         // Der Verlauf des Raums, in dem das Mitglied zuletzt war.
         let verlauf = match self.state.mitglied(id).and_then(|m| m.raum) {
@@ -321,7 +325,13 @@ impl Kern {
                 match self.state.raum_anlegen(ich, eltern, &name, jetzt) {
                     Ok(_) => {
                         let raeume = self.raeume();
-                        self.rundruf(None, None, ServerFrame::Raeume { raeume: raeume.clone() });
+                        self.rundruf(
+                            None,
+                            None,
+                            ServerFrame::Raeume {
+                                raeume: raeume.clone(),
+                            },
+                        );
                         let _ = self.speichern();
                         vec![ServerFrame::Raeume { raeume }]
                     }
@@ -336,7 +346,13 @@ impl Kern {
                 match self.state.raum_umbenennen(ich, raum, &name, jetzt) {
                     Ok(()) => {
                         let raeume = self.raeume();
-                        self.rundruf(None, None, ServerFrame::Raeume { raeume: raeume.clone() });
+                        self.rundruf(
+                            None,
+                            None,
+                            ServerFrame::Raeume {
+                                raeume: raeume.clone(),
+                            },
+                        );
                         let _ = self.speichern();
                         vec![ServerFrame::Raeume { raeume }]
                     }
@@ -351,7 +367,13 @@ impl Kern {
                 match self.state.raum_verschieben(ich, raum, eltern, jetzt) {
                     Ok(()) => {
                         let raeume = self.raeume();
-                        self.rundruf(None, None, ServerFrame::Raeume { raeume: raeume.clone() });
+                        self.rundruf(
+                            None,
+                            None,
+                            ServerFrame::Raeume {
+                                raeume: raeume.clone(),
+                            },
+                        );
                         let _ = self.speichern();
                         vec![ServerFrame::Raeume { raeume }]
                     }
@@ -362,19 +384,27 @@ impl Kern {
                 }
             }
 
-            ClientFrame::RaumLoeschen { raum } => match self.state.raum_loeschen(ich, raum, jetzt) {
-                Ok(()) => {
-                    let raeume = self.raeume();
-                    self.rundruf(None, None, ServerFrame::Raeume { raeume: raeume.clone() });
-                    let _ = self.speichern();
-                    vec![ServerFrame::Raeume { raeume }]
+            ClientFrame::RaumLoeschen { raum } => {
+                match self.state.raum_loeschen(ich, raum, jetzt) {
+                    Ok(()) => {
+                        let raeume = self.raeume();
+                        self.rundruf(
+                            None,
+                            None,
+                            ServerFrame::Raeume {
+                                raeume: raeume.clone(),
+                            },
+                        );
+                        let _ = self.speichern();
+                        vec![ServerFrame::Raeume { raeume }]
+                    }
+                    Err(e) => vec![Kern::fehler(match e {
+                        sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                        sprechwerk_domain::Error::RaumNichtLeer => Fehlercode::UngueltigeAnfrage,
+                        _ => Fehlercode::Unbekannt,
+                    })],
                 }
-                Err(e) => vec![Kern::fehler(match e {
-                    sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
-                    sprechwerk_domain::Error::RaumNichtLeer => Fehlercode::UngueltigeAnfrage,
-                    _ => Fehlercode::Unbekannt,
-                })],
-            },
+            }
 
             ClientFrame::RolleSetzen { mitglied, rolle } => {
                 match self.state.rolle_setzen(ich, mitglied, rolle, jetzt) {
@@ -383,7 +413,9 @@ impl Kern {
                             self.rundruf(
                                 None,
                                 None,
-                                ServerFrame::MitgliedGeaendert { mitglied: a.clone() },
+                                ServerFrame::MitgliedGeaendert {
+                                    mitglied: a.clone(),
+                                },
                             );
                             let _ = self.speichern();
                             vec![ServerFrame::MitgliedGeaendert { mitglied: a }]
@@ -393,7 +425,9 @@ impl Kern {
                     }
                     Err(e) => vec![Kern::fehler(match e {
                         sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
-                        sprechwerk_domain::Error::LetzterAdministrator => Fehlercode::UngueltigeAnfrage,
+                        sprechwerk_domain::Error::LetzterAdministrator => {
+                            Fehlercode::UngueltigeAnfrage
+                        }
                         _ => Fehlercode::Unbekannt,
                     })],
                 }
@@ -403,7 +437,10 @@ impl Kern {
                 kennung,
                 adresse,
                 grund,
-            } => match self.state.sperren(ich, kennung.clone(), adresse.clone(), &grund, jetzt) {
+            } => match self
+                .state
+                .sperren(ich, kennung.clone(), adresse.clone(), &grund, jetzt)
+            {
                 Ok(()) => {
                     // Wer gesperrt ist und gerade verbunden ist, fliegt raus.
                     if let Some(k) = kennung {
@@ -432,7 +469,13 @@ impl Kern {
 
             ClientFrame::Protokoll { ab, anzahl } => {
                 let m = self.state.mitglied(ich);
-                if !m.map(|m| sprechwerk_domain::role::darf(m.rolle, sprechwerk_domain::Capability::ProtokollLesen))
+                if !m
+                    .map(|m| {
+                        sprechwerk_domain::role::darf(
+                            m.rolle,
+                            sprechwerk_domain::Capability::ProtokollLesen,
+                        )
+                    })
                     .unwrap_or(false)
                 {
                     return vec![Kern::fehler(Fehlercode::KeinRecht)];
@@ -468,7 +511,10 @@ impl Kern {
                 self.verworfen += 1;
                 return;
             };
-            let darf = sprechwerk_domain::role::darf(m.rolle, sprechwerk_domain::Capability::SpracheSenden);
+            let darf = sprechwerk_domain::role::darf(
+                m.rolle,
+                sprechwerk_domain::Capability::SpracheSenden,
+            );
             (m.raum, darf)
         };
         if !darf_sprechen {

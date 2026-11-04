@@ -41,7 +41,8 @@ fn freier_port() -> u16 {
 
 fn starten(extra: &[(&str, &str)]) -> Testserver {
     let port = freier_port();
-    let verzeichnis = std::env::temp_dir().join(format!("sprechwerk-latenz-{}-{port}", std::process::id()));
+    let verzeichnis =
+        std::env::temp_dir().join(format!("sprechwerk-latenz-{}-{port}", std::process::id()));
     std::fs::create_dir_all(&verzeichnis).unwrap();
     let mut befehl = Command::new(env!("CARGO_BIN_EXE_sprechwerk"));
     befehl

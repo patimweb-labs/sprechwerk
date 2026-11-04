@@ -20,7 +20,8 @@ pub struct Zertifikat {
 
 /// Lädt das Zertifikat aus dem Datenverzeichnis oder erzeugt es.
 pub fn laden_oder_erzeugen(daten: &Path) -> anyhow::Result<Zertifikat> {
-    std::fs::create_dir_all(daten).with_context(|| format!("Datenverzeichnis {}", daten.display()))?;
+    std::fs::create_dir_all(daten)
+        .with_context(|| format!("Datenverzeichnis {}", daten.display()))?;
     let zert_pfad = daten.join("zertifikat.der");
     let key_pfad = daten.join("schluessel.der");
 
@@ -76,7 +77,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let a = laden_oder_erzeugen(&dir).unwrap();
         let b = laden_oder_erzeugen(&dir).unwrap();
-        assert_eq!(a.fingerabdruck, b.fingerabdruck, "Fingerabdruck muss stabil bleiben");
+        assert_eq!(
+            a.fingerabdruck, b.fingerabdruck,
+            "Fingerabdruck muss stabil bleiben"
+        );
         assert_eq!(a.kette[0].as_ref(), b.kette[0].as_ref());
         assert_eq!(a.fingerabdruck.len(), 64);
         let _ = std::fs::remove_dir_all(&dir);

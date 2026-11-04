@@ -53,7 +53,12 @@ async fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--server" => server = args.next().context("--server braucht einen Wert")?.parse()?,
+            "--server" => {
+                server = args
+                    .next()
+                    .context("--server braucht einen Wert")?
+                    .parse()?
+            }
             "--name" => name = args.next().context("--name braucht einen Wert")?,
             "--schluessel" => {
                 schluessel_pfad = std::path::PathBuf::from(args.next().context("Wert fehlt")?)
@@ -94,11 +99,16 @@ async fn main() -> Result<()> {
         let ziel = verbindung
             .raum_nach_nummer(nummer)
             .ok_or_else(|| anyhow::anyhow!("Raum {nummer} gibt es nicht"))?;
-        verbindung.sende(ClientFrame::Betreten { raum: ziel }).await?;
+        verbindung
+            .sende(ClientFrame::Betreten { raum: ziel })
+            .await?;
         // Auf die Bestätigung warten, damit der Text im richtigen Raum landet.
         let frist = std::time::Duration::from_secs(3);
         while let Ok(Ok(Some(frame))) = tokio::time::timeout(frist, verbindung.empfang()).await {
-            let fertig = matches!(frame, ServerFrame::Betreten { .. } | ServerFrame::Fehler { .. });
+            let fertig = matches!(
+                frame,
+                ServerFrame::Betreten { .. } | ServerFrame::Fehler { .. }
+            );
             zeige(&frame);
             if fertig {
                 break;
@@ -189,12 +199,25 @@ fn zeige(frame: &ServerFrame) {
             } else {
                 nachricht.text.clone()
             };
-            println!("[{}] {}: {}", nachricht.zeit, nachricht.verfasser_name, text);
+            println!(
+                "[{}] {}: {}",
+                nachricht.zeit, nachricht.verfasser_name, text
+            );
         }
-        ServerFrame::Betreten { raum, verlauf, anwesend } => {
-            println!("betreten: {raum} ({} anwesend, {} alte Nachrichten)", anwesend.len(), verlauf.len());
+        ServerFrame::Betreten {
+            raum,
+            verlauf,
+            anwesend,
+        } => {
+            println!(
+                "betreten: {raum} ({} anwesend, {} alte Nachrichten)",
+                anwesend.len(),
+                verlauf.len()
+            );
         }
-        ServerFrame::Anwesenheit { mitglied, anwesend, .. } => {
+        ServerFrame::Anwesenheit {
+            mitglied, anwesend, ..
+        } => {
             println!(
                 "{} {}",
                 mitglied.name,
@@ -204,7 +227,13 @@ fn zeige(frame: &ServerFrame) {
         ServerFrame::Raeume { raeume } => {
             println!("Räume:");
             for (i, r) in raeume.iter().enumerate() {
-                println!("  {:>2}. {} ({} anwesend) {}", i + 1, r.name, r.anwesend, r.id);
+                println!(
+                    "  {:>2}. {} ({} anwesend) {}",
+                    i + 1,
+                    r.name,
+                    r.anwesend,
+                    r.id
+                );
             }
         }
         ServerFrame::MitgliedGeaendert { mitglied } => {
@@ -214,11 +243,7 @@ fn zeige(frame: &ServerFrame) {
             for e in eintraege {
                 println!(
                     "{} {} {} {} → {}",
-                    e.zeit,
-                    e.handelnder_name,
-                    e.aktion,
-                    e.ziel,
-                    e.ergebnis
+                    e.zeit, e.handelnder_name, e.aktion, e.ziel, e.ergebnis
                 );
             }
         }
@@ -231,7 +256,10 @@ fn zeige(frame: &ServerFrame) {
         }
         ServerFrame::Ok | ServerFrame::Pong => {}
         ServerFrame::NachrichtGeloescht { nachricht, hart } => {
-            println!("Nachricht {nachricht} gelöscht ({})", if *hart { "hart" } else { "Platzhalter" });
+            println!(
+                "Nachricht {nachricht} gelöscht ({})",
+                if *hart { "hart" } else { "Platzhalter" }
+            );
         }
         ServerFrame::Willkommen { .. } | ServerFrame::Anforderung { .. } => {}
     }

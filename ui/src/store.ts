@@ -72,16 +72,23 @@ export async function ladeZustand() {
   try {
     Object.assign(modell, await api.zustand());
   } catch (fehler) {
-    modell.meldung = String(fehler);
+    modell.meldung = `Zustand nicht lesbar: ${String(fehler)}`;
   }
 }
 
 /** Abonniert die Meldungen des Rust-Teils. */
 export async function verbindeEreignisse() {
-  await listen<Zustand>("zustand", (ereignis) => {
-    Object.assign(modell, ereignis.payload);
-  });
+  // Reihenfolge zählt: erst der Zustand (damit das Fenster etwas anzeigt),
+  // dann die Ereignisse. Schlägt das Abonnieren fehl, muss das sichtbar
+  // werden — eine stumme Ablehnung sieht aus wie ein leerer Bildschirm.
   await ladeZustand();
+  try {
+    await listen<Zustand>("zustand", (ereignis) => {
+      Object.assign(modell, ereignis.payload);
+    });
+  } catch (fehler) {
+    modell.meldung = `Ereignisse nicht abonnierbar: ${String(fehler)}`;
+  }
 }
 
 export async function verbinden() {

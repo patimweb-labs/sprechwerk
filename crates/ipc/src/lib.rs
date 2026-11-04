@@ -142,14 +142,18 @@ impl Zustand {
     /// Darf ich Rollen vergeben?
     pub fn darf_rollen_vergeben(&self) -> bool {
         self.meine_rolle()
-            .map(|r| sprechwerk_domain::role::darf(r, sprechwerk_domain::Capability::RollenVergeben))
+            .map(|r| {
+                sprechwerk_domain::role::darf(r, sprechwerk_domain::Capability::RollenVergeben)
+            })
             .unwrap_or(false)
     }
 
     /// Darf ich das Protokoll lesen?
     pub fn darf_protokoll_lesen(&self) -> bool {
         self.meine_rolle()
-            .map(|r| sprechwerk_domain::role::darf(r, sprechwerk_domain::Capability::ProtokollLesen))
+            .map(|r| {
+                sprechwerk_domain::role::darf(r, sprechwerk_domain::Capability::ProtokollLesen)
+            })
             .unwrap_or(false)
     }
 }
@@ -166,19 +170,36 @@ pub enum Befehl {
         passwort: Option<String>,
     },
     Trennen,
-    Betreten { raum: RoomId },
+    Betreten {
+        raum: RoomId,
+    },
     Verlassen,
-    Text { text: String },
-    NachrichtLoeschen { nachricht: MessageId },
+    Text {
+        text: String,
+    },
+    NachrichtLoeschen {
+        nachricht: MessageId,
+    },
     RaumAnlegen {
         name: String,
         #[serde(default)]
         eltern: Option<RoomId>,
     },
-    RaumUmbenennen { raum: RoomId, name: String },
-    RaumLoeschen { raum: RoomId },
-    RolleSetzen { mitglied: MemberId, rolle: Role },
-    Protokoll { ab: usize, anzahl: usize },
+    RaumUmbenennen {
+        raum: RoomId,
+        name: String,
+    },
+    RaumLoeschen {
+        raum: RoomId,
+    },
+    RolleSetzen {
+        mitglied: MemberId,
+        rolle: Role,
+    },
+    Protokoll {
+        ab: usize,
+        anzahl: usize,
+    },
 }
 
 /// Was der Rust-Teil antwortet.

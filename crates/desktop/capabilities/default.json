@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Was das Fenster darf: Ereignisse empfangen und die eigenen Befehle aufrufen.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

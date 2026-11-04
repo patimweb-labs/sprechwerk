@@ -70,7 +70,8 @@ pub async fn lauschen(kern: Arc<Mutex<Kern>>) -> anyhow::Result<()> {
     if staukontrolle == "bbr" {
         transport.congestion_controller_factory(Arc::new(quinn::congestion::BbrConfig::default()));
     } else {
-        transport.congestion_controller_factory(Arc::new(quinn::congestion::CubicConfig::default()));
+        transport
+            .congestion_controller_factory(Arc::new(quinn::congestion::CubicConfig::default()));
     }
     server_config.transport_config(Arc::new(transport));
 
@@ -122,9 +123,13 @@ async fn schreibe<W: AsyncWrite + Unpin>(ziel: &mut W, frame: &ServerFrame) -> a
 }
 
 /// Liest genau einen Rahmen (wartet, bis er vollständig ist).
-async fn lese<R: AsyncRead + Unpin>(quelle: &mut R, puffer: &mut Vec<u8>) -> anyhow::Result<Option<ClientFrame>> {
+async fn lese<R: AsyncRead + Unpin>(
+    quelle: &mut R,
+    puffer: &mut Vec<u8>,
+) -> anyhow::Result<Option<ClientFrame>> {
     loop {
-        if let Some((frame, verbraucht)) = sprechwerk_protocol::lese_rahmen::<ClientFrame>(puffer)? {
+        if let Some((frame, verbraucht)) = sprechwerk_protocol::lese_rahmen::<ClientFrame>(puffer)?
+        {
             puffer.drain(..verbraucht);
             return Ok(Some(frame));
         }

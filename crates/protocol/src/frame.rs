@@ -81,7 +81,10 @@ mod tests {
     fn zu_grosse_laenge_wird_abgelehnt() {
         let mut puffer = ((MAX_RAHMEN + 1) as u32).to_be_bytes().to_vec();
         puffer.extend_from_slice(&[0; 8]);
-        assert!(matches!(lese_rahmen::<String>(&puffer), Err(RahmenFehler::ZuGross(_))));
+        assert!(matches!(
+            lese_rahmen::<String>(&puffer),
+            Err(RahmenFehler::ZuGross(_))
+        ));
     }
 
     #[test]

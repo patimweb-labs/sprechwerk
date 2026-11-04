@@ -82,16 +82,33 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
             anwesend,
         } => {
             zustand.aktueller_raum = Some(raum);
-            zustand.nachrichten = verlauf.iter().map(|n| nachricht_abbilden(n, zustand)).collect();
+            zustand.nachrichten = verlauf
+                .iter()
+                .map(|n| nachricht_abbilden(n, zustand))
+                .collect();
+            let mut anwesend = anwesend;
+            for m in anwesend.iter_mut() {
+                // Wer im Raum sitzt, hat den Raum — notfalls aus dem Rahmen.
+                if m.raum.is_none() {
+                    m.raum = Some(raum);
+                }
+            }
             zustand.mitglieder = mitglieder_abbilden(anwesend, zustand.ich());
             raeume_hier_setzen(zustand, Some(raum));
+            zaehle_anwesende(zustand);
         }
 
         ServerFrame::Anwesenheit {
-            mitglied,
+            raum,
+            mut mitglied,
             anwesend,
-            ..
         } => {
+            // Der Raum der Meldung gilt. Fehlt er im Mitglied, wird er ergänzt —
+            // sonst zählt die Anwesenheit im Modell nicht mit (live gesehen:
+            // Raum zeigte „0", während jemand darin saß).
+            if mitglied.raum.is_none() {
+                mitglied.raum = Some(raum);
+            }
             let ich = zustand.ich();
             if anwesend {
                 let neu = mitglied_abbilden(mitglied, ich);
@@ -102,6 +119,7 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
             } else {
                 zustand.mitglieder.retain(|m| m.id != mitglied.id);
             }
+            zaehle_anwesende(zustand);
         }
 
         ServerFrame::Text { nachricht } => {
@@ -123,6 +141,7 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
         ServerFrame::Raeume { raeume } => {
             let hier = zustand.aktueller_raum;
             zustand.raeume = raeume_abbilden(raeume, hier);
+            zaehle_anwesende(zustand);
         }
 
         ServerFrame::MitgliedGeaendert { mitglied } => {
@@ -200,13 +219,32 @@ fn raeume_abbilden(raeume: Vec<Raumansicht>, hier: Option<RoomId>) -> Vec<Raum> 
         .collect()
 }
 
+/// Setzt die Anwesenheitszahlen aus der Mitgliederliste.
+///
+/// Die Zahlen kommen **aus dem Modell**, nicht aus der Meldung: sonst zeigt ein
+/// Raum „0", während daneben ein Mitglied darin sitzt (live gesehen).
+fn zaehle_anwesende(zustand: &mut Zustand) {
+    let mut zahlen: std::collections::HashMap<RoomId, usize> = std::collections::HashMap::new();
+    for m in &zustand.mitglieder {
+        if let Some(raum) = m.raum {
+            *zahlen.entry(raum).or_default() += 1;
+        }
+    }
+    for r in zustand.raeume.iter_mut() {
+        r.anwesend = zahlen.get(&r.id).copied().unwrap_or(0);
+    }
+}
+
 fn raeume_hier_setzen(zustand: &mut Zustand, hier: Option<RoomId>) {
     for r in zustand.raeume.iter_mut() {
         r.hier = Some(r.id) == hier;
     }
 }
 
-fn mitglieder_abbilden(mitglieder: Vec<Mitgliedsansicht>, ich: Option<sprechwerk_domain::MemberId>) -> Vec<Mitglied> {
+fn mitglieder_abbilden(
+    mitglieder: Vec<Mitgliedsansicht>,
+    ich: Option<sprechwerk_domain::MemberId>,
+) -> Vec<Mitglied> {
     let mut aus: Vec<Mitglied> = mitglieder
         .into_iter()
         .map(|m| mitglied_abbilden(m, ich))
@@ -332,7 +370,10 @@ mod tests {
                 nachricht: nachricht(1, 2, "fremd", RoomId::aus_roh(8)),
             },
         );
-        assert!(z.nachrichten.is_empty(), "anderer Raum darf nicht auftauchen");
+        assert!(
+            z.nachrichten.is_empty(),
+            "anderer Raum darf nicht auftauchen"
+        );
         verarbeite(
             &mut z,
             ServerFrame::Text {
@@ -361,7 +402,10 @@ mod tests {
             },
         );
         assert!(z.nachrichten[0].loeschbar);
-        assert!(!z.nachrichten[1].loeschbar, "Mitglied darf fremde nicht löschen");
+        assert!(
+            !z.nachrichten[1].loeschbar,
+            "Mitglied darf fremde nicht löschen"
+        );
 
         let mut m = verbunden(Role::Moderator);
         m.aktueller_raum = Some(hier);
@@ -398,6 +442,32 @@ mod tests {
     }
 
     #[test]
+    fn anwesenheitszahl_kommt_aus_dem_modell() {
+        let mut z = verbunden(Role::Mitglied);
+        let r = RoomId::aus_roh(7);
+        z.raeume = raeume_abbilden(vec![raum(7, None)], None);
+        assert_eq!(z.raeume[0].anwesend, 0);
+        verarbeite(
+            &mut z,
+            ServerFrame::Betreten {
+                raum: r,
+                verlauf: vec![],
+                anwesend: vec![mitglied(1, "Ada")],
+            },
+        );
+        assert_eq!(z.raeume[0].anwesend, 1, "Raum zeigt die Anwesenden");
+        verarbeite(
+            &mut z,
+            ServerFrame::Anwesenheit {
+                raum: r,
+                mitglied: mitglied(2, "Bosse"),
+                anwesend: true,
+            },
+        );
+        assert_eq!(z.raeume[0].anwesend, 2);
+    }
+
+    #[test]
     fn fehler_landet_als_meldung() {
         let mut z = verbunden(Role::Gast);
         verarbeite(
@@ -417,7 +487,12 @@ mod tests {
         let mut z = verbunden(Role::Mitglied);
         z.nachrichten = vec![];
         getrennt(&mut z, Some("Server weg".into()));
-        assert_eq!(z.verbindung, Some(Verbindung::Fehler { text: "Server weg".into() }));
+        assert_eq!(
+            z.verbindung,
+            Some(Verbindung::Fehler {
+                text: "Server weg".into()
+            })
+        );
         assert!(z.mitglieder.is_empty() && z.raeume.is_empty());
     }
 }

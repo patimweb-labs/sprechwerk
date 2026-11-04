@@ -14,7 +14,9 @@
 //!   filterbar und ohne dieses Programm prüfbar.
 
 use rusqlite::{params, Connection, OptionalExtension};
-use sprechwerk_domain::{AuditEntry, Ban, Member, MemberId, Message, MessageId, Role, Room, RoomId, State};
+use sprechwerk_domain::{
+    AuditEntry, Ban, Member, MemberId, Message, MessageId, Role, Room, RoomId, State,
+};
 use std::path::{Path, PathBuf};
 
 /// Fehler der Persistenz.
@@ -128,7 +130,11 @@ impl Store {
     pub fn schema_version(&self) -> Ergebnis<u32> {
         let wert: Option<String> = self
             .conn
-            .query_row("SELECT wert FROM meta WHERE schluessel = 'schema_version'", [], |r| r.get(0))
+            .query_row(
+                "SELECT wert FROM meta WHERE schluessel = 'schema_version'",
+                [],
+                |r| r.get(0),
+            )
             .optional()?;
         Ok(wert.and_then(|w| w.parse().ok()).unwrap_or(0))
     }
@@ -475,7 +481,12 @@ impl Store {
     }
 
     /// Zeitgestempelte Sicherung im Verzeichnis, die letzten `behalten` bleiben.
-    pub fn sichern(state: &State, verzeichnis: impl AsRef<Path>, behalten: usize, jetzt_ms: i64) -> Ergebnis<PathBuf> {
+    pub fn sichern(
+        state: &State,
+        verzeichnis: impl AsRef<Path>,
+        behalten: usize,
+        jetzt_ms: i64,
+    ) -> Ergebnis<PathBuf> {
         let verzeichnis = verzeichnis.as_ref().to_path_buf();
         std::fs::create_dir_all(&verzeichnis)?;
         let name = format!("sprechwerk-{jetzt_ms}.json");
@@ -527,8 +538,14 @@ mod tests {
         let raum = s.raum_anlegen(a, None, "Vorstand", 1_010).unwrap();
         s.betreten(a, raum, 1_011).unwrap();
         s.text_senden(a, "Protokoll", 1_012).unwrap();
-        s.sperren(a, Some("k-boese".into()), Some("192.0.2.7".into()), "Spam", 1_013)
-            .unwrap();
+        s.sperren(
+            a,
+            Some("k-boese".into()),
+            Some("192.0.2.7".into()),
+            "Spam",
+            1_013,
+        )
+        .unwrap();
         s
     }
 
@@ -578,7 +595,14 @@ mod tests {
         store.speichern(&s).unwrap();
         let geladen = store.laden(|| State::neu("egal", Role::Gast, 0)).unwrap();
         assert_eq!(geladen.nachrichten.len(), s.nachrichten.len());
-        assert!(geladen.nachrichten.iter().find(|n| n.id == id).unwrap().geloescht);
+        assert!(
+            geladen
+                .nachrichten
+                .iter()
+                .find(|n| n.id == id)
+                .unwrap()
+                .geloescht
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -625,7 +649,10 @@ mod tests {
         s.format_version = 99;
         let datei = dir.join("neu.json");
         std::fs::write(&datei, serde_json::to_string(&s).unwrap()).unwrap();
-        assert!(matches!(Store::importieren(&datei), Err(Error::Format(99, _))));
+        assert!(matches!(
+            Store::importieren(&datei),
+            Err(Error::Format(99, _))
+        ));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -639,7 +666,14 @@ mod tests {
         store.datenbank_sichern(&ziel).unwrap();
         assert!(ziel.exists());
         let kopie = Store::oeffnen(&ziel).unwrap();
-        assert_eq!(kopie.laden(|| State::neu("x", Role::Gast, 0)).unwrap().mitglieder.len(), 1);
+        assert_eq!(
+            kopie
+                .laden(|| State::neu("x", Role::Gast, 0))
+                .unwrap()
+                .mitglieder
+                .len(),
+            1
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

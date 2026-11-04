@@ -152,7 +152,9 @@ pub enum ClientFrame {
     /// Text in den aktuellen Raum schreiben.
     Text { text: String },
     /// Nachricht löschen.
-    NachrichtLoeschen { nachricht: sprechwerk_domain::MessageId },
+    NachrichtLoeschen {
+        nachricht: sprechwerk_domain::MessageId,
+    },
     /// Raum anlegen.
     RaumAnlegen {
         name: String,
@@ -224,13 +226,18 @@ pub enum ServerFrame {
     /// Neue Nachricht in einem Raum, in dem der Empfänger ist.
     Text { nachricht: Message },
     /// Nachricht wurde gelöscht.
-    NachrichtGeloescht { nachricht: sprechwerk_domain::MessageId, hart: bool },
+    NachrichtGeloescht {
+        nachricht: sprechwerk_domain::MessageId,
+        hart: bool,
+    },
     /// Raumliste hat sich geändert (anlegen, umbenennen, verschieben, löschen).
     Raeume { raeume: Vec<Raumansicht> },
     /// Ein Mitglied hat sich geändert (Name, Rolle).
     MitgliedGeaendert { mitglied: Mitgliedsansicht },
     /// Prüfprotokoll.
-    Protokoll { eintraege: Vec<sprechwerk_domain::AuditEntry> },
+    Protokoll {
+        eintraege: Vec<sprechwerk_domain::AuditEntry>,
+    },
     /// Antwort auf ein Kommando ohne eigene Nutzlast.
     Ok,
     /// Fehler.

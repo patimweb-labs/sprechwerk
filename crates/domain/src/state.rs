@@ -219,14 +219,37 @@ impl State {
 
     /// Meldet ein Mitglied an. Unbekannte Schlüssel legen ein Mitglied an; der
     /// **erste** Ankömmling auf einem leeren Server wird Administrator.
-    pub fn anmelden(&mut self, schluessel: &str, name: &str, jetzt_ms: i64) -> Result<MemberId, Error> {
+    pub fn anmelden(
+        &mut self,
+        schluessel: &str,
+        name: &str,
+        jetzt_ms: i64,
+    ) -> Result<MemberId, Error> {
         let name = name.trim();
         if name.is_empty() || name.chars().count() > 64 {
-            self.protokolliere(jetzt_ms, None, "", "anmeldung", schluessel.to_string(), None, None, "abgelehnt: ungültiger Name".into());
+            self.protokolliere(
+                jetzt_ms,
+                None,
+                "",
+                "anmeldung",
+                schluessel.to_string(),
+                None,
+                None,
+                "abgelehnt: ungültiger Name".into(),
+            );
             return Err(Error::NameUngueltig);
         }
         if let Some(grund) = self.sperre_fuer(schluessel, None).map(|b| b.grund.clone()) {
-            self.protokolliere(jetzt_ms, None, name, "anmeldung", schluessel.to_string(), None, None, format!("abgelehnt: gesperrt ({grund})"));
+            self.protokolliere(
+                jetzt_ms,
+                None,
+                name,
+                "anmeldung",
+                schluessel.to_string(),
+                None,
+                None,
+                format!("abgelehnt: gesperrt ({grund})"),
+            );
             return Err(Error::Gesperrt(grund));
         }
 
@@ -240,7 +263,16 @@ impl State {
                 m.zuletzt_gesehen = jetzt_ms;
             }
             if alter_name != name {
-                self.protokolliere(jetzt_ms, Some(id), name, "mitglied_umbenannt", id.text(), Some(alter_name), Some(name.to_string()), "erlaubt".into());
+                self.protokolliere(
+                    jetzt_ms,
+                    Some(id),
+                    name,
+                    "mitglied_umbenannt",
+                    id.text(),
+                    Some(alter_name),
+                    Some(name.to_string()),
+                    "erlaubt".into(),
+                );
             }
             let _ = alte_rolle;
             return Ok(id);
@@ -248,7 +280,11 @@ impl State {
 
         // Erster Ankömmling wird Administrator (und damit der Betreiber).
         let erste = self.mitglieder.is_empty();
-        let rolle = if erste { Role::Administrator } else { self.standard_rolle };
+        let rolle = if erste {
+            Role::Administrator
+        } else {
+            self.standard_rolle
+        };
         let id = MemberId::neu();
         self.mitglieder.insert(
             id,
@@ -267,7 +303,11 @@ impl State {
             jetzt_ms,
             Some(id),
             name,
-            if erste { "erster_beitritt" } else { "mitglied_angelegt" },
+            if erste {
+                "erster_beitritt"
+            } else {
+                "mitglied_angelegt"
+            },
             id.text(),
             None,
             Some(rolle.text().to_string()),
@@ -299,18 +339,42 @@ impl State {
         name: &str,
         jetzt_ms: i64,
     ) -> Result<RoomId, Error> {
-        let (handelnder_name, ergebnis) = self.vorpruefung_person(wer, Capability::RaumVerwalten, jetzt_ms, "raum_angelegt", name);
+        let (handelnder_name, ergebnis) = self.vorpruefung_person(
+            wer,
+            Capability::RaumVerwalten,
+            jetzt_ms,
+            "raum_angelegt",
+            name,
+        );
         if let Err(e) = ergebnis {
             return Err(e);
         }
         let name = name.trim().to_string();
         if name.is_empty() || name.chars().count() > 64 {
-            self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "raum_angelegt", name, None, None, "abgelehnt: ungültiger Name".into());
+            self.protokolliere(
+                jetzt_ms,
+                Some(wer),
+                &handelnder_name,
+                "raum_angelegt",
+                name,
+                None,
+                None,
+                "abgelehnt: ungültiger Name".into(),
+            );
             return Err(Error::NameUngueltig);
         }
         if let Some(p) = eltern {
             if !self.raeume.contains_key(&p) {
-                self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "raum_angelegt", name, None, None, "abgelehnt: Elternraum unbekannt".into());
+                self.protokolliere(
+                    jetzt_ms,
+                    Some(wer),
+                    &handelnder_name,
+                    "raum_angelegt",
+                    name,
+                    None,
+                    None,
+                    "abgelehnt: Elternraum unbekannt".into(),
+                );
                 return Err(Error::RaumUnbekannt);
             }
         }
@@ -332,7 +396,16 @@ impl State {
                 angelegt_am: jetzt_ms,
             },
         );
-        self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "raum_angelegt", id.text(), None, Some(name), "erlaubt".into());
+        self.protokolliere(
+            jetzt_ms,
+            Some(wer),
+            &handelnder_name,
+            "raum_angelegt",
+            id.text(),
+            None,
+            Some(name),
+            "erlaubt".into(),
+        );
         Ok(id)
     }
 
@@ -344,11 +417,26 @@ impl State {
         name: &str,
         jetzt_ms: i64,
     ) -> Result<(), Error> {
-        let (handelnder_name, ergebnis) = self.vorpruefung_person(wer, Capability::RaumVerwalten, jetzt_ms, "raum_umbenannt", raum.text());
+        let (handelnder_name, ergebnis) = self.vorpruefung_person(
+            wer,
+            Capability::RaumVerwalten,
+            jetzt_ms,
+            "raum_umbenannt",
+            raum.text(),
+        );
         ergebnis?;
         let name = name.trim().to_string();
         if name.is_empty() || name.chars().count() > 64 {
-            self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "raum_umbenannt", raum.text(), None, None, "abgelehnt: ungültiger Name".into());
+            self.protokolliere(
+                jetzt_ms,
+                Some(wer),
+                &handelnder_name,
+                "raum_umbenannt",
+                raum.text(),
+                None,
+                None,
+                "abgelehnt: ungültiger Name".into(),
+            );
             return Err(Error::NameUngueltig);
         }
         let alt;
@@ -357,7 +445,16 @@ impl State {
             alt = r.name.clone();
             r.name = name.clone();
         }
-        self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "raum_umbenannt", raum.text(), Some(alt), Some(name), "erlaubt".into());
+        self.protokolliere(
+            jetzt_ms,
+            Some(wer),
+            &handelnder_name,
+            "raum_umbenannt",
+            raum.text(),
+            Some(alt),
+            Some(name),
+            "erlaubt".into(),
+        );
         Ok(())
     }
 
@@ -369,27 +466,55 @@ impl State {
         neuer_eltern: Option<RoomId>,
         jetzt_ms: i64,
     ) -> Result<(), Error> {
-        let (handelnder_name, ergebnis) = self.vorpruefung_person(wer, Capability::RaumVerwalten, jetzt_ms, "raum_verschoben", raum.text());
+        let (handelnder_name, ergebnis) = self.vorpruefung_person(
+            wer,
+            Capability::RaumVerwalten,
+            jetzt_ms,
+            "raum_verschoben",
+            raum.text(),
+        );
         ergebnis?;
         if !self.raeume.contains_key(&raum) {
             return Err(Error::RaumUnbekannt);
         }
         if let Some(ziel) = neuer_eltern {
             if !self.raeume.contains_key(&ziel) {
-                self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "raum_verschoben", raum.text(), None, None, "abgelehnt: Ziel unbekannt".into());
+                self.protokolliere(
+                    jetzt_ms,
+                    Some(wer),
+                    &handelnder_name,
+                    "raum_verschoben",
+                    raum.text(),
+                    None,
+                    None,
+                    "abgelehnt: Ziel unbekannt".into(),
+                );
                 return Err(Error::RaumUnbekannt);
             }
             // Kreisprüfung: kein Vorfahre von `raum` darf Ziel sein.
             let mut lauf = Some(ziel);
             while let Some(k) = lauf {
                 if k == raum {
-                    self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "raum_verschoben", raum.text(), None, None, "abgelehnt: Kreis".into());
+                    self.protokolliere(
+                        jetzt_ms,
+                        Some(wer),
+                        &handelnder_name,
+                        "raum_verschoben",
+                        raum.text(),
+                        None,
+                        None,
+                        "abgelehnt: Kreis".into(),
+                    );
                     return Err(Error::Kreis);
                 }
                 lauf = self.raeume.get(&k).and_then(|r| r.eltern);
             }
         }
-        let alt = self.raeume.get(&raum).and_then(|r| r.eltern).map(|e| e.text());
+        let alt = self
+            .raeume
+            .get(&raum)
+            .and_then(|r| r.eltern)
+            .map(|e| e.text());
         let reihenfolge = self
             .raeume
             .values()
@@ -402,20 +527,49 @@ impl State {
             r.eltern = neuer_eltern;
             r.reihenfolge = reihenfolge;
         }
-        self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "raum_verschoben", raum.text(), alt, neuer_eltern.map(|e| e.text()), "erlaubt".into());
+        self.protokolliere(
+            jetzt_ms,
+            Some(wer),
+            &handelnder_name,
+            "raum_verschoben",
+            raum.text(),
+            alt,
+            neuer_eltern.map(|e| e.text()),
+            "erlaubt".into(),
+        );
         Ok(())
     }
 
     /// Löscht einen Raum. Nur möglich, wenn er keine Unterräume mehr hat; die
     /// Nachrichten des Raums werden mitgelöscht (**Festlegung SPEC §6**).
-    pub fn raum_loeschen(&mut self, wer: MemberId, raum: RoomId, jetzt_ms: i64) -> Result<(), Error> {
-        let (handelnder_name, ergebnis) = self.vorpruefung_person(wer, Capability::RaumVerwalten, jetzt_ms, "raum_geloescht", raum.text());
+    pub fn raum_loeschen(
+        &mut self,
+        wer: MemberId,
+        raum: RoomId,
+        jetzt_ms: i64,
+    ) -> Result<(), Error> {
+        let (handelnder_name, ergebnis) = self.vorpruefung_person(
+            wer,
+            Capability::RaumVerwalten,
+            jetzt_ms,
+            "raum_geloescht",
+            raum.text(),
+        );
         ergebnis?;
         if !self.raeume.contains_key(&raum) {
             return Err(Error::RaumUnbekannt);
         }
         if self.raeume.values().any(|r| r.eltern == Some(raum)) {
-            self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "raum_geloescht", raum.text(), None, None, "abgelehnt: Unterräume vorhanden".into());
+            self.protokolliere(
+                jetzt_ms,
+                Some(wer),
+                &handelnder_name,
+                "raum_geloescht",
+                raum.text(),
+                None,
+                None,
+                "abgelehnt: Unterräume vorhanden".into(),
+            );
             return Err(Error::RaumNichtLeer);
         }
         // Anwesende in die Wurzel setzen, damit niemand in einem Loch sitzt.
@@ -426,7 +580,11 @@ impl State {
                 m.raum_seit = Some(jetzt_ms);
             }
         }
-        let name = self.raeume.remove(&raum).map(|r| r.name).unwrap_or_default();
+        let name = self
+            .raeume
+            .remove(&raum)
+            .map(|r| r.name)
+            .unwrap_or_default();
         let vorher = self.nachrichten.len();
         self.nachrichten.retain(|n| n.raum != raum);
         let entfernt = vorher - self.nachrichten.len();
@@ -460,10 +618,7 @@ impl State {
             tiefe: usize,
             aus: &mut Vec<(usize, &'a Room)>,
         ) {
-            let mut kinder: Vec<&Room> = raeume
-                .values()
-                .filter(|r| r.eltern == eltern)
-                .collect();
+            let mut kinder: Vec<&Room> = raeume.values().filter(|r| r.eltern == eltern).collect();
             kinder.sort_by(|a, b| (a.reihenfolge, &a.name).cmp(&(b.reihenfolge, &b.name)));
             for k in kinder {
                 aus.push((tiefe, k));
@@ -478,11 +633,31 @@ impl State {
     // ---- Anwesenheit ---------------------------------------------------
 
     /// Betritt einen Raum und liefert den sichtbaren Verlauf.
-    pub fn betreten(&mut self, wer: MemberId, raum: RoomId, jetzt_ms: i64) -> Result<Vec<Message>, Error> {
-        let (handelnder_name, ergebnis) = self.vorpruefung_person(wer, Capability::RaumBetreten, jetzt_ms, "raum_betreten", raum.text());
+    pub fn betreten(
+        &mut self,
+        wer: MemberId,
+        raum: RoomId,
+        jetzt_ms: i64,
+    ) -> Result<Vec<Message>, Error> {
+        let (handelnder_name, ergebnis) = self.vorpruefung_person(
+            wer,
+            Capability::RaumBetreten,
+            jetzt_ms,
+            "raum_betreten",
+            raum.text(),
+        );
         ergebnis?;
         if !self.raeume.contains_key(&raum) {
-            self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "raum_betreten", raum.text(), None, None, "abgelehnt: Raum unbekannt".into());
+            self.protokolliere(
+                jetzt_ms,
+                Some(wer),
+                &handelnder_name,
+                "raum_betreten",
+                raum.text(),
+                None,
+                None,
+                "abgelehnt: Raum unbekannt".into(),
+            );
             return Err(Error::RaumUnbekannt);
         }
         {
@@ -492,33 +667,63 @@ impl State {
             m.zuletzt_gesehen = jetzt_ms;
         }
         let verlauf = self.verlauf(wer, raum, jetzt_ms)?;
-        self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "raum_betreten", raum.text(), None, None, "erlaubt".into());
+        self.protokolliere(
+            jetzt_ms,
+            Some(wer),
+            &handelnder_name,
+            "raum_betreten",
+            raum.text(),
+            None,
+            None,
+            "erlaubt".into(),
+        );
         Ok(verlauf)
     }
 
     /// Verlässt den aktuellen Raum.
     pub fn verlassen(&mut self, wer: MemberId, jetzt_ms: i64) -> Result<(), Error> {
         let (handelnder_name, raum) = {
-            let m = self.mitglieder.get_mut(&wer).ok_or(Error::MitgliedUnbekannt)?;
+            let m = self
+                .mitglieder
+                .get_mut(&wer)
+                .ok_or(Error::MitgliedUnbekannt)?;
             let raum = m.raum.take().map(|r| r.text());
             m.raum_seit = None;
             m.zuletzt_gesehen = jetzt_ms;
             (m.name.clone(), raum)
         };
-        self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "raum_verlassen", raum.unwrap_or_default(), None, None, "erlaubt".into());
+        self.protokolliere(
+            jetzt_ms,
+            Some(wer),
+            &handelnder_name,
+            "raum_verlassen",
+            raum.unwrap_or_default(),
+            None,
+            None,
+            "erlaubt".into(),
+        );
         Ok(())
     }
 
     /// Wer ist gerade in diesem Raum?
     pub fn anwesende(&self, raum: RoomId) -> Vec<&Member> {
-        let mut aus: Vec<&Member> = self.mitglieder.values().filter(|m| m.raum == Some(raum)).collect();
+        let mut aus: Vec<&Member> = self
+            .mitglieder
+            .values()
+            .filter(|m| m.raum == Some(raum))
+            .collect();
         aus.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         aus
     }
 
     /// Sichtbarer Verlauf eines Raums. Ohne [`Capability::VerlaufLesen`] nur
     /// das, was seit dem Betreten geschrieben wurde (**Festlegung SPEC §5**).
-    pub fn verlauf(&self, wer: MemberId, raum: RoomId, _jetzt_ms: i64) -> Result<Vec<Message>, Error> {
+    pub fn verlauf(
+        &self,
+        wer: MemberId,
+        raum: RoomId,
+        _jetzt_ms: i64,
+    ) -> Result<Vec<Message>, Error> {
         let m = self.mitglieder.get(&wer).ok_or(Error::MitgliedUnbekannt)?;
         let ab = if darf(m.rolle, Capability::VerlaufLesen) {
             i64::MIN
@@ -536,23 +741,52 @@ impl State {
     // ---- Text ----------------------------------------------------------
 
     /// Schreibt eine Nachricht in den Raum, in dem der Verfasser sitzt.
-    pub fn text_senden(&mut self, wer: MemberId, text: &str, jetzt_ms: i64) -> Result<Message, Error> {
+    pub fn text_senden(
+        &mut self,
+        wer: MemberId,
+        text: &str,
+        jetzt_ms: i64,
+    ) -> Result<Message, Error> {
         let (handelnder_name, raum) = {
             let m = self.mitglieder.get(&wer).ok_or(Error::MitgliedUnbekannt)?;
             (m.name.clone(), m.raum)
         };
         let Some(raum) = raum else {
-            self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "text_gesendet", "", None, None, "abgelehnt: in keinem Raum".into());
+            self.protokolliere(
+                jetzt_ms,
+                Some(wer),
+                &handelnder_name,
+                "text_gesendet",
+                "",
+                None,
+                None,
+                "abgelehnt: in keinem Raum".into(),
+            );
             return Err(Error::RaumUnbekannt);
         };
-        let (_, ergebnis) = self.vorpruefung_person(wer, Capability::TextSchreiben, jetzt_ms, "text_gesendet", raum.text());
+        let (_, ergebnis) = self.vorpruefung_person(
+            wer,
+            Capability::TextSchreiben,
+            jetzt_ms,
+            "text_gesendet",
+            raum.text(),
+        );
         ergebnis?;
         let text = text.trim_end().to_string();
         if text.is_empty() {
             return Err(Error::NameUngueltig);
         }
         if text.chars().count() > MAX_MESSAGE_LEN {
-            self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "text_gesendet", raum.text(), None, None, "abgelehnt: zu lang".into());
+            self.protokolliere(
+                jetzt_ms,
+                Some(wer),
+                &handelnder_name,
+                "text_gesendet",
+                raum.text(),
+                None,
+                None,
+                "abgelehnt: zu lang".into(),
+            );
             return Err(Error::NachrichtZuLang);
         }
         let nachricht = Message {
@@ -565,13 +799,27 @@ impl State {
             geloescht: false,
         };
         self.nachrichten.push(nachricht.clone());
-        self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "text_gesendet", nachricht.id.text(), None, None, "erlaubt".into());
+        self.protokolliere(
+            jetzt_ms,
+            Some(wer),
+            &handelnder_name,
+            "text_gesendet",
+            nachricht.id.text(),
+            None,
+            None,
+            "erlaubt".into(),
+        );
         Ok(nachricht)
     }
 
     /// Löscht eine Nachricht. Der Verfasser setzt einen Platzhalter, wer
     /// [`Capability::PersonEingreifen`] hat, löscht hart.
-    pub fn nachricht_loeschen(&mut self, wer: MemberId, id: MessageId, jetzt_ms: i64) -> Result<bool, Error> {
+    pub fn nachricht_loeschen(
+        &mut self,
+        wer: MemberId,
+        id: MessageId,
+        jetzt_ms: i64,
+    ) -> Result<bool, Error> {
         let (handelnder_name, rolle) = {
             let m = self.mitglieder.get(&wer).ok_or(Error::MitgliedUnbekannt)?;
             (m.name.clone(), m.rolle)
@@ -584,7 +832,16 @@ impl State {
         let ist_verfasser = self.nachrichten[index].verfasser == wer;
         let darf_hart = darf(rolle, Capability::PersonEingreifen);
         if !ist_verfasser && !darf_hart {
-            self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "text_geloescht", id.text(), None, None, "abgelehnt: kein Recht".into());
+            self.protokolliere(
+                jetzt_ms,
+                Some(wer),
+                &handelnder_name,
+                "text_geloescht",
+                id.text(),
+                None,
+                None,
+                "abgelehnt: kein Recht".into(),
+            );
             return Err(Error::RechtFehlt(Capability::PersonEingreifen));
         }
         // Der Verfasser löscht **immer** weich: der Verlauf bleibt lesbar, und
@@ -593,20 +850,50 @@ impl State {
             let n = &mut self.nachrichten[index];
             n.geloescht = true;
             n.text = String::new();
-            self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "text_geloescht", id.text(), None, Some("Platzhalter".into()), "erlaubt: weich".into());
+            self.protokolliere(
+                jetzt_ms,
+                Some(wer),
+                &handelnder_name,
+                "text_geloescht",
+                id.text(),
+                None,
+                Some("Platzhalter".into()),
+                "erlaubt: weich".into(),
+            );
             return Ok(false);
         }
         // Fremde Nachricht: nur mit Eingriffsrecht, dann hart.
         let n = self.nachrichten.remove(index);
-        self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "text_geloescht", id.text(), Some(n.text), None, "erlaubt: hart".into());
+        self.protokolliere(
+            jetzt_ms,
+            Some(wer),
+            &handelnder_name,
+            "text_geloescht",
+            id.text(),
+            Some(n.text),
+            None,
+            "erlaubt: hart".into(),
+        );
         Ok(true)
     }
 
     // ---- Rollen --------------------------------------------------------
 
     /// Setzt die Rolle eines Mitglieds.
-    pub fn rolle_setzen(&mut self, wer: MemberId, ziel: MemberId, rolle: Role, jetzt_ms: i64) -> Result<(), Error> {
-        let (handelnder_name, ergebnis) = self.vorpruefung_person(wer, Capability::RollenVergeben, jetzt_ms, "rolle_gesetzt", ziel.text());
+    pub fn rolle_setzen(
+        &mut self,
+        wer: MemberId,
+        ziel: MemberId,
+        rolle: Role,
+        jetzt_ms: i64,
+    ) -> Result<(), Error> {
+        let (handelnder_name, ergebnis) = self.vorpruefung_person(
+            wer,
+            Capability::RollenVergeben,
+            jetzt_ms,
+            "rolle_gesetzt",
+            ziel.text(),
+        );
         ergebnis?;
         let alt = {
             let m = self.mitglieder.get(&ziel).ok_or(Error::MitgliedUnbekannt)?;
@@ -621,12 +908,33 @@ impl State {
                 .filter(|m| m.rolle == Role::Administrator && m.id != ziel)
                 .count();
             if weitere == 0 {
-                self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "rolle_gesetzt", ziel.text(), Some(alt.text().into()), Some(rolle.text().into()), "abgelehnt: letzter Administrator".into());
+                self.protokolliere(
+                    jetzt_ms,
+                    Some(wer),
+                    &handelnder_name,
+                    "rolle_gesetzt",
+                    ziel.text(),
+                    Some(alt.text().into()),
+                    Some(rolle.text().into()),
+                    "abgelehnt: letzter Administrator".into(),
+                );
                 return Err(Error::LetzterAdministrator);
             }
         }
-        self.mitglieder.get_mut(&ziel).expect("vorher geprüft").rolle = rolle;
-        self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "rolle_gesetzt", ziel.text(), Some(alt.text().into()), Some(rolle.text().into()), "erlaubt".into());
+        self.mitglieder
+            .get_mut(&ziel)
+            .expect("vorher geprüft")
+            .rolle = rolle;
+        self.protokolliere(
+            jetzt_ms,
+            Some(wer),
+            &handelnder_name,
+            "rolle_gesetzt",
+            ziel.text(),
+            Some(alt.text().into()),
+            Some(rolle.text().into()),
+            "erlaubt".into(),
+        );
         Ok(())
     }
 
@@ -641,7 +949,15 @@ impl State {
         grund: &str,
         jetzt_ms: i64,
     ) -> Result<(), Error> {
-        let (handelnder_name, ergebnis) = self.vorpruefung_person(wer, Capability::Sperren, jetzt_ms, "sperre_verhaengt", schluessel.clone().unwrap_or_else(|| adresse.clone().unwrap_or_default()));
+        let (handelnder_name, ergebnis) = self.vorpruefung_person(
+            wer,
+            Capability::Sperren,
+            jetzt_ms,
+            "sperre_verhaengt",
+            schluessel
+                .clone()
+                .unwrap_or_else(|| adresse.clone().unwrap_or_default()),
+        );
         ergebnis?;
         if schluessel.is_none() && adresse.is_none() {
             return Err(Error::NameUngueltig);
@@ -653,22 +969,53 @@ impl State {
             zeit: jetzt_ms,
             handelnder_name: handelnder_name.clone(),
         });
-        self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "sperre_verhaengt", grund.to_string(), None, None, "erlaubt".into());
+        self.protokolliere(
+            jetzt_ms,
+            Some(wer),
+            &handelnder_name,
+            "sperre_verhaengt",
+            grund.to_string(),
+            None,
+            None,
+            "erlaubt".into(),
+        );
         Ok(())
     }
 
     /// Hebt alle Sperren auf, die zu Kennung oder Adresse passen.
-    pub fn entsperren(&mut self, wer: MemberId, schluessel: Option<&str>, adresse: Option<&str>, jetzt_ms: i64) -> Result<usize, Error> {
-        let (handelnder_name, ergebnis) = self.vorpruefung_person(wer, Capability::Sperren, jetzt_ms, "sperre_aufgehoben", schluessel.unwrap_or_default().to_string());
+    pub fn entsperren(
+        &mut self,
+        wer: MemberId,
+        schluessel: Option<&str>,
+        adresse: Option<&str>,
+        jetzt_ms: i64,
+    ) -> Result<usize, Error> {
+        let (handelnder_name, ergebnis) = self.vorpruefung_person(
+            wer,
+            Capability::Sperren,
+            jetzt_ms,
+            "sperre_aufgehoben",
+            schluessel.unwrap_or_default().to_string(),
+        );
         ergebnis?;
         let vorher = self.sperren.len();
         self.sperren.retain(|b| {
-            let trifft_schluessel = matches!((&b.schluessel, schluessel), (Some(a), Some(c)) if a == c);
+            let trifft_schluessel =
+                matches!((&b.schluessel, schluessel), (Some(a), Some(c)) if a == c);
             let trifft_adresse = matches!((&b.adresse, adresse), (Some(a), Some(c)) if a == c);
             !(trifft_schluessel || trifft_adresse)
         });
         let anzahl = vorher - self.sperren.len();
-        self.protokolliere(jetzt_ms, Some(wer), &handelnder_name, "sperre_aufgehoben", format!("{anzahl} Einträge"), None, None, "erlaubt".into());
+        self.protokolliere(
+            jetzt_ms,
+            Some(wer),
+            &handelnder_name,
+            "sperre_aufgehoben",
+            format!("{anzahl} Einträge"),
+            None,
+            None,
+            "erlaubt".into(),
+        );
         Ok(anzahl)
     }
 
@@ -795,7 +1142,10 @@ mod tests {
         let a = admin(&mut s);
         let oben = s.raum_anlegen(a, None, "A", 1_010).unwrap();
         let unten = s.raum_anlegen(a, Some(oben), "A1", 1_011).unwrap();
-        assert_eq!(s.raum_verschieben(a, oben, Some(unten), 1_012), Err(Error::Kreis));
+        assert_eq!(
+            s.raum_verschieben(a, oben, Some(unten), 1_012),
+            Err(Error::Kreis)
+        );
     }
 
     #[test]
@@ -805,7 +1155,12 @@ mod tests {
         let oben = s.raum_anlegen(a, None, "A", 1_010).unwrap();
         s.raum_anlegen(a, Some(oben), "A1", 1_011).unwrap();
         assert_eq!(s.raum_loeschen(a, oben, 1_012), Err(Error::RaumNichtLeer));
-        let unten = s.raeume.values().find(|r| r.eltern == Some(oben)).unwrap().id;
+        let unten = s
+            .raeume
+            .values()
+            .find(|r| r.eltern == Some(oben))
+            .unwrap()
+            .id;
         s.raum_loeschen(a, unten, 1_013).unwrap();
         s.raum_loeschen(a, oben, 1_014).unwrap();
         assert!(!s.raeume.contains_key(&oben));
@@ -860,7 +1215,10 @@ mod tests {
         let a = admin(&mut s);
         let g = s.anmelden("k-gast", "Gustav", 2_000).unwrap();
         s.rolle_setzen(a, g, Role::Gast, 2_001).unwrap();
-        assert!(!darf(s.mitglied(g).unwrap().rolle, Capability::SpracheSenden));
+        assert!(!darf(
+            s.mitglied(g).unwrap().rolle,
+            Capability::SpracheSenden
+        ));
     }
 
     #[test]
@@ -952,7 +1310,10 @@ mod tests {
         let b = s.anmelden("k2", "Bosse", 1_001).unwrap();
         s.sperren(a, Some("k2".into()), None, "Hausfriedensbruch", 1_002)
             .unwrap();
-        assert!(matches!(s.anmelden("k2", "Bosse", 1_003), Err(Error::Gesperrt(_))));
+        assert!(matches!(
+            s.anmelden("k2", "Bosse", 1_003),
+            Err(Error::Gesperrt(_))
+        ));
         // Entsperren wirkt.
         s.entsperren(a, Some("k2"), None, 1_004).unwrap();
         let wieder = s.anmelden("k2", "Bosse", 1_005).unwrap();
@@ -1003,7 +1364,8 @@ mod tests {
         let mut s = zustand();
         let a = admin(&mut s);
         for i in 0..10 {
-            s.raum_anlegen(a, None, &format!("R{i}"), 2_000 + i).unwrap();
+            s.raum_anlegen(a, None, &format!("R{i}"), 2_000 + i)
+                .unwrap();
         }
         let seite = s.protokoll_lesen(2, 3);
         assert_eq!(seite.len(), 3);
@@ -1026,8 +1388,14 @@ mod tests {
         let raum = s.raum_anlegen(a, None, "Vorstand", 1_010).unwrap();
         s.betreten(a, raum, 1_011).unwrap();
         s.text_senden(a, "Protokoll", 1_012).unwrap();
-        s.sperren(a, Some("k-boese".into()), Some("192.0.2.7".into()), "Spam", 1_013)
-            .unwrap();
+        s.sperren(
+            a,
+            Some("k-boese".into()),
+            Some("192.0.2.7".into()),
+            "Spam",
+            1_013,
+        )
+        .unwrap();
 
         let text = serde_json::to_string(&s).unwrap();
         let zurueck: State = serde_json::from_str(&text).unwrap();

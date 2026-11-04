@@ -39,7 +39,8 @@ fn zustand_laden(konfig: &konfig::Konfig) -> anyhow::Result<sprechwerk_domain::S
     let store = sprechwerk_store::Store::oeffnen(konfig.datenbank())?;
     let standard_rolle = konfig.standard_rolle();
     let name = konfig.server.name.clone();
-    let mut state = store.laden(|| sprechwerk_domain::State::neu(name.clone(), standard_rolle, kern::jetzt_ms()))?;
+    let mut state = store
+        .laden(|| sprechwerk_domain::State::neu(name.clone(), standard_rolle, kern::jetzt_ms()))?;
     if state.raeume.is_empty() {
         state = sprechwerk_domain::State::neu(name, standard_rolle, kern::jetzt_ms());
     }
@@ -63,7 +64,8 @@ fn betrieb_import(quelle: &str) -> anyhow::Result<()> {
         .sicherung
         .verzeichnis
         .join(format!("vor-import-{}.json", kern::jetzt_ms()));
-    if let Ok(alt) = store.laden(|| sprechwerk_domain::State::neu("leer", state.standard_rolle, 0)) {
+    if let Ok(alt) = store.laden(|| sprechwerk_domain::State::neu("leer", state.standard_rolle, 0))
+    {
         let _ = sprechwerk_store::Store::exportieren(&alt, &sicherung);
     }
     store.speichern(&state)?;
@@ -168,8 +170,12 @@ fn main() -> anyhow::Result<()> {
                         behalten,
                         kern::jetzt_ms(),
                     ) {
-                        Ok(pfad) => tracing::info!(datei = %pfad.display(), "Sicherung geschrieben"),
-                        Err(fehler) => tracing::error!(fehler = %fehler, "Sicherung fehlgeschlagen"),
+                        Ok(pfad) => {
+                            tracing::info!(datei = %pfad.display(), "Sicherung geschrieben")
+                        }
+                        Err(fehler) => {
+                            tracing::error!(fehler = %fehler, "Sicherung fehlgeschlagen")
+                        }
                     }
                 }
             });
@@ -183,7 +189,8 @@ fn main() -> anyhow::Result<()> {
                 loop {
                     takt.tick().await;
                     let mut k = kern_aufraeumen.lock().expect("Sperre");
-                    let grenze = kern::jetzt_ms() - (k.konfig.server.aufbewahrung_tage as i64) * 86_400_000;
+                    let grenze =
+                        kern::jetzt_ms() - (k.konfig.server.aufbewahrung_tage as i64) * 86_400_000;
                     let vorher = k.state.nachrichten.len();
                     k.state.nachrichten.retain(|n| n.zeit >= grenze);
                     let entfernt = vorher - k.state.nachrichten.len();

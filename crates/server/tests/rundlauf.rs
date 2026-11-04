@@ -279,7 +279,10 @@ async fn kennung_bleibt_ueber_verbindungen_und_rollen_haften_daran() {
     })
     .await
     .unwrap();
-    warte_auf(&mut ada, |f| matches!(f, ServerFrame::MitgliedGeaendert { .. })).await;
+    warte_auf(&mut ada, |f| {
+        matches!(f, ServerFrame::MitgliedGeaendert { .. })
+    })
+    .await;
 
     // Neu verbinden mit derselben Kennung: Rolle bleibt, Kennung bleibt.
     bosse.schliessen();
@@ -299,7 +302,10 @@ where
     let frist = tokio::time::Instant::now() + Duration::from_secs(5);
     loop {
         let rest = frist.saturating_duration_since(tokio::time::Instant::now());
-        assert!(!rest.is_zero(), "Zeitüberschreitung beim Warten auf einen Rahmen");
+        assert!(
+            !rest.is_zero(),
+            "Zeitüberschreitung beim Warten auf einen Rahmen"
+        );
         match tokio::time::timeout(rest, verbindung.empfang()).await {
             Ok(Ok(Some(frame))) => {
                 if bedingung(&frame) {
@@ -338,20 +344,30 @@ async fn sprache_wird_nur_im_eigenen_raum_verteilt() {
     .unwrap();
     let liste = warte_auf(&mut ada, |f| matches!(f, ServerFrame::Raeume { .. })).await;
     let nebenraum = match liste {
-        ServerFrame::Raeume { raeume } => raeume
-            .iter()
-            .find(|r| r.name == "Nebenraum")
-            .expect("Nebenraum")
-            .id,
+        ServerFrame::Raeume { raeume } => {
+            raeume
+                .iter()
+                .find(|r| r.name == "Nebenraum")
+                .expect("Nebenraum")
+                .id
+        }
         anderes => panic!("unerwartet: {anderes:?}"),
     };
 
     // Ada und Bosse in den Empfang, Fremd in den Nebenraum.
-    ada.sende(ClientFrame::Betreten { raum: empfang }).await.unwrap();
+    ada.sende(ClientFrame::Betreten { raum: empfang })
+        .await
+        .unwrap();
     warte_auf(&mut ada, |f| matches!(f, ServerFrame::Betreten { .. })).await;
-    bosse.sende(ClientFrame::Betreten { raum: empfang }).await.unwrap();
+    bosse
+        .sende(ClientFrame::Betreten { raum: empfang })
+        .await
+        .unwrap();
     warte_auf(&mut bosse, |f| matches!(f, ServerFrame::Betreten { .. })).await;
-    fremd.sende(ClientFrame::Betreten { raum: nebenraum }).await.unwrap();
+    fremd
+        .sende(ClientFrame::Betreten { raum: nebenraum })
+        .await
+        .unwrap();
     warte_auf(&mut fremd, |f| matches!(f, ServerFrame::Betreten { .. })).await;
 
     // Ada schickt einen Sprachrahmen in den Empfang.
@@ -370,7 +386,8 @@ async fn sprache_wird_nur_im_eigenen_raum_verteilt() {
     assert_eq!(nutzlast, &[0xAA; 20]);
 
     // … Fremd (anderer Raum) darf ihn **nicht** bekommen.
-    let fremd_bekommt = tokio::time::timeout(Duration::from_millis(500), fremd.sprache_empfangen()).await;
+    let fremd_bekommt =
+        tokio::time::timeout(Duration::from_millis(500), fremd.sprache_empfangen()).await;
     assert!(
         fremd_bekommt.is_err(),
         "Sprache darf den Raum nicht verlassen"

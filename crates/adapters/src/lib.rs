@@ -152,7 +152,9 @@ impl Verbindung {
         name: &str,
         serverpasswort: Option<&str>,
     ) -> anyhow::Result<Self> {
-        rustls::crypto::ring::default_provider().install_default().ok();
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .ok();
 
         let mut tls = rustls::ClientConfig::builder()
             .dangerous()
@@ -245,7 +247,11 @@ impl Verbindung {
         let frame = lese(&mut self.recv, &mut self.puffer).await?;
         match &frame {
             Some(ServerFrame::Raeume { raeume }) => self.raeume = raeume.clone(),
-            Some(ServerFrame::Betreten { raum, verlauf, anwesend }) => {
+            Some(ServerFrame::Betreten {
+                raum,
+                verlauf,
+                anwesend,
+            }) => {
                 self.verlauf = verlauf.clone();
                 self.mitglieder = anwesend.clone();
                 let _ = raum;
@@ -257,7 +263,9 @@ impl Verbindung {
                     self.mitglieder.push(mitglied.clone());
                 }
             }
-            Some(ServerFrame::Anwesenheit { mitglied, anwesend, .. }) => {
+            Some(ServerFrame::Anwesenheit {
+                mitglied, anwesend, ..
+            }) => {
                 if *anwesend {
                     if !self.mitglieder.iter().any(|m| m.id == mitglied.id) {
                         self.mitglieder.push(mitglied.clone());
@@ -306,7 +314,8 @@ async fn lese(
     puffer: &mut Vec<u8>,
 ) -> anyhow::Result<Option<ServerFrame>> {
     loop {
-        if let Some((frame, verbraucht)) = sprechwerk_protocol::lese_rahmen::<ServerFrame>(puffer)? {
+        if let Some((frame, verbraucht)) = sprechwerk_protocol::lese_rahmen::<ServerFrame>(puffer)?
+        {
             puffer.drain(..verbraucht);
             return Ok(Some(frame));
         }
