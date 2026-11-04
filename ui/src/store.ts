@@ -4,6 +4,7 @@ import { computed, reactive, ref } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { api, istDummy, type Einstellungen, type Zustand } from "./api";
 import { abonnieren } from "./mock";
+import { rolle, setSprache, sprache, t } from "./i18n";
 
 export const modell = reactive<Zustand>({
   verbindung: null,
@@ -63,6 +64,13 @@ export function wendeThema(thema: string) {
   einstellungen.thema = erlaubt;
 }
 
+/** Setzt die Sprache und speichert sie. */
+export async function waehleSprache(neu: string) {
+  setSprache(neu);
+  einstellungen.sprache = sprache.value;
+  await speichere();
+}
+
 /** Lädt die Einstellungen vor dem ersten Bild. */
 export async function ladeEinstellungen() {
   try {
@@ -73,6 +81,7 @@ export async function ladeEinstellungen() {
     // Ohne Einstellungen gelten die Vorgaben.
   }
   wendeThema(einstellungen.thema);
+  setSprache(einstellungen.sprache);
 }
 
 /** Holt den aktuellen Stand vom Rust-Teil. */
@@ -245,6 +254,9 @@ export async function legeRaumAn(name: string) {
   if (!bereinigt) return;
   await api.raumAnlegen(bereinigt);
 }
+
+/** Kurzform für Texte in den Ansichten. */
+export { rolle, sprache, t };
 
 /** Zeit als „14:07" für die Nachrichtenliste. */
 export function uhrzeit(ms: number): string {

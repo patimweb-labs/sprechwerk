@@ -25,6 +25,8 @@ import {
   sperreMitglied,
   stummschalten,
   trenneMitglied,
+  t,
+  rolle as rollenName,
   uhrzeit,
   verbunden,
   verschieben,
@@ -80,15 +82,23 @@ function mitgliedMenue(id: string): UI.MenuItem[] {
   const m = modell.mitglieder.find((x) => x.id === id);
   if (!m) return [];
   const punkte: UI.MenuItem[] = [
-    { id: "mute", label: m.stumm ? "Sprechen freigeben" : "Mikrofon stummschalten", hint: "Server" },
-    { id: "deaf", label: m.taub ? "Ton freigeben" : "Ton stummschalten", hint: "Server" },
-    { id: "move", label: "In Raum verschieben …", separatorBefore: true },
+    {
+      id: "mute",
+      label: m.stumm ? t("member.unmute") : t("member.mute"),
+      hint: t("member.server_hint"),
+    },
+    {
+      id: "deaf",
+      label: m.taub ? t("member.undeaf") : t("member.deaf"),
+      hint: t("member.server_hint"),
+    },
+    { id: "move", label: t("member.move"), separatorBefore: true },
   ];
   const erster = modell.raeume[0]?.id;
-  if (m.raum !== erster) punkte.push({ id: "kick-room", label: "Aus Raum werfen" });
-  punkte.push({ id: "role", label: "Rolle setzen …", separatorBefore: true });
-  punkte.push({ id: "kick", label: "Vom Server trennen …", separatorBefore: true, danger: true });
-  punkte.push({ id: "ban", label: "Sperren …", danger: true });
+  if (m.raum !== erster) punkte.push({ id: "kick-room", label: t("member.kick_room") });
+  punkte.push({ id: "role", label: t("member.role"), separatorBefore: true });
+  punkte.push({ id: "kick", label: t("member.kick"), separatorBefore: true, danger: true });
+  punkte.push({ id: "ban", label: t("member.ban"), danger: true });
   return punkte;
 }
 
@@ -125,12 +135,12 @@ function mitgliedMenueGewaehlt(id: string, wahl: string) {
 }
 
 function raumMenuePunkte(): UI.MenuItem[] {
-  const punkte: UI.MenuItem[] = [{ id: "enter", label: "Betreten" }];
+  const punkte: UI.MenuItem[] = [{ id: "enter", label: t("room.enter") }];
   // Verwalten nur mit Recht — wer es nicht darf, sieht es auch nicht.
   if (darfRaeumeVerwalten.value) {
-    punkte.push({ id: "new", label: "Raum anlegen …", separatorBefore: true });
-    punkte.push({ id: "rename", label: "Umbenennen …" });
-    punkte.push({ id: "delete", label: "Raum löschen …", separatorBefore: true, danger: true });
+    punkte.push({ id: "new", label: t("room.add"), separatorBefore: true });
+    punkte.push({ id: "rename", label: t("room.rename") });
+    punkte.push({ id: "delete", label: t("room.delete"), separatorBefore: true, danger: true });
   }
   return punkte;
 }
@@ -194,11 +204,11 @@ async function absenden() {
     <!-- Spalte 1: Räume mit ihren Leuten — eine Liste, kein Springen -->
     <aside class="seite">
       <header class="seite__kopf">
-        <span class="marke">Räume</span>
+        <span class="marke">{{ t("app.rooms") }}</span>
         <UI.WpIconButton
           v-if="darfRaeumeVerwalten"
           :icon="IconPlus"
-          label="Raum anlegen"
+          :label="t('room.add')"
           size="sm"
           variant="ghost"
           @press="(eingabeName = ''), (zielRaum = null), (dialog = 'raum')"
@@ -221,13 +231,13 @@ async function absenden() {
             </button>
             <UI.WpMenu
               :items="raumMenuePunkte()"
-              label="Raum-Menü"
+              :label="t('room.menu')"
               align="right"
               :open="offenerRaum === raum.id"
               @update:open="(offen: boolean) => (offenerRaum = offen ? raum.id : null)"
               @select="(wahl: string) => raumMenueGewaehlt(raum.id, wahl)"
             >
-              <UI.WpIconButton :icon="IconMore" label="Raum-Menü" size="sm" variant="ghost" />
+              <UI.WpIconButton :icon="IconMore" :label="t('room.menu')" size="sm" variant="ghost" />
             </UI.WpMenu>
           </div>
 
@@ -247,9 +257,12 @@ async function absenden() {
                 size="sm"
               />
               <span class="mensch__text">
-                <span class="mensch__name">{{ m.name }}<span v-if="m.ich" class="mensch__ich"> du</span></span>
+                <span class="mensch__name">
+                  {{ m.name }}<span v-if="m.ich" class="mensch__ich"> {{ t("chat.you") }}</span>
+                </span>
                 <span class="mensch__rolle">
-                  {{ m.rolle }}<template v-if="m.stumm"> · stumm</template><template v-if="m.taub"> · taub</template>
+                  {{ rollenName(m.rolle) }}<template v-if="m.stumm"> · {{ t("state.muted") }}</template
+                  ><template v-if="m.taub"> · {{ t("state.deaf") }}</template>
                 </span>
               </span>
               <UI.WpMenu
@@ -261,7 +274,7 @@ async function absenden() {
                 @update:open="(offen: boolean) => (offenesMitglied = offen ? m.id : null)"
                 @select="(wahl: string) => mitgliedMenueGewaehlt(m.id, wahl)"
               >
-                <UI.WpIconButton :icon="IconMore" :label="`Menü für ${m.name}`" size="sm" variant="ghost" />
+                <UI.WpIconButton :icon="IconMore" :label="t('server.menu_for', m.name)" size="sm" variant="ghost" />
               </UI.WpMenu>
             </li>
           </ul>
@@ -273,20 +286,20 @@ async function absenden() {
     <section class="haupt">
       <header class="kopf">
         <div class="kopf__text">
-          <h1>{{ meinRaum ? meinRaum.name : "Kein Raum" }}</h1>
+          <h1>{{ meinRaum ? meinRaum.name : t("room.none") }}</h1>
         </div>
       </header>
 
       <div ref="verlauf" class="verlauf">
         <UI.WpEmptyState
           v-if="!meinRaum"
-          title="Kein Raum offen"
-          description="Wähle links einen Raum, um mitzulesen und zu sprechen."
+          :title="t('room.none')"
+          :description="t('room.choose')"
         />
         <UI.WpEmptyState
           v-else-if="modell.nachrichten.length === 0"
-          title="Noch nichts geschrieben"
-          description="Der erste Satz ist der schwerste."
+          :title="t('room.empty.title')"
+          :description="t('room.empty.desc')"
         />
 
         <article
@@ -300,19 +313,19 @@ async function absenden() {
               <span class="beitrag__wer" :class="{ 'ist-eigene': n.verfasser === eigeneId }">{{ n.verfasser_name }}</span>
               <span class="beitrag__wann">{{ uhrzeit(n.zeit) }}</span>
               <button v-if="n.loeschbar" class="beitrag__aktion" type="button" @click="loesche(n.id)">
-                löschen
+                {{ t("chat.delete") }}
               </button>
             </header>
-            <p v-if="n.geloescht" class="beitrag__weg">Nachricht gelöscht</p>
+            <p v-if="n.geloescht" class="beitrag__weg">{{ t("chat.deleted") }}</p>
             <p v-else class="beitrag__inhalt">{{ n.text }}</p>
           </div>
         </article>
       </div>
 
       <div v-if="meinRaum && verbunden" class="schreiben">
-        <UI.WpInput v-model="eingabe" placeholder="Schreiben … (Enter sendet)" @keyup.enter="absenden" />
+        <UI.WpInput v-model="eingabe" :placeholder="t('chat.placeholder')" @keyup.enter="absenden" />
         <UI.WpButton
-          label="Senden"
+          :label="t('chat.send')"
           variant="primary"
           :state="eingabe.trim() ? 'default' : 'disabled'"
           @press="absenden"
@@ -329,63 +342,63 @@ async function absenden() {
       @confirm="bestaetigen"
       @cancel="dialog = null"
     >
-      <UI.WpInput v-model="eingabeName" placeholder="Name des Raums" />
+      <UI.WpInput v-model="eingabeName" :placeholder="t('room.add.placeholder')" />
     </UI.WpDialog>
 
     <UI.WpDialog
       :open="dialog === 'umbenennen'"
-      title="Raum umbenennen"
+      :title="t('room.rename.title')"
       :description="raumName"
-      confirm-label="Umbenennen"
+      :confirm-label="t('room.rename')"
       @confirm="bestaetigen"
       @cancel="dialog = null"
     >
-      <UI.WpInput v-model="eingabeName" placeholder="Neuer Name" />
+      <UI.WpInput v-model="eingabeName" :placeholder="t('room.rename.placeholder')" />
     </UI.WpDialog>
 
     <UI.WpDialog
       :open="dialog === 'loeschen'"
-      title="Raum löschen"
-      :description="`„${raumName}“ wird gelöscht. Nur möglich, wenn keine Unterräume mehr darin sind.`"
+      :title="t('room.delete.title')"
+      :description="t('room.delete.desc', raumName)"
       tone="warn"
-      confirm-label="Löschen"
+      :confirm-label="t('chat.delete')"
       @confirm="bestaetigen"
       @cancel="dialog = null"
     />
 
     <UI.WpDialog
       :open="dialog === 'verschieben'"
-      :title="`${zielName} verschieben`"
-      description="Wähle den Zielraum. Die Person wird sofort dorthin bewegt."
-      confirm-label="Verschieben"
+      :title="t('member.move.title', zielName)"
+      :description="t('member.move.desc')"
+      :confirm-label="t('member.move.confirm')"
       @confirm="bestaetigen"
       @cancel="dialog = null"
     >
-      <UI.WpSelect v-model="zielRaumWahl" :options="raumWahl" label="Zielraum" />
+      <UI.WpSelect v-model="zielRaumWahl" :options="raumWahl" :label="t('room.enter')" />
     </UI.WpDialog>
 
     <UI.WpDialog
       :open="dialog === 'kicken'"
-      :title="`${zielName} vom Server trennen`"
-      description="Die Person fliegt aus dem Gespräch und kann sofort wieder beitreten."
+      :title="t('member.kick.title', zielName)"
+      :description="t('member.kick.desc')"
       tone="warn"
-      confirm-label="Trennen"
+      :confirm-label="t('member.kick.confirm')"
       @confirm="bestaetigen"
       @cancel="dialog = null"
     >
-      <UI.WpInput v-model="eingabeGrund" placeholder="Grund (optional)" />
+      <UI.WpInput v-model="eingabeGrund" :placeholder="t('member.kick.reason')" />
     </UI.WpDialog>
 
     <UI.WpDialog
       :open="dialog === 'sperren'"
-      :title="`${zielName} sperren`"
-      description="Die Kennung wird gesperrt; Wiederkommen ist mit diesem Gerät nicht möglich."
+      :title="t('member.ban.title', zielName)"
+      :description="t('member.ban.desc')"
       tone="error"
-      confirm-label="Sperren"
+      :confirm-label="t('member.ban.confirm')"
       @cancel="dialog = null"
       @confirm="bestaetigen"
     >
-      <UI.WpInput v-model="eingabeGrund" placeholder="Grund (erscheint im Protokoll)" />
+      <UI.WpInput v-model="eingabeGrund" :placeholder="t('member.kick.reason')" />
     </UI.WpDialog>
   </div>
 </template>

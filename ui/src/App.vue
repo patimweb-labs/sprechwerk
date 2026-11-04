@@ -25,6 +25,7 @@ import {
   einstellungen,
   geheZu,
   modell,
+  t,
   stummschalten,
   trennen,
   verbunden,
@@ -49,12 +50,12 @@ const eigenerName = computed(() => {
 const kontomenue = computed<UI.MenuItem[]>(() => {
   const punkte: UI.MenuItem[] = [];
   if (verbunden.value) {
-    punkte.push({ id: "raeume", label: "Räume" });
+    punkte.push({ id: "raeume", label: t("app.rooms") });
   }
-  punkte.push({ id: "server", label: "Serverliste" });
-  punkte.push({ id: "einstellungen", label: "Einstellungen" });
+  punkte.push({ id: "server", label: t("app.menu_servers") });
+  punkte.push({ id: "einstellungen", label: t("app.settings") });
   if (verbunden.value) {
-    punkte.push({ id: "trennen", label: "Verbindung trennen", separatorBefore: true, danger: true });
+    punkte.push({ id: "trennen", label: t("app.disconnect"), separatorBefore: true, danger: true });
   }
   return punkte;
 });
@@ -72,9 +73,9 @@ const verbindungsText = computed(() => {
   const v = modell.verbindung;
   if (!v) return "…";
   if (v.art === "verbunden") return v.server_name;
-  if (v.art === "verbindet") return `verbinde zu ${v.server} …`;
+  if (v.art === "verbindet") return t("app.connecting", v.server);
   if (v.art === "fehler") return v.text;
-  return "nicht verbunden";
+  return t("app.not_connected");
 });
 
 async function mikrofonUmschalten() {
@@ -113,7 +114,7 @@ async function tonUmschalten() {
         <template v-if="verbunden">
           <UI.WpIconButton
             :icon="eigeneStumm ? IconMicOff : IconMic"
-            :label="eigeneStumm ? 'Mikrofon einschalten' : 'Mikrofon stummschalten'"
+            :label="eigeneStumm ? t('app.mic_unmute') : t('app.mic_mute')"
             :active="!eigeneStumm"
             size="sm"
             variant="ghost"
@@ -121,7 +122,7 @@ async function tonUmschalten() {
           />
           <UI.WpIconButton
             :icon="eigeneTaub ? IconHeadphoneOff : IconHeadphones"
-            :label="eigeneTaub ? 'Ton einschalten' : 'Ton stummschalten'"
+            :label="eigeneTaub ? t('app.sound_unmute') : t('app.sound_mute')"
             :active="!eigeneTaub"
             size="sm"
             variant="ghost"
@@ -134,7 +135,7 @@ async function tonUmschalten() {
           </span>
           <UI.WpIconButton
             :icon="IconUnplug"
-            label="Server verlassen"
+            :label="t('app.leave_server')"
             size="sm"
             variant="ghost"
             @press="verlassenServer"
@@ -143,10 +144,10 @@ async function tonUmschalten() {
 
         <UI.WpMenu
           :items="kontomenue"
-          label="Kontomenü"
+          :label="t('app.menu')"
           @select="kontomenueGewaehlt"
         >
-          <UI.WpIconButton :icon="IconMore" label="Kontomenü" size="sm" variant="ghost" />
+          <UI.WpIconButton :icon="IconMore" :label="t('app.menu')" size="sm" variant="ghost" />
         </UI.WpMenu>
       </div>
     </header>
@@ -160,7 +161,11 @@ async function tonUmschalten() {
     <UI.WpStatusBar
       brand="SPRECHWERK"
       :state="verbindungsText"
-      :counts="verbunden ? `${modell.mitglieder.length} anwesend · ${modell.nachrichten.length} im Raum` : `${einstellungen.favoriten.length} gemerkte Server`"
+      :counts="
+        verbunden
+          ? t('app.counts', modell.mitglieder.length, modell.nachrichten.length)
+          : t('app.saved_servers', einstellungen.favoriten.length)
+      "
     >
       <template #lead>
         <span v-if="modell.meldung" class="meldung">{{ modell.meldung }}</span>

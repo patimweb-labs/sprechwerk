@@ -16,6 +16,7 @@ import {
   favoritHinzufuegen,
   laeuft,
   modell,
+  t,
   verbindeMit,
 } from "../store";
 
@@ -41,9 +42,9 @@ const server = computed(() => {
 
 /** Menü einer Zeile: Verbinden, Bearbeiten, Entfernen. */
 function zeilenMenue(s: { server: string; gemerkt: boolean }): UI.MenuItem[] {
-  const punkte: UI.MenuItem[] = [{ id: "connect", label: "Verbinden" }];
+  const punkte: UI.MenuItem[] = [{ id: "connect", label: t("server.connect") }];
   if (s.gemerkt) {
-    punkte.push({ id: "remove", label: "Aus der Liste entfernen", separatorBefore: true, danger: true });
+    punkte.push({ id: "remove", label: t("server.remove"), separatorBefore: true, danger: true });
   }
   return punkte;
 }
@@ -79,11 +80,11 @@ async function entfernen() {
   <div class="ansicht">
     <header class="kopf">
       <div class="kopf__text">
-        <h1>Server</h1>
-        <p>Gemerkte Server. Ein Klick verbindet — kein Suchen nach der Adresse.</p>
+        <h1>{{ t("server.title") }}</h1>
+        <p>{{ t("server.sub") }}</p>
       </div>
       <UI.WpButton
-        label="Server hinzufügen"
+        :label="t('server.add')"
         size="sm"
         variant="secondary"
         :icon="IconPlus"
@@ -94,24 +95,22 @@ async function entfernen() {
     <div class="inhalt">
       <div class="tabelle">
         <div class="tabelle__kopf">
-          <span class="spalte spalte--name">Name</span>
-          <span class="spalte spalte--adresse">Adresse</span>
-          <span class="spalte spalte--aktion">Aktion</span>
+          <span class="spalte spalte--name">{{ t("server.col.name") }}</span>
+          <span class="spalte spalte--adresse">{{ t("server.col.address") }}</span>
+          <span class="spalte spalte--aktion">{{ t("server.col.action") }}</span>
         </div>
 
-        <p v-if="server.length === 0" class="leer">
-          Noch kein Server gemerkt — trag die Adresse deines Servers ein.
-        </p>
+        <p v-if="server.length === 0" class="leer">{{ t("server.empty") }}</p>
 
         <div v-for="s in server" :key="s.server" class="zeile">
           <span class="spalte spalte--name">
             <span class="name">{{ s.name }}</span>
-            <span v-if="!s.gemerkt" class="hinweis">zuletzt benutzt</span>
+            <span v-if="!s.gemerkt" class="hinweis">{{ t("server.last_used") }}</span>
           </span>
           <span class="spalte spalte--adresse adresse">{{ s.server }}</span>
           <span class="spalte spalte--aktion aktionen">
             <UI.WpButton
-              :label="laeuft ? 'verbinde …' : 'Verbinden'"
+              :label="laeuft ? t('server.connecting') : t('server.connect')"
               :state="laeuft ? 'busy' : 'default'"
               size="sm"
               variant="secondary"
@@ -120,45 +119,42 @@ async function entfernen() {
             />
             <UI.WpMenu
               :items="zeilenMenue(s)"
-              :label="`Menü für ${s.name}`"
+              :label="t('server.menu_for', s.name)"
               :open="offen === s.server"
               @update:open="(istOffen: boolean) => (offen = istOffen ? s.server : null)"
               @select="(wahl: string) => zeilenMenueGewaehlt(s, wahl)"
             >
-              <UI.WpIconButton :icon="IconMore" :label="`Menü für ${s.name}`" size="sm" variant="ghost" />
+              <UI.WpIconButton :icon="IconMore" :label="t('server.menu_for', s.name)" size="sm" variant="ghost" />
             </UI.WpMenu>
           </span>
         </div>
       </div>
 
-      <p class="fussnote">
-        Die Kennung liegt auf diesem Rechner (Schlüsseldatei). Auf einem anderen Gerät nimmst du sie
-        mit — sonst bist du dort ein neues Mitglied.
-      </p>
+      <p class="fussnote">{{ t("server.footnote") }}</p>
 
       <p v-if="modell.meldung" class="meldung">{{ modell.meldung }}</p>
     </div>
 
     <UI.WpDialog
       :open="zeigeHinzufuegen"
-      title="Server hinzufügen"
-      description="Name ist frei wählbar; die Adresse ist Host und Port, etwa verein.example:7443."
-      confirm-label="Hinzufügen"
+      :title="t('server.add.title')"
+      :description="t('server.add.desc')"
+      :confirm-label="t('server.add')"
       @confirm="hinzufuegen"
       @cancel="zeigeHinzufuegen = false"
     >
       <div class="dialogfelder">
-        <UI.WpInput v-model="neuerName" placeholder="Name, z. B. Trainingsabend" />
-        <UI.WpInput v-model="neueAdresse" placeholder="Adresse, z. B. 192.0.2.10:7443" />
+        <UI.WpInput v-model="neuerName" :placeholder="t('server.add.name')" />
+        <UI.WpInput v-model="neueAdresse" :placeholder="t('server.add.address')" />
       </div>
     </UI.WpDialog>
 
     <UI.WpDialog
       :open="zeigeEntfernen !== null"
-      title="Server aus der Liste entfernen"
-      description="Die Verbindung bleibt bestehen; nur der Eintrag verschwindet."
+      :title="t('server.remove.title')"
+      :description="t('server.remove.desc')"
       tone="warn"
-      confirm-label="Entfernen"
+      :confirm-label="t('server.remove.confirm')"
       @confirm="entfernen"
       @cancel="zeigeEntfernen = null"
     />

@@ -227,6 +227,27 @@ pub async fn sperren(
     }
 }
 
+/// Verfügbare Aufnahme- und Wiedergabegeräte.
+#[tauri::command]
+pub fn audio_geraete() -> Result<crate::audio::Geraeteliste, String> {
+    Ok(crate::audio::Geraeteliste {
+        mikrofon: crate::audio::mikrofon_geraete().map_err(|e| e.to_string())?,
+        lautsprecher: crate::audio::lautsprecher_geraete().map_err(|e| e.to_string())?,
+    })
+}
+
+/// Misst den Eingangspegel für kurze Zeit (Sprechtest).
+#[tauri::command]
+pub fn audio_pegel(geraet: String, millisekunden: u64) -> Result<u8, String> {
+    crate::audio::pegel(&geraet, millisekunden).map_err(|e| e.to_string())
+}
+
+/// Spielt einen Prüfton auf dem gewählten Gerät (Hörtest).
+#[tauri::command]
+pub fn audio_testton(geraet: String) -> Result<(), String> {
+    crate::audio::testton(&geraet).map_err(|e| e.to_string())
+}
+
 /// Liest die gespeicherten Einstellungen.
 #[tauri::command]
 pub fn einstellungen_lesen(pfad: State<'_, EinstellungenPfad>) -> Einstellungen {

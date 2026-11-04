@@ -8,6 +8,7 @@
 //! `crates/protocol`, `crates/adapters` und `crates/ipc`.
 
 pub mod anwendung;
+pub mod audio;
 pub mod commands;
 pub mod einstellungen;
 
@@ -53,6 +54,9 @@ pub fn run() {
             commands::aus_raum_werfen,
             commands::trennen_mitglied,
             commands::sperren,
+            commands::audio_geraete,
+            commands::audio_pegel,
+            commands::audio_testton,
             commands::einstellungen_lesen,
             commands::einstellungen_speichern,
         ])

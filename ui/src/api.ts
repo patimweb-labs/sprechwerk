@@ -108,9 +108,26 @@ const echtApi = {
   trenneMitglied: (mitglied: string, grund: string) =>
     invoke<void>("trennen_mitglied", { mitglied, grund }),
   sperreMitglied: (mitglied: string, grund: string) => invoke<void>("sperren", { mitglied, grund }),
+  audioGeraete: () => invoke<Geraeteliste>("audio_geraete"),
+  audioPegel: (geraet: string, millisekunden: number) =>
+    invoke<number>("audio_pegel", { geraet, millisekunden }),
+  audioTestton: (geraet: string) => invoke<void>("audio_testton", { geraet }),
   einstellungenLesen: () => invoke<Einstellungen>("einstellungen_lesen"),
   einstellungenSpeichern: (einstellungen: Einstellungen) =>
     invoke<void>("einstellungen_speichern", { einstellungen }),
 };
+
+/** Ein wählbares Audiogerät. */
+export interface Geraet {
+  id: string;
+  name: string;
+  vorgabe: boolean;
+}
+
+export interface Geraeteliste {
+  mikrofon: Geraet[];
+  lautsprecher: Geraet[];
+}
+
 
 export const api = istDummy ? (mockApi as unknown as typeof echtApi) : echtApi;

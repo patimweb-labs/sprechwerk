@@ -287,6 +287,28 @@ export const mockApi = {
     melden();
   },
 
+  async audioGeraete() {
+    return {
+      mikrofon: [
+        { id: "alsa_input.usb-Sennheiser_Profile_00.mono-fallback", name: "Sennheiser Profile", vorgabe: true },
+        { id: "alsa_input.pci-0000_0f_00.6.analog-stereo", name: "Mainboard analog", vorgabe: false },
+      ],
+      lautsprecher: [
+        { id: "alsa_output.usb-Sennheiser_Profile_00.analog-stereo", name: "Sennheiser Profile", vorgabe: true },
+        { id: "alsa_output.hdmi-stereo", name: "HDMI", vorgabe: false },
+      ],
+    };
+  },
+
+  async audioPegel(): Promise<number> {
+    // Im Dummy: schwankender Pegel, damit man die Anzeige sieht.
+    return 20 + Math.floor(Math.random() * 60);
+  },
+
+  async audioTestton(): Promise<void> {
+    await new Promise((f) => setTimeout(f, 400));
+  },
+
   async einstellungenLesen(): Promise<Einstellungen> {
     try {
       const roh = localStorage.getItem(einstellungenSchluessel);
