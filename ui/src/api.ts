@@ -72,6 +72,12 @@ export interface Einstellungen {
   schwelle: number;
   vorlauf_ms: number;
   favoriten: Favorit[];
+  /** Kompaktes Design: dichtere Zeilen. */
+  kompakt: boolean;
+  /** Rauschunterdrückung im Aufnahmepfad. */
+  rauschunterdrueckung: boolean;
+  /** Noisegate: unterhalb der Schwelle wird nichts gesendet. */
+  noisegate: boolean;
 }
 
 /** Läuft die Oberfläche in der Fensteranwendung (echter Rust-Teil)? */

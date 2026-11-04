@@ -61,6 +61,10 @@ der bewusst gewählte Preis.
 „gestrichen": Dateien, Status/Abwesenheit, Bildschirm teilen, Video,
 Hintergrundeffekte, Emojis/Reaktionen, Suche.
 
+**[P] Aufnahme-Schutz:** Rauschunterdrückung und Noisegate sind eigene Schalter
+(Vorgabe an). Monitore (`.monitor`-Quellen) sind **keine** Mikrofone und werden
+abgelehnt — sonst hört man die eigene Wiedergabe. Siehe `docs/AUDIO.md`.
+
 **[P] Sprache schmal:** Gruppenräume, Push-to-Talk, Stummschalten, einer
 spricht — alle hören. Kein Flüstern, keine 3D-Position, keine Aufnahme.
 Der Server mischt nichts, er verteilt.

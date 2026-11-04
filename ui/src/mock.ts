@@ -132,6 +132,9 @@ export const einstellungenVorgabe: Einstellungen = {
   ptt_taste: "Leertaste",
   schwelle: 30,
   vorlauf_ms: 60,
+  kompakt: false,
+  rauschunterdrueckung: true,
+  noisegate: true,
   favoriten: [
     { name: "Trainingsabend", server: "sprechwerk.verein.example:7443" },
     { name: "Vorstand (Test)", server: "192.0.2.11:7443" },

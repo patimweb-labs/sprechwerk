@@ -47,6 +47,48 @@ QUIC-Datagramm ──► Jitter-Puffer (60 ms) ──► Opus-Decoder ──► 
 | Jitter-Puffer | 3 Rahmen = 60 ms | Startwert; bei 5 % Verlust messen und anpassen |
 | Kopfaufschlag | 4 von 84 Byte = 4,8 % | Sprachkopf Version/Codec/Folge |
 
+## Rauschunterdrückung und Noisegate
+
+Zwei verschiedene Dinge, die oft verwechselt werden:
+
+| | Wirkung | Wo | Einstellung |
+|---|---|---|---|
+| **Rauschunterdrückung** | filtert Störgeräusche *innerhalb* des Signals (Lüfter, Tastatur, Brummen) | Aufnahmepfad, vor der Kodierung | `rauschunterdrueckung` (Vorgabe: **an**) |
+| **Noisegate** | unterhalb der Sprechschwelle wird **gar nichts** gesendet | Aufnahmepfad, vor der Kodierung | `noisegate` (Vorgabe: **an**), Schwelle über `schwelle` |
+
+Umsetzung im Sprachpfad (noch zu bauen, Einstellungen liegen schon):
+
+1. Aufnahme → **Gate**: Pegel unter `schwelle` ⇒ Rahmen verwerfen (nicht leise
+   senden, sondern *nicht* senden). Das spart Bandbreite und hält den Raum ruhig.
+2. Aufnahme → **Denoiser** (RNNoise o. ä.) auf den 20-ms-Rahmen, dann Opus.
+   Reihenfolge ist wichtig: erst entrauschen, dann kodieren — sonst kodiert Opus
+   das Rauschen mit.
+3. TeamSpeak macht dasselbe (`denoise=true`, `denoiser_level=1`, `vad=true`,
+   `voiceactivation_level=-40` in dessen Clientprofil).
+
+## Niemals die eigene Wiedergabe aufnehmen
+
+Drei Regeln, damit niemand sich selbst oder die anderen doppelt hört:
+
+1. **Monitore sind keine Mikrofone.** PipeWire/PulseAudio bietet zu jedem
+   Ausgang eine `.monitor`-Quelle an — sie liefert genau das, was der Rechner
+   *abspielt*. Als Mikrofon gewählt entsteht eine Rückkopplungsschleife
+   (Hall, Pfeifen, doppelte Stimmen).
+   * Umgesetzt: `audio.rs` filtert `.monitor` aus der Mikrofonliste **und**
+   lehnt es ab, wenn es von außen hereingereicht wird (Test
+   `monitor_als_mikrofon_wird_abgelehnt`).
+2. **Der Server schickt Sprache nicht an den Sprecher zurück.** Der Sprachpfad
+   verteilt an alle im Raum **außer** dem Absender. Wer das ändert, baut sich
+   ein Echo.
+3. **Kein „Mitschnitt der eigenen Ausgabe" als Funktion.** Ein „Hörtest" spielt
+   einen kurzen Ton — er läuft nicht über den Sprachpfad und wird nicht
+   weitergegeben.
+
+Was das **nicht** leistet: Echounterdrückung (AEC). Wer über Lautsprecher
+spricht, nimmt die anderen trotzdem mit auf. Dagegen hilft nur Kopfhörer — oder
+später ein AEC im Client (Kosten: eigener Baustein, hohe Rechenlast, nur mit
+Referenzsignal sinnvoll).
+
 ## Was noch fehlt
 
 1. **Gerät und Codec bauen** (siehe oben) und den Pfad in `crates/desktop`

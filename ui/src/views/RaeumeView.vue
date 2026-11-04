@@ -16,6 +16,7 @@ import {
   darfEingreifen,
   darfRaeumeVerwalten,
   eingreifen,
+  einstellungen,
   legeRaumAn,
   loesche,
   meinRaum,
@@ -200,7 +201,7 @@ async function absenden() {
 </script>
 
 <template>
-  <div class="ansicht">
+  <div class="ansicht" :class="{ 'ist-kompakt': einstellungen.kompakt }">
     <!-- Spalte 1: Räume mit ihren Leuten — eine Liste, kein Springen -->
     <aside class="seite">
       <header class="seite__kopf">
@@ -610,6 +611,29 @@ async function absenden() {
   flex: 1;
   overflow-y: auto;
   padding: var(--wp-space-4) var(--wp-space-4) var(--wp-space-3);
+}
+
+/* Kompakt: weniger Luft, kleinere Schrift — mehr Zeilen im Blick. */
+.ist-kompakt .beitrag {
+  padding: 0 0 var(--wp-space-1);
+}
+
+.ist-kompakt .beitrag__inhalt {
+  margin-top: 0;
+  line-height: var(--wp-font-line-tight);
+  font-size: var(--wp-font-size-sm);
+}
+
+.ist-kompakt .mensch {
+  padding: 0 var(--wp-space-2) 0 calc(var(--wp-space-4) + var(--wp-space-1));
+}
+
+.ist-kompakt .raum {
+  min-height: var(--wp-size-control-sm);
+}
+
+.ist-kompakt .schreiben {
+  padding: var(--wp-space-2) var(--wp-space-4);
 }
 
 .beitrag {

@@ -252,6 +252,11 @@ async function thema(wert: string) {
           </UI.WpFormField>
           <p v-if="leertasteGewaehlt" class="warnung">{{ t("set.key.space_warn") }}</p>
 
+          <UI.WpSwitch v-model="einstellungen.rauschunterdrueckung" :label="t('set.denoise')" />
+          <p class="hinweis">{{ t("set.denoise.hint") }}</p>
+          <UI.WpSwitch v-model="einstellungen.noisegate" :label="t('set.noisegate')" />
+          <p class="hinweis">{{ t("set.noisegate.hint") }}</p>
+
           <UI.WpSlider
             v-model="einstellungen.schwelle"
             :label="t('set.threshold')"
@@ -279,6 +284,8 @@ async function thema(wert: string) {
             :label="t('set.scheme')"
             @update:model-value="thema"
           />
+          <UI.WpSwitch v-model="einstellungen.kompakt" :label="t('set.compact')" />
+          <p class="hinweis">{{ t("set.compact.hint") }}</p>
           <UI.WpFormField :label="t('set.language')">
             <template #default="{ id }">
               <UI.WpSelect

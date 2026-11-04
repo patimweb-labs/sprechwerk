@@ -51,6 +51,12 @@ pub struct Einstellungen {
     pub vorlauf_ms: u16,
     /// Gemerkte Server (Favoriten) — die Startseite, wenn keine Verbindung steht.
     pub favoriten: Vec<Favorit>,
+    /// Kompaktes Design: dichtere Zeilen im Verlauf und in den Raumlisten.
+    pub kompakt: bool,
+    /// Rauschunterdrückung im Aufnahmepfad (Störgeräusche, Lüfter, Tastatur).
+    pub rauschunterdrueckung: bool,
+    /// Noisegate: unterhalb der Sprechschwelle wird **nichts** gesendet.
+    pub noisegate: bool,
 }
 
 impl Default for Einstellungen {
@@ -68,6 +74,9 @@ impl Default for Einstellungen {
             schwelle: 30,
             vorlauf_ms: 60,
             favoriten: Vec::new(),
+            kompakt: false,
+            rauschunterdrueckung: true,
+            noisegate: true,
         }
     }
 }
@@ -104,6 +113,7 @@ mod tests {
         assert_eq!(e.vorlauf_ms, 60, "Vorlauf gegen abgeschnittenes erstes Wort");
         assert!(!e.push_to_talk);
         assert!(e.favoriten.is_empty());
+        assert!(!e.kompakt, "dichtes Design ist eine Wahl, nicht die Vorgabe");
     }
 
     #[test]

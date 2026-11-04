@@ -78,9 +78,10 @@ fn liste(art: &str) -> Result<Vec<Geraet>, Fehler> {
             continue;
         }
         let id = felder[1].trim().to_string();
-        // Monitore sind keine Aufnahmegeräte für Sprache — sie zeigen, was aus
-        // der Karte herauskommt.
-        if art == "sources" && id.ends_with(".monitor") {
+        // Monitore sind keine Aufnahmegeräte für Sprache: sie liefern die
+        // Wiedergabe des Rechners zurück. Wer sie als Mikrofon wählt, hört sich
+        // selbst — und alle anderen doppelt.
+        if art == "sources" && ist_monitor(&id) {
             continue;
         }
         geraete.push(Geraet {
@@ -92,6 +93,13 @@ fn liste(art: &str) -> Result<Vec<Geraet>, Fehler> {
     Ok(geraete)
 }
 
+/// Ist das ein Monitor (Ausgang, mitgeschnitten)? Monitore liefern das, was der
+/// Rechner **abspielt** — als Mikrofon gewählt hört man sich selbst und alle
+/// anderen doppelt (Rückkopplung).
+pub fn ist_monitor(id: &str) -> bool {
+    id.ends_with(".monitor")
+}
+
 /// Macht aus `alsa_input.usb-Sennheiser_…-00.mono-fallback` etwas Lesbares.
 fn lesbar(id: &str) -> String {
     let ohne_praefix = id
@@ -101,12 +109,22 @@ fn lesbar(id: &str) -> String {
     // Bis zum Hersteller-Teil: „usb-Sennheiser_Sennheiser_Profile_…" → „Sennheiser"
     let kern = ohne_praefix.split('.').next().unwrap_or(ohne_praefix);
     let teile: Vec<&str> = kern.split('-').collect();
-    let name = if teile.len() > 1 && teile[0] == "usb" {
+    let roh = if teile.len() > 1 && teile[0] == "usb" {
         teile.get(1).copied().unwrap_or(kern)
     } else {
         teile.first().copied().unwrap_or(kern)
     };
-    name.replace('_', " ").trim().to_string()
+    // „Sennheiser_Sennheiser_Profile_00" → „Sennheiser": Gerätenamen wiederholen
+    // den Hersteller; das erste Wort genügt und liest sich besser.
+    let mut woerter = roh.split('_').filter(|w| !w.is_empty());
+    let erstes = woerter.next().unwrap_or(roh);
+    let zweites = woerter.next();
+    let name = match zweites {
+        Some(z) if z.eq_ignore_ascii_case(erstes) => erstes.to_string(),
+        Some("Profile") | Some("Headset") | Some("Gaming") => erstes.to_string(),
+        _ => roh.replace('_', " "),
+    };
+    name.trim().to_string()
 }
 
 /// Vorgabegerät laut `pactl get-default-…`.
@@ -202,6 +220,12 @@ pub fn pegel(geraet: &str, millisekunden: u64) -> Result<u8, Fehler> {
     if !werkzeug("parec") {
         return Err(Fehler::Werkzeug);
     }
+    // Schutz vor Rückkopplung, auch wenn ein Gerät von außen hereingereicht wird.
+    if ist_monitor(geraet) {
+        return Err(Fehler::Geraet(format!(
+            "{geraet} ist ein Monitor (Wiedergabe), kein Mikrofon"
+        )));
+    }
     let mut befehl = Command::new("parec");
     befehl.args([
         "--format=s16le",
@@ -261,6 +285,18 @@ mod tests {
         );
         assert_eq!(lesbar("alsa_input.pci-0000_0f_00.6.analog-stereo"), "pci");
         assert_eq!(lesbar("alsa_output.hdmi-stereo"), "hdmi");
+    }
+
+    #[test]
+    fn monitore_werden_erkannt() {
+        assert!(ist_monitor("alsa_output.usb-Kopfhoerer.monitor"));
+        assert!(!ist_monitor("alsa_input.usb-Kopfhoerer.mono-fallback"));
+    }
+
+    #[test]
+    fn monitor_als_mikrofon_wird_abgelehnt() {
+        let fehler = pegel("alsa_output.x.monitor", 100).unwrap_err();
+        assert!(matches!(fehler, Fehler::Geraet(_)), "{fehler}");
     }
 
     #[test]

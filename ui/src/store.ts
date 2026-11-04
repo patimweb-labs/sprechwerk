@@ -29,6 +29,9 @@ export const einstellungen = reactive<Einstellungen>({
   schwelle: 30,
   vorlauf_ms: 60,
   favoriten: [],
+  kompakt: false,
+  rauschunterdrueckung: true,
+  noisegate: true,
 });
 
 /** Welche Ansicht ist offen? (Die Leiste links schreibt hier hinein.) */

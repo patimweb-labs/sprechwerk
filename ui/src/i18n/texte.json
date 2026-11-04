@@ -730,5 +730,41 @@
   "en": "deaf",
   "es": "sordo",
   "fr": "sourd"
+ },
+ "set.compact": {
+  "de": "Kompaktes Design",
+  "en": "Compact layout",
+  "es": "Diseño compacto",
+  "fr": "Mise en page compacte"
+ },
+ "set.compact.hint": {
+  "de": "Dichtere Zeilen im Verlauf und in den Raumlisten — mehr Inhalt auf einen Blick, weniger Luft.",
+  "en": "Denser rows in chat and room lists — more content at a glance, less whitespace.",
+  "es": "Filas más densas en el chat y las salas — más contenido de un vistazo, menos aire.",
+  "fr": "Lignes plus denses dans le chat et les salons — plus de contenu d'un coup d'œil, moins d'air."
+ },
+ "set.denoise": {
+  "de": "Rauschunterdrückung",
+  "en": "Noise suppression",
+  "es": "Supresión de ruido",
+  "fr": "Réduction de bruit"
+ },
+ "set.denoise.hint": {
+  "de": "Blendet Lüfter, Tastatur und Grundrauschen aus. Kostet etwas Rechenzeit im Aufnahmepfad.",
+  "en": "Hides fans, keyboard and background hiss. Costs a little CPU in the capture path.",
+  "es": "Oculta ventiladores, teclado y siseo de fondo. Cuesta algo de CPU en la captura.",
+  "fr": "Masque ventilateurs, clavier et souffle de fond. Coûte un peu de CPU à la capture."
+ },
+ "set.noisegate": {
+  "de": "Noisegate (unter der Schwelle stumm)",
+  "en": "Noise gate (silent below threshold)",
+  "es": "Puerta de ruido (silencio bajo el umbral)",
+  "fr": "Porte de bruit (silence sous le seuil)"
+ },
+ "set.noisegate.hint": {
+  "de": "Unterhalb der Sprechschwelle wird gar nichts gesendet — spart Bandbreite und lässt den Raum ruhig.",
+  "en": "Below the speech threshold nothing is sent at all — saves bandwidth and keeps the room quiet.",
+  "es": "Por debajo del umbral no se envía nada — ahorra ancho de banda y mantiene la sala en calma.",
+  "fr": "Sous le seuil, rien n'est envoyé — économise la bande passante et garde le salon calme."
  }
 }
