@@ -26,6 +26,19 @@ pub struct Einstellungen {
     pub sprache: String,
     /// Serverpasswort merken (nur wenn der Nutzer es will).
     pub passwort: String,
+    /// Aufnahmegerät (Name des Geräts; leer = Vorgabe des Systems).
+    pub mikrofon: String,
+    /// Wiedergabegerät (leer = Vorgabe des Systems).
+    pub lautsprecher: String,
+    /// Push-to-Talk statt offenem Mikrofon.
+    pub push_to_talk: bool,
+    /// Taste für Push-to-Talk (Anzeigename, z. B. „Leertaste").
+    pub ptt_taste: String,
+    /// Sprechschwelle 0–100 (nur bei offenem Mikrofon).
+    pub schwelle: u8,
+    /// Vorlauf in Millisekunden: so viel Ton wird vor dem Tastendruck
+    /// mitgeschickt, damit das erste Wort nicht abgeschnitten wird.
+    pub vorlauf_ms: u16,
 }
 
 impl Default for Einstellungen {
@@ -36,6 +49,12 @@ impl Default for Einstellungen {
             thema: "dark".to_string(),
             sprache: "de".to_string(),
             passwort: String::new(),
+            mikrofon: String::new(),
+            lautsprecher: String::new(),
+            push_to_talk: false,
+            ptt_taste: "Leertaste".to_string(),
+            schwelle: 30,
+            vorlauf_ms: 60,
         }
     }
 }
@@ -69,6 +88,8 @@ mod tests {
         assert_eq!(e.thema, "dark");
         assert_eq!(e.sprache, "de");
         assert_eq!(e.server, "127.0.0.1:7443");
+        assert_eq!(e.vorlauf_ms, 60, "Vorlauf gegen abgeschnittenes erstes Wort");
+        assert!(!e.push_to_talk);
     }
 
     #[test]

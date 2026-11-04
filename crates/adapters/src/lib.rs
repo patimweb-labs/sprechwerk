@@ -9,6 +9,8 @@
 //! Kennung ein Besitznachweis. Wer die Schlüsseldatei kopiert, ist derselbe
 //! Mensch; das ist die bewusst gewählte Schwäche („Kennung ist mitnehmbar").
 
+pub mod sprechpfad;
+
 use anyhow::Context;
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use quinn::crypto::rustls::QuicClientConfig;

@@ -20,7 +20,16 @@ export const einstellungen = reactive<Einstellungen>({
   thema: "dark",
   sprache: "de",
   passwort: "",
+  mikrofon: "",
+  lautsprecher: "",
+  push_to_talk: false,
+  ptt_taste: "Leertaste",
+  schwelle: 30,
+  vorlauf_ms: 60,
 });
+
+/** Welche Ansicht ist offen? (Die Leiste links schreibt hier hinein.) */
+export const ansicht = ref<"raeume" | "protokoll" | "einstellungen">("raeume");
 
 export const laeuft = ref(false);
 
@@ -91,6 +100,15 @@ export async function verbindeEreignisse() {
   }
 }
 
+/** Speichert die Einstellungen (ohne Verbindung). */
+export async function speichere() {
+  try {
+    await api.einstellungenSpeichern({ ...einstellungen });
+  } catch (fehler) {
+    modell.meldung = `Einstellungen nicht speicherbar: ${String(fehler)}`;
+  }
+}
+
 export async function verbinden() {
   laeuft.value = true;
   modell.meldung = null;
@@ -120,6 +138,18 @@ export async function sende(text: string) {
   const bereinigt = text.trim();
   if (!bereinigt) return;
   await api.textSenden(bereinigt);
+}
+
+export async function setzeRolle(mitglied: string, rolle: string) {
+  await api.rolleSetzen(mitglied, rolle as never);
+}
+
+/** „3 anwesend · 12 Nachrichten" für die Kopfzeile des Raums. */
+export function anwesenheitText(): string {
+  const raum = modell.raeume.find((r) => r.hier);
+  if (!raum) return "";
+  const n = modell.mitglieder.filter((m) => m.raum === raum.id).length;
+  return `${n} anwesend · ${modell.nachrichten.length} Nachrichten`;
 }
 
 export async function loesche(nachricht: string) {

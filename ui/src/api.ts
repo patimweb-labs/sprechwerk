@@ -64,6 +64,12 @@ export interface Einstellungen {
   thema: string;
   sprache: string;
   passwort: string;
+  mikrofon: string;
+  lautsprecher: string;
+  push_to_talk: boolean;
+  ptt_taste: string;
+  schwelle: number;
+  vorlauf_ms: number;
 }
 
 export const api = {

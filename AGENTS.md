@@ -7,14 +7,14 @@
 ## 1. Worum es geht
 
 Sprach- und Texträume für Vereine: selbst gehostet, ein Container, ein UDP-Port
-(QUIC). Sprache wird verteilt, nicht gemischt. Der Server ist in Rust, die
-Fensteranwendung ist Tauri 2 mit Vue.
+(QUIC). Sprache wird verteilt, nicht gemischt. Server und Fensteranwendung in
+Rust, Oberfläche Tauri 2 + Vue.
 
 ## 2. Nicht verhandelbar
 
 1. **Datenorientiert.** Das Datenmodell ist die einzige Wahrheit, die Oberfläche ist
    `render(model) → Sicht`. Kein Zustand in der Darstellung, der nicht im Modell steht.
-2. **Zustände als Summentypen.** `enum Zustand { Getrennt, Verbindet, Verbunden{..}, Fehler(Text) }`
+2. **Zustände als Summentypen.** `enum Zustand { Leer, Laedt, Fertig(Daten), Fehler(Text) }`
    statt Fächer aus Booleans. Ein Rust-`enum` mit `serde` und ein TS-Diskriminator
    beschreiben denselben Vertrag.
 3. **Sichtbarkeit folgt aus dem Modell.** „Einblenden" ist keine Anweisung, sondern eine
@@ -27,58 +27,57 @@ Fensteranwendung ist Tauri 2 mit Vue.
    ticketpflichtig, lokal begrenzt und werden abgebaut.
 6. **Keine Farben, Größen oder Abstände im Code.** Nur semantische Tokens
    (`var(--wp-color-text-default)`). Hex-Werte, `px`-Magie und `--wp-gray-300` in
-   Komponenten sind Fehler. Fehlt ein Token, kommt es in `weppelmann-ui/packages/tokens`,
-   nicht als Zahl ins Projekt.
+   Komponenten sind Fehler.
 7. **Drei Themes, sonst nichts:** `dark`, `light`, `mono`. Keine Runtime-Themes,
    keine Nutzer-Themes, kein Theme-Editor.
 8. **Tests sind Teil der Lieferung.** Unit, Integration, Vertrag, Rundlauf.
    Ein Fix ohne Test ist ein Fix auf Probe.
 9. **Keine Secrets** in Code, Commits, Logs oder Testdaten. Konfiguration über
-   Umgebung und Datei, Beispiel in `.env.example` / `sprechwerk.toml`.
+   Umgebung, Beispiel in `.env.example`.
 10. **Plattformneutral.** Kein `cfg(target_os)` und keine Pfadannahmen im Frontend.
-    Unterschiede kommen als Daten.
-11. **Keine eigene Krypto.** Verschlüsselung kommt von QUIC (TLS 1.3) und Ed25519.
-    Wer hier etwas selbst baut, hat den Auftrag falsch verstanden.
+    Unterschiede kommen als Daten (`platform` im Modell → `data-platform` am Root).
+11. **Icons entstehen aus Text.** Jedes App-Zeichen liegt als ASCII-Raster
+    (`assets/<app>.pm`) im Projekt und wird von `apps/markenwerk` erzeugt — nicht
+    als fertiges PNG abgelegt, nicht von Hand nachgezeichnet. Siehe §9.
+    Tastenkürzel über `Mod`, nie fest `Ctrl`. Siehe PLAN.md §10.
 
 ## 3. Struktur
 
 ```
-crates/domain     Datenmodell, Regeln, keine I/O          → Unit-Tests
-crates/protocol   Sprache auf der Leitung (Rahmen, Felder) → Unit-Tests
-crates/adapters   Netz (QUIC), Geräte (Audio), Dateien     → Integrationstests
-crates/ipc        Befehle/Ereignisse + Modell für die UI   → Vertragstests
-crates/store      Datenbank des Servers, Export, Sicherung → Integrationstests
-crates/server     QUIC-Dienst, Konfiguration, Betrieb      → Rundlauf
-crates/cli        Referenzclient auf der Kommandozeile     → Rundlauf
-crates/desktop    Tauri-Fenster (eigene [workspace])       → Vertragstests
-ui/               Vue 3 + TS, dünn; nutzt @weppelmann/components
-docs/             architektur.md, datenfluss.md, adr/, QUALITAET.md
+crates/domain    Datenmodell, Regeln, keine I/O          → Unit-Tests
+crates/adapters  Dateisystem, Netz, Geräte, Fremdsysteme → Integrationstests
+crates/ipc       Befehle/Ereignisse + Schema             → Vertragstests
+ui/              Vue 3 + TS, dünn; nutzt @weppelmann/components
+docs/            architektur.md, datenfluss.md, adr/
+tests/e2e/       Playwright gegen die App mit gemocktem Backend
 ```
 
-Richtung der Abhängigkeiten: `domain ← protocol ← adapters ← ipc ← desktop`.
-Nie zurück. `ui/` kennt keine Domäne, nur Befehle, Ereignisse und Zustände.
+Richtung der Abhängigkeiten: `domain ← adapters ← ipc ← ui`. Nie zurück.
+`ui/` kennt keine Domäne, nur Befehle, Ereignisse und Zustände.
 
 ## 4. Befehle
 
 ```bash
 # alles prüfen (das ist der Befehl vor jedem Commit)
 cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo test --workspace
-
-# Fensteranwendung (eigene [workspace], deshalb eigener Aufruf)
-(cd crates/desktop && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo check)
-
+(cd crates/desktop && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test)
 npm --prefix ui run typecheck && npm --prefix ui run build
-./scripts/latenz.sh        # Latenz messen (p50/p95/p99)
-./scripts/rundlauf.sh      # Server + zwei Clienten von Hand
+./scripts/latenz.sh                    # Latenz messen (p50/p95/p99)
+./scripts/rundlauf.sh                  # Server + zwei Clienten von Hand
+
+npm --prefix ui run dev                # Frontend autark, Port 1423
+cargo run --manifest-path crates/desktop/Cargo.toml --features custom-protocol
 ```
 
 `cargo test` **mit** `--workspace`: ohne das prüft Cargo nur das Wurzelpaket und
 meldet „0 passed". `crates/desktop` steht in einer eigenen `[workspace]`-Tabelle
-(Tauri braucht das) und bekommt seinen eigenen Aufruf.
+(Tauri braucht das), wird von `--workspace` und `cargo fmt --all` also nicht
+erfasst und bekommt seinen eigenen Aufruf.
 
-Das Frontend lässt sich ohne Backend entwickeln: `npm --prefix ui run dev`
-(Port 1423). Wer für eine UI-Aufgabe einen echten Server braucht, hat die
-Grenze falsch gezogen.
+Frontend-Entwicklung läuft **ohne** das echte Backend: `ui/` lässt sich mit
+`npm --prefix ui run dev` allein starten (Port 1423); die Befehle schlagen dann
+fehl und werden als Meldung angezeigt. Wer für eine UI-Aufgabe einen echten
+Server oder eine Soundkarte braucht, hat die Grenze falsch gezogen.
 
 ## 5. Definition of Done
 
@@ -88,43 +87,70 @@ Grenze falsch gezogen.
 - [ ] Tastaturbedienung geprüft, Fokus sichtbar, Rollen und Namen gesetzt
 - [ ] Screenshot im PR (vorher/nachher bei UI-Änderungen)
 - [ ] keine Tokens umgangen, keine Hex-Werte, keine neuen Abhängigkeiten ohne Begründung
-- [ ] Dokumentation angepasst: `README.md`, `docs/`, `SPEC.md` (Festlegungen)
+- [ ] Dokumentation angepasst: `README.md`, `docs/`, `SPEC.md`
 - [ ] Latenz nicht schlechter: `scripts/latenz.sh` vor und nach der Änderung
+- [ ] Cheats dieses PRs als Ticket vermerkt
 
 ## 6. Commits und Releases
 
 - Conventional Commits (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `build:`, `ci:`).
+- `release-please` mit `bump-minor-pre-major: true` (0.x bleibt unter 1.0, auch bei
+  Breaking Changes) und `extra-files` für die `.metainfo.xml`.
 - Kleine Commits, ein Gedanke pro Commit, deutschsprachige Betreffzeile erlaubt.
-- **Immer über einen Branch und einen Pull Request.** `main`/`master` ist geschützt:
-  kein direkter Push, kein Force-Push. `git switch -c fix/kurzbeschreibung`,
-  committen, `git push -u origin HEAD`, PR öffnen, CI abwarten, mergen.
-- Kein „WIP"-Merge; der Hauptzweig ist immer lauffähig.
+- **Immer über einen Branch und einen Pull Request.** `main` ist geschützt: kein
+  direkter Push, kein Force-Push, kein Löschen. Ablauf:
+  `git switch -c fix/kurzbeschreibung`, committen, `git push -u origin HEAD`,
+  PR öffnen, CI abwarten, mergen. Reviews sind nicht erzwungen
+  (`required_approving_review_count: 0`, Solo-Betrieb), der PR ist es.
+- Kein „WIP"-Merge nach `main`; `main` ist immer lauffähig.
 
 ## 7. Dokumentation
 
-- `README.md`: was das Programm tut, für wen, Installation, ein Absatz zu Daten
-  und Datenschutz.
+- `README.md`: was die App tut, für wen, Screenshots (dark + light), Installation je
+  Plattform, ein Absatz zu Daten und Datenschutz. Das ist die Visitenkarte, nicht das
+  Handbuch.
 - `docs/architektur.md`: Schichten, Grenzen, Datenfluss als Mermaid-Diagramm.
-- `docs/datenfluss.md`: was ein Klick auslöst, bis das Bild steht.
-- `docs/QUALITAET.md`: Latenz- und Qualitätskriterien mit Messwerten.
+- `docs/datenfluss.md`: was ein Befehl auslöst, bis das Bild steht.
 - `docs/adr/NNNN-titel.md`: getroffene Entscheidung, Alternativen, Kosten.
+- `docs/QUALITAET.md`: Latenz- und Qualitätskriterien mit Messwerten.
 - `SPEC.md`: jede Festlegung mit Begründung und Preis.
+- Screenshots werden **erzeugt** (Playwright), nicht von Hand abgelegt.
 
-## 8. Projektspezifisch
+## 8. Marke und Icons
 
-- **Name, Zweck, Zielgruppe:** sprechwerk (Arbeitstitel) — Sprach- und Texträume
-  für Vereine; Leute, die heute TeamSpeak oder Discord nutzen, und ein Betreiber,
-  der selbst hostet.
-- **Abweichende Befehle:** Oberfläche ist Tauri 2 + Vue (`ui/`) im Crate
-  `crates/desktop` (eigene `[workspace]`, Port 1423).
+Der Stil steht in `docs/marke/icons.md`; hier nur die Regeln, an die sich Code hält.
+
+1. **Quelle ist das Raster.** `assets/<name>.pm`: Kopf (`name`, `surface`, `ink`,
+   optional `shade`), dann `---`, dann das Raster. `.` Fläche, `#` Zeichnung,
+   `+` Schatten. Quadratisch, höchstens 64 Zeilen, 32 × 32 ist die gute Größe.
+2. **Kachelform: Achteck.** An jeder Ecke 22 % der Kante als 45-Grad-Fase. Das
+   macht der Generator (`inKachel`), nicht das Zeichen. `form = voll` schaltet es ab.
+3. **Zeichnung mit Abstand.** Mindestens ein Pixel zur Kante, auch an der Fase.
+4. **Zwei Strichstärken.** 2 px für die Form, 1–2 px für Binnenlinien.
+5. **Zwei Farben.** Fläche je Anwendung (`#C9862C` sprechwerk), Zeichnung immer
+   `#E9E5DC`. Werte aus `primitives.tokens.json`.
+6. **Erzeugen, nicht ablegen:** `node src/cli.ts render <app>` in `apps/markenwerk`,
+   danach die erzeugten Dateien ins Projekt kopieren.
+7. **Nachweis bei Änderungen:** frischer Lauf in einem leeren Verzeichnis,
+   `sha256sum` gegen die Dateien im Projekt.
+
+## 9. Projektspezifisch
+
+- **Name, Zweck, Zielgruppe:** sprechwerk (Arbeitstitel) — Sprach- und
+  Texträume für Vereine; Leute, die heute TeamSpeak oder Discord nutzen, und ein
+  Betreiber, der selbst hostet (Docker, ein Volume, ein UDP-Port).
+- **Abweichende Befehle:** Oberfläche ist Tauri 2 + Vue (`ui/`, Port 1423) im
+  Crate `crates/desktop` (eigene `[workspace]`, deshalb eigener Aufruf).
+  Server: `crates/server` (`sprechwerk`), Referenzclient: `crates/cli`.
 - **Besonderheiten:**
-  * Sprache läuft als QUIC-Datagramm, Steuerung und Text als Strom — **nie**
-    Dateien über die Sprachverbindung.
-  * Der Sprachkopf ist 4 Byte; der Raum steht **nicht** darin, sondern kommt aus
-    dem Sitzungszustand des Servers.
-  * Keine Konten: die Kennung ist ein Ed25519-Schlüsselpaar, der Server fordert
-    bei jeder Verbindung einen Beweis an. Export/Import der Schlüsseldatei ist
-    der Gerätewechsel.
-  * Das Zertifikat ist selbst signiert; der Fingerabdruck wird beim ersten
-    Verbinden bestätigt (TOFU) — siehe `docs/adr/0002-verschluesselung.md`.
+  * Sprache läuft als QUIC-Datagramm (4 Byte Kopf: Version, Codec, Folge),
+    Steuerung und Text als Strom — **nie** Dateien über die Sprachverbindung.
+  * Der Raum steht **nicht** im Sprachkopf, sondern im Sitzungszustand des
+    Servers. Damit ist Umleiten in fremde Räume unmöglich.
+  * Keine Konten: die Kennung ist ein Ed25519-Schlüsselpaar; der Server fordert
+    je Verbindung einen Beweis an. Gerätewechsel = Schlüsseldatei mitnehmen.
+  * Zertifikat selbst signiert, Fingerabdruck beim ersten Verbinden bestätigen
+    (TOFU) — `docs/adr/0002-verschluesselung.md`.
+  * Audio braucht Systempakete (`alsa-lib`, `cmake` für gebündeltes Opus), siehe
+    `docs/AUDIO.md`; das Merkmal `audio` ist deshalb nicht voreingestellt.
 - **Kontakt/Issues:** https://gitea.weppelmann.ddnss.de/patrickweppelmann/sprechwerk
