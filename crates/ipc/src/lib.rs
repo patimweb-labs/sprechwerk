@@ -62,6 +62,10 @@ pub struct Mitglied {
     pub raum: Option<RoomId>,
     /// Spricht gerade (Sprachrahmen in den letzten 400 ms).
     pub spricht: bool,
+    /// Vom Server stummgeschaltet (Mikrofon).
+    pub stumm: bool,
+    /// Vom Server taubgeschaltet (Wiedergabe).
+    pub taub: bool,
     /// Bin ich das?
     pub ich: bool,
 }
@@ -195,6 +199,34 @@ pub enum Befehl {
     RolleSetzen {
         mitglied: MemberId,
         rolle: Role,
+    },
+    /// Mikrofon (`taub = false`) oder Wiedergabe (`taub = true`) stummschalten.
+    Stummschalten {
+        mitglied: MemberId,
+        #[serde(default)]
+        taub: bool,
+        an: bool,
+    },
+    /// Ein Mitglied in einen anderen Raum verschieben.
+    Verschieben {
+        mitglied: MemberId,
+        raum: RoomId,
+    },
+    /// Ein Mitglied aus seinem Raum werfen (zurück in den Wurzelraum).
+    AusRaumWerfen {
+        mitglied: MemberId,
+    },
+    /// Ein Mitglied vom Server trennen (Rauswurf).
+    MitgliedTrennen {
+        mitglied: MemberId,
+        #[serde(default)]
+        grund: String,
+    },
+    /// Ein Mitglied sperren und trennen.
+    Sperren {
+        mitglied: MemberId,
+        #[serde(default)]
+        grund: String,
     },
     Protokoll {
         ab: usize,

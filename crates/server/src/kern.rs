@@ -146,6 +146,8 @@ impl Kern {
             rolle: m.rolle,
             raum: m.raum,
             spricht,
+            stumm: m.stumm,
+            taub: m.taub,
         })
     }
 
@@ -402,6 +404,212 @@ impl Kern {
                         sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
                         sprechwerk_domain::Error::RaumNichtLeer => Fehlercode::UngueltigeAnfrage,
                         _ => Fehlercode::Unbekannt,
+                    })],
+                }
+            }
+
+            ClientFrame::Stummschalten { mitglied, taub, an } => {
+                match self.state.stummschalten(ich, mitglied, taub, an, jetzt) {
+                    Ok(()) => {
+                        if let Some(a) = self.ansicht(mitglied) {
+                            self.rundruf(
+                                None,
+                                None,
+                                ServerFrame::MitgliedGeaendert {
+                                    mitglied: a.clone(),
+                                },
+                            );
+                            let _ = self.speichern();
+                            vec![ServerFrame::MitgliedGeaendert { mitglied: a }]
+                        } else {
+                            vec![ServerFrame::Ok]
+                        }
+                    }
+                    Err(e) => vec![Kern::fehler(match e {
+                        sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                        _ => Fehlercode::Unbekannt,
+                    })],
+                }
+            }
+
+            ClientFrame::Verschieben { mitglied, raum } => {
+                let alt = self.state.mitglied(mitglied).and_then(|m| m.raum);
+                match self.state.verschieben(ich, mitglied, raum, jetzt) {
+                    Ok(()) => {
+                        let mut rahmen = Vec::new();
+                        if let Some(a) = self.ansicht(mitglied) {
+                            rahmen.push(ServerFrame::Anwesenheit {
+                                raum,
+                                mitglied: a.clone(),
+                                anwesend: true,
+                            });
+                            self.rundruf(
+                                None,
+                                None,
+                                ServerFrame::MitgliedGeaendert {
+                                    mitglied: a.clone(),
+                                },
+                            );
+                            if let Some(alt) = alt {
+                                self.rundruf(
+                                    None,
+                                    Some(alt),
+                                    ServerFrame::Anwesenheit {
+                                        raum: alt,
+                                        mitglied: a.clone(),
+                                        anwesend: false,
+                                    },
+                                );
+                            }
+                        }
+                        let raeume = self.raeume();
+                        self.rundruf(
+                            None,
+                            None,
+                            ServerFrame::Raeume {
+                                raeume: raeume.clone(),
+                            },
+                        );
+                        let _ = self.speichern();
+                        rahmen.push(ServerFrame::Raeume { raeume });
+                        rahmen
+                    }
+                    Err(e) => vec![Kern::fehler(match e {
+                        sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                        sprechwerk_domain::Error::RaumUnbekannt => Fehlercode::Unbekannt,
+                        _ => Fehlercode::UngueltigeAnfrage,
+                    })],
+                }
+            }
+
+            ClientFrame::AusRaumWerfen { mitglied } => {
+                let alt = self.state.mitglied(mitglied).and_then(|m| m.raum);
+                match self.state.aus_raum_werfen(ich, mitglied, jetzt) {
+                    Ok(()) => {
+                        let mut rahmen = Vec::new();
+                        if let Some(a) = self.ansicht(mitglied) {
+                            if let Some(alt) = alt {
+                                self.rundruf(
+                                    None,
+                                    Some(alt),
+                                    ServerFrame::Anwesenheit {
+                                        raum: alt,
+                                        mitglied: a.clone(),
+                                        anwesend: false,
+                                    },
+                                );
+                            }
+                            rahmen.push(ServerFrame::MitgliedGeaendert { mitglied: a });
+                        }
+                        let raeume = self.raeume();
+                        self.rundruf(
+                            None,
+                            None,
+                            ServerFrame::Raeume {
+                                raeume: raeume.clone(),
+                            },
+                        );
+                        let _ = self.speichern();
+                        rahmen.push(ServerFrame::Raeume { raeume });
+                        rahmen
+                    }
+                    Err(e) => vec![Kern::fehler(match e {
+                        sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                        _ => Fehlercode::Unbekannt,
+                    })],
+                }
+            }
+
+            ClientFrame::Trennen { mitglied, grund } => {
+                let (darf, mein_name) = self
+                    .state
+                    .mitglied(ich)
+                    .map(|m| (self.state.darf_eingreifen(ich), m.name.clone()))
+                    .unwrap_or((false, String::new()));
+                if !darf {
+                    self.state.notiere(
+                        Some(ich),
+                        &mein_name,
+                        "getrennt",
+                        &mitglied.text(),
+                        "abgelehnt: Recht fehlt",
+                        jetzt,
+                    );
+                    return vec![Kern::fehler(Fehlercode::KeinRecht)];
+                }
+                let ziel_name = self
+                    .state
+                    .mitglied(mitglied)
+                    .map(|m| m.name.clone())
+                    .unwrap_or_default();
+                self.state.notiere(
+                    Some(ich),
+                    &mein_name,
+                    "getrennt",
+                    &format!("{} ({})", ziel_name, mitglied),
+                    if grund.is_empty() {
+                        "ohne Grund"
+                    } else {
+                        &grund
+                    },
+                    jetzt,
+                );
+                let _ = self.speichern();
+                if let Some(t) = self.teilnehmer.remove(&mitglied) {
+                    t.conn.close(2u32.into(), b"getrennt");
+                }
+                self.rundruf(
+                    None,
+                    None,
+                    ServerFrame::MitgliedGeaendert {
+                        mitglied: Mitgliedsansicht {
+                            id: mitglied,
+                            name: ziel_name,
+                            rolle: sprechwerk_domain::Role::Gast,
+                            raum: None,
+                            spricht: false,
+                            stumm: false,
+                            taub: false,
+                        },
+                    },
+                );
+                vec![ServerFrame::Ok]
+            }
+
+            ClientFrame::MitgliedSperren { mitglied, grund } => {
+                let (darf, mein_name) = self
+                    .state
+                    .mitglied(ich)
+                    .map(|m| (self.state.darf_eingreifen(ich), m.name.clone()))
+                    .unwrap_or((false, String::new()));
+                let schluessel = self.state.mitglied(mitglied).map(|m| m.schluessel.clone());
+                let ziel_name = self
+                    .state
+                    .mitglied(mitglied)
+                    .map(|m| m.name.clone())
+                    .unwrap_or_default();
+                if !darf || schluessel.is_none() {
+                    self.state.notiere(
+                        Some(ich),
+                        &mein_name,
+                        "gesperrt",
+                        &ziel_name,
+                        "abgelehnt",
+                        jetzt,
+                    );
+                    return vec![Kern::fehler(Fehlercode::KeinRecht)];
+                }
+                match self.state.sperren(ich, schluessel, None, &grund, jetzt) {
+                    Ok(()) => {
+                        let _ = self.speichern();
+                        if let Some(t) = self.teilnehmer.remove(&mitglied) {
+                            t.conn.close(3u32.into(), b"gesperrt");
+                        }
+                        vec![ServerFrame::Ok]
+                    }
+                    Err(e) => vec![Kern::fehler(match e {
+                        sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                        _ => Fehlercode::UngueltigeEingabe,
                     })],
                 }
             }

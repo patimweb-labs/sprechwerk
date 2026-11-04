@@ -157,6 +157,86 @@ pub async fn rolle_setzen(
     }
 }
 
+/// Schaltet Mikrofon oder Wiedergabe eines Mitglieds stumm (serverseitig).
+#[tauri::command]
+pub async fn stummschalten(
+    anwendung: State<'_, Arc<Anwendung>>,
+    mitglied: sprechwerk_domain::MemberId,
+    taub: bool,
+    an: bool,
+) -> Result<(), String> {
+    match anwendung
+        .befehl(sprechwerk_ipc::Befehl::Stummschalten { mitglied, taub, an })
+        .await
+    {
+        Antwort::Fehler { text } => Err(text),
+        _ => Ok(()),
+    }
+}
+
+/// Verschiebt ein Mitglied in einen anderen Raum.
+#[tauri::command]
+pub async fn verschieben(
+    anwendung: State<'_, Arc<Anwendung>>,
+    mitglied: sprechwerk_domain::MemberId,
+    raum: sprechwerk_domain::RoomId,
+) -> Result<(), String> {
+    match anwendung
+        .befehl(sprechwerk_ipc::Befehl::Verschieben { mitglied, raum })
+        .await
+    {
+        Antwort::Fehler { text } => Err(text),
+        _ => Ok(()),
+    }
+}
+
+/// Wirft ein Mitglied aus seinem Raum (zurück in den Wurzelraum).
+#[tauri::command]
+pub async fn aus_raum_werfen(
+    anwendung: State<'_, Arc<Anwendung>>,
+    mitglied: sprechwerk_domain::MemberId,
+) -> Result<(), String> {
+    match anwendung
+        .befehl(sprechwerk_ipc::Befehl::AusRaumWerfen { mitglied })
+        .await
+    {
+        Antwort::Fehler { text } => Err(text),
+        _ => Ok(()),
+    }
+}
+
+/// Trennt ein Mitglied vom Server (Rauswurf).
+#[tauri::command]
+pub async fn trennen_mitglied(
+    anwendung: State<'_, Arc<Anwendung>>,
+    mitglied: sprechwerk_domain::MemberId,
+    grund: String,
+) -> Result<(), String> {
+    match anwendung
+        .befehl(sprechwerk_ipc::Befehl::MitgliedTrennen { mitglied, grund })
+        .await
+    {
+        Antwort::Fehler { text } => Err(text),
+        _ => Ok(()),
+    }
+}
+
+/// Sperrt ein Mitglied und trennt es.
+#[tauri::command]
+pub async fn sperren(
+    anwendung: State<'_, Arc<Anwendung>>,
+    mitglied: sprechwerk_domain::MemberId,
+    grund: String,
+) -> Result<(), String> {
+    match anwendung
+        .befehl(sprechwerk_ipc::Befehl::Sperren { mitglied, grund })
+        .await
+    {
+        Antwort::Fehler { text } => Err(text),
+        _ => Ok(()),
+    }
+}
+
 /// Fragt das Prüfprotokoll an.
 #[tauri::command]
 pub async fn protokoll(

@@ -2,7 +2,8 @@
 // keine Ansicht hält eigene Kopien der Wahrheit (AGENTS.md §2.1).
 import { computed, reactive, ref } from "vue";
 import { listen } from "@tauri-apps/api/event";
-import { api, type Einstellungen, type Zustand } from "./api";
+import { api, istDummy, type Einstellungen, type Zustand } from "./api";
+import { abonnieren } from "./mock";
 
 export const modell = reactive<Zustand>({
   verbindung: null,
@@ -92,6 +93,11 @@ export async function verbindeEreignisse() {
   // werden — eine stumme Ablehnung sieht aus wie ein leerer Bildschirm.
   await ladeZustand();
   try {
+    if (istDummy) {
+      // Klickdummy: der Mock meldet Änderungen selbst.
+      abonnieren((stand) => Object.assign(modell, stand));
+      return;
+    }
     await listen<Zustand>("zustand", (ereignis) => {
       Object.assign(modell, ereignis.payload);
     });
@@ -142,6 +148,36 @@ export async function sende(text: string) {
 
 export async function setzeRolle(mitglied: string, rolle: string) {
   await api.rolleSetzen(mitglied, rolle as never);
+}
+
+/** Darf ich in Räume und Personen eingreifen? (Sichtbarkeit folgt aus dem Modell) */
+export const darfEingreifen = computed(() =>
+  ["administrator", "moderator"].includes(meineRolle.value ?? ""),
+);
+
+/** Server-Stummschaltung (Mikrofon oder Ton). */
+export async function stummschalten(mitglied: string, taub: boolean, an: boolean) {
+  await api.stummschalten(mitglied, taub, an);
+}
+
+export async function verschieben(mitglied: string, raum: string) {
+  await api.verschieben(mitglied, raum);
+}
+
+export async function ausRaumWerfen(mitglied: string) {
+  await api.ausRaumWerfen(mitglied);
+}
+
+export async function trenneMitglied(mitglied: string, grund: string) {
+  await api.trenneMitglied(mitglied, grund);
+}
+
+export async function sperreMitglied(mitglied: string, grund: string) {
+  await api.sperreMitglied(mitglied, grund);
+}
+
+export async function raumUmbenennen(raum: string, name: string) {
+  await api.raumUmbenennen(raum, name);
 }
 
 /** „3 anwesend · 12 Nachrichten" für die Kopfzeile des Raums. */

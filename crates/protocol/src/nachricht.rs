@@ -62,6 +62,12 @@ pub struct Mitgliedsansicht {
     pub raum: Option<RoomId>,
     /// Spricht gerade (Sprachrahmen in den letzten 400 ms).
     pub spricht: bool,
+    /// Vom Server stummgeschaltet (Mikrofon).
+    #[serde(default)]
+    pub stumm: bool,
+    /// Vom Server taubgeschaltet (Wiedergabe).
+    #[serde(default)]
+    pub taub: bool,
 }
 
 /// Kopf eines Sprach-Datagramms.
@@ -171,6 +177,36 @@ pub enum ClientFrame {
     },
     /// Raum löschen.
     RaumLoeschen { raum: RoomId },
+    /// Mikrofon oder Wiedergabe eines Mitglieds serverseitig stummschalten.
+    Stummschalten {
+        mitglied: sprechwerk_domain::MemberId,
+        /// `true` = Wiedergabe (taub), `false` = Mikrofon.
+        #[serde(default)]
+        taub: bool,
+        an: bool,
+    },
+    /// Ein Mitglied in einen anderen Raum verschieben.
+    Verschieben {
+        mitglied: sprechwerk_domain::MemberId,
+        raum: RoomId,
+    },
+    /// Ein Mitglied aus seinem Raum werfen (zurück in den Wurzelraum).
+    AusRaumWerfen {
+        mitglied: sprechwerk_domain::MemberId,
+    },
+    /// Ein Mitglied vom Server trennen (rauswerfen).
+    Trennen {
+        mitglied: sprechwerk_domain::MemberId,
+        #[serde(default)]
+        grund: String,
+    },
+    /// Ein Mitglied sperren (Kennung und, wenn bekannt, nichts weiter) und
+    /// trennen.
+    MitgliedSperren {
+        mitglied: sprechwerk_domain::MemberId,
+        #[serde(default)]
+        grund: String,
+    },
     /// Rolle setzen.
     RolleSetzen {
         mitglied: sprechwerk_domain::MemberId,

@@ -326,6 +326,21 @@ async fn lauf<F>(
                     Befehl::RolleSetzen { mitglied, rolle } => {
                         sprechwerk_protocol::ClientFrame::RolleSetzen { mitglied, rolle }
                     }
+                    Befehl::Stummschalten { mitglied, taub, an } => {
+                        sprechwerk_protocol::ClientFrame::Stummschalten { mitglied, taub, an }
+                    }
+                    Befehl::Verschieben { mitglied, raum } => {
+                        sprechwerk_protocol::ClientFrame::Verschieben { mitglied, raum }
+                    }
+                    Befehl::AusRaumWerfen { mitglied } => {
+                        sprechwerk_protocol::ClientFrame::AusRaumWerfen { mitglied }
+                    }
+                    Befehl::MitgliedTrennen { mitglied, grund } => {
+                        sprechwerk_protocol::ClientFrame::Trennen { mitglied, grund }
+                    }
+                    Befehl::Sperren { mitglied, grund } => {
+                        sprechwerk_protocol::ClientFrame::MitgliedSperren { mitglied, grund }
+                    }
                     Befehl::Protokoll { ab, anzahl } => {
                         sprechwerk_protocol::ClientFrame::Protokoll { ab, anzahl }
                     }

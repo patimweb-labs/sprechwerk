@@ -11,4 +11,17 @@ import { ladeEinstellungen, verbindeEreignisse } from "./store";
 ladeEinstellungen();
 verbindeEreignisse();
 
-createApp(App).mount("#app");
+// Fehler sichtbar machen: im Fenster gibt es keine Konsole, die man öffnen
+// könnte. Ein Renderfehler soll nicht als „Klick tut nichts" enden.
+window.addEventListener("error", (ereignis) => {
+  document.title = `FEHLER: ${ereignis.message}`;
+});
+window.addEventListener("unhandledrejection", (ereignis) => {
+  document.title = `FEHLER: ${String(ereignis.reason)}`;
+});
+
+const app = createApp(App);
+app.config.errorHandler = (fehler) => {
+  document.title = `FEHLER: ${String(fehler)}`;
+};
+app.mount("#app");

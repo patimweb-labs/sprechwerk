@@ -58,7 +58,9 @@ CREATE TABLE IF NOT EXISTS mitglieder (
   raum             TEXT,
   raum_seit        INTEGER,
   angelegt_am      INTEGER NOT NULL,
-  zuletzt_gesehen  INTEGER NOT NULL
+  zuletzt_gesehen  INTEGER NOT NULL,
+  stumm            INTEGER NOT NULL DEFAULT 0,
+  taub             INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS nachrichten (
   id              TEXT PRIMARY KEY,
@@ -196,7 +198,7 @@ impl Store {
 
         // Mitglieder
         let mut stmt = self.conn.prepare(
-            "SELECT id, schluessel, name, rolle, raum, raum_seit, angelegt_am, zuletzt_gesehen FROM mitglieder",
+            "SELECT id, schluessel, name, rolle, raum, raum_seit, angelegt_am, zuletzt_gesehen, stumm, taub FROM mitglieder",
         )?;
         let mut zeilen = stmt.query([])?;
         let mut mitglieder = std::collections::BTreeMap::new();
@@ -220,6 +222,8 @@ impl Store {
                     raum_seit: z.get(5)?,
                     angelegt_am: z.get(6)?,
                     zuletzt_gesehen: z.get(7)?,
+                    stumm: z.get::<_, i64>(8)? != 0,
+                    taub: z.get::<_, i64>(9)? != 0,
                 },
             );
         }
@@ -358,11 +362,11 @@ impl Store {
             for m in state.mitglieder.values() {
                 vorhanden.insert(m.id.text());
                 tx.execute(
-                    "INSERT INTO mitglieder (id, schluessel, name, rolle, raum, raum_seit, angelegt_am, zuletzt_gesehen) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
+                    "INSERT INTO mitglieder (id, schluessel, name, rolle, raum, raum_seit, angelegt_am, zuletzt_gesehen, stumm, taub) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) \
                      ON CONFLICT(id) DO UPDATE SET schluessel = excluded.schluessel, name = excluded.name, \
                      rolle = excluded.rolle, raum = excluded.raum, raum_seit = excluded.raum_seit, \
-                     zuletzt_gesehen = excluded.zuletzt_gesehen",
+                     zuletzt_gesehen = excluded.zuletzt_gesehen, stumm = excluded.stumm, taub = excluded.taub",
                     params![
                         m.id.text(),
                         m.schluessel,
@@ -371,7 +375,9 @@ impl Store {
                         m.raum.map(|r| r.text()),
                         m.raum_seit,
                         m.angelegt_am,
-                        m.zuletzt_gesehen
+                        m.zuletzt_gesehen,
+                        m.stumm as i64,
+                        m.taub as i64
                     ],
                 )?;
             }

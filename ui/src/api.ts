@@ -1,6 +1,11 @@
 // Der Vertrag zum Rust-Teil. Jeder Befehl hier hat ein Gegenstück in
 // crates/desktop/src/commands.rs, jeder Typ eines in crates/ipc/src/lib.rs.
+//
+// Läuft die Oberfläche **nicht** in der Fensteranwendung (kein Tauri), wird
+// automatisch der Klickdummy aus `mock.ts` benutzt. Damit lässt sich das
+// Aussehen ohne Server, ohne Soundkarte und ohne Verbindung beurteilen.
 import { invoke } from "@tauri-apps/api/core";
+import { mockApi } from "./mock";
 
 export type Rolle = "administrator" | "moderator" | "mitglied" | "gast";
 
@@ -25,6 +30,8 @@ export interface Mitglied {
   rolle: Rolle;
   raum: string | null;
   spricht: boolean;
+  stumm: boolean;
+  taub: boolean;
   ich: boolean;
 }
 
@@ -72,7 +79,22 @@ export interface Einstellungen {
   vorlauf_ms: number;
 }
 
-export const api = {
+/** Läuft die Oberfläche in der Fensteranwendung (echter Rust-Teil)? */
+export const inFenster =
+  typeof window !== "undefined" &&
+  ("__TAURI_INTERNALS__" in window || (window as unknown as { __TAURI__?: unknown }).__TAURI__ !== undefined);
+
+/** Klickdummy statt echtem Server.
+ *
+ * Drei Wege, absichtlich: im Browser gibt es kein Tauri (also Dummy), beim
+ * Bauen mit `VITE_MOCK=1` wird der Dummy eingebettet, und `?mock=1` schaltet
+ * ihn auch in der Fensteranwendung ein. */
+export const istDummy =
+  import.meta.env.VITE_MOCK === "1" ||
+  !inFenster ||
+  (typeof location !== "undefined" && location.search.includes("mock=1"));
+
+const echtApi = {
   zustand: () => invoke<Zustand>("zustand"),
   verbinden: (server: string, name: string, passwort?: string) =>
     invoke<string>("verbinden", { server, name, passwort: passwort || null }),
@@ -86,8 +108,17 @@ export const api = {
   raumUmbenennen: (raum: string, name: string) => invoke<void>("raum_umbenennen", { raum, name }),
   raumLoeschen: (raum: string) => invoke<void>("raum_loeschen", { raum }),
   rolleSetzen: (mitglied: string, rolle: Rolle) => invoke<void>("rolle_setzen", { mitglied, rolle }),
+  stummschalten: (mitglied: string, taub: boolean, an: boolean) =>
+    invoke<void>("stummschalten", { mitglied, taub, an }),
+  verschieben: (mitglied: string, raum: string) => invoke<void>("verschieben", { mitglied, raum }),
+  ausRaumWerfen: (mitglied: string) => invoke<void>("aus_raum_werfen", { mitglied }),
+  trenneMitglied: (mitglied: string, grund: string) =>
+    invoke<void>("trennen_mitglied", { mitglied, grund }),
+  sperreMitglied: (mitglied: string, grund: string) => invoke<void>("sperren", { mitglied, grund }),
   protokoll: (ab: number, anzahl: number) => invoke<void>("protokoll", { ab, anzahl }),
   einstellungenLesen: () => invoke<Einstellungen>("einstellungen_lesen"),
   einstellungenSpeichern: (einstellungen: Einstellungen) =>
     invoke<void>("einstellungen_speichern", { einstellungen }),
 };
+
+export const api = istDummy ? (mockApi as unknown as typeof echtApi) : echtApi;

@@ -260,6 +260,8 @@ fn mitglied_abbilden(m: Mitgliedsansicht, ich: Option<sprechwerk_domain::MemberI
         rolle: m.rolle,
         raum: m.raum,
         spricht: m.spricht,
+        stumm: m.stumm,
+        taub: m.taub,
         ich: Some(m.id) == ich,
     }
 }
@@ -314,6 +316,8 @@ mod tests {
             rolle: Role::Mitglied,
             raum: None,
             spricht: false,
+            stumm: false,
+            taub: false,
         }
     }
 

@@ -13,6 +13,7 @@ Legende: **✔ gebaut und geprüft** · **◐ entworfen, nicht gebaut** · **○
 | Räume, Rollen, Rechte | ✔ | `SPEC.md` §5, `crates/domain` |
 | Text (dauerhaft, Verlauf, Löschen) | ✔ | `SPEC.md` §6 |
 | Prüfprotokoll | ✔ | `SPEC.md` §8 |
+| Eingriffe: stumm, taub, verschieben, rauswerfen, trennen, sperren | ✔ | `docs/adr/0008-eingriffe-und-kontextmenues.md` |
 | Sprache (verteilen, Recht, Kopf) | ✔ | `docs/adr/0003`, `crates/server` |
 | Vorlauf, Jitter-Puffer, Sprechtaste | ✔ | `crates/adapters/src/sprechpfad.rs` |
 | Geräte und Opus | ◐ | `docs/adr/0004-audiopfad.md`, `crates/audio` |

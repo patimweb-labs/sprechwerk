@@ -62,6 +62,14 @@ pub struct Member {
     pub raum_seit: Option<i64>,
     pub angelegt_am: i64,
     pub zuletzt_gesehen: i64,
+    /// Vom Server stummgeschaltet (Mikrofon): der Betreffende kann nicht
+    /// sprechen, bis ein Moderator es aufhebt.
+    #[serde(default)]
+    pub stumm: bool,
+    /// Vom Server taubgeschaltet (Wiedergabe): der Betreffende hört nichts.
+    /// Taub schließt stumm mit ein, aber nicht umgekehrt.
+    #[serde(default)]
+    pub taub: bool,
 }
 
 /// Ein Raum im Baum.
@@ -297,6 +305,8 @@ impl State {
                 raum_seit: None,
                 angelegt_am: jetzt_ms,
                 zuletzt_gesehen: jetzt_ms,
+                stumm: false,
+                taub: false,
             },
         );
         self.protokolliere(
@@ -938,6 +948,208 @@ impl State {
         Ok(())
     }
 
+    /// Schreibt einen Protokolleintrag für ein Ereignis, das den Zustand nicht
+    /// ändert (etwa: jemand wurde vom Server getrennt).
+    ///
+    /// Prüft kein Recht — der Aufrufer hat es bereits geprüft. Damit landet
+    /// auch ein Rauswurf im Protokoll, obwohl er nur die Verbindung betrifft.
+    pub fn notiere(
+        &mut self,
+        wer: Option<MemberId>,
+        name: &str,
+        aktion: &str,
+        ziel: &str,
+        ergebnis: &str,
+        jetzt_ms: i64,
+    ) {
+        let ergebnis = ergebnis.to_string();
+        self.protokolliere(jetzt_ms, wer, name, aktion, ziel, None, None, ergebnis);
+    }
+
+    /// Darf dieses Mitglied Eingriffe an Personen vornehmen?
+    pub fn darf_eingreifen(&self, wer: MemberId) -> bool {
+        self.mitglieder
+            .get(&wer)
+            .map(|m| darf(m.rolle, Capability::PersonEingreifen))
+            .unwrap_or(false)
+    }
+
+    // ---- Eingriffe an Personen -----------------------------------------
+
+    /// Schaltet Mikrofon oder Wiedergabe eines Mitglieds serverseitig stumm.
+    ///
+    /// Der Zustand liegt **beim Server**, damit er den Sprachpfad sperren kann;
+    /// ein Client, der sich selbst wieder einschaltet, kommt nicht durch.
+    pub fn stummschalten(
+        &mut self,
+        wer: MemberId,
+        ziel: MemberId,
+        taub: bool,
+        an: bool,
+        jetzt_ms: i64,
+    ) -> Result<(), Error> {
+        let aktion = if taub {
+            if an {
+                "taubgeschaltet"
+            } else {
+                "hoeren_freigegeben"
+            }
+        } else if an {
+            "stummgeschaltet"
+        } else {
+            "sprechen_freigegeben"
+        };
+        let (handelnder_name, ergebnis) = self.vorpruefung_person(
+            wer,
+            Capability::PersonEingreifen,
+            jetzt_ms,
+            aktion,
+            ziel.text(),
+        );
+        ergebnis?;
+        let vorher;
+        {
+            let m = self
+                .mitglieder
+                .get_mut(&ziel)
+                .ok_or(Error::MitgliedUnbekannt)?;
+            vorher = if taub { m.taub } else { m.stumm };
+            if taub {
+                m.taub = an;
+                // Taub schließt stumm ein: wer nichts hört, soll auch nicht
+                // sprechen — sonst redet er ins Leere.
+                if an {
+                    m.stumm = true;
+                }
+            } else {
+                m.stumm = an;
+                if !an {
+                    // Sprechen wieder frei heißt: nicht mehr taub.
+                    m.taub = false;
+                }
+            }
+        }
+        self.protokolliere(
+            jetzt_ms,
+            Some(wer),
+            &handelnder_name,
+            aktion,
+            ziel.text(),
+            Some(if vorher { "an" } else { "aus" }.to_string()),
+            Some(if an { "an" } else { "aus" }.to_string()),
+            "erlaubt".into(),
+        );
+        Ok(())
+    }
+
+    /// Taubschalten als Kurzform (Wiedergabe stumm).
+    pub fn taubschalten(
+        &mut self,
+        wer: MemberId,
+        ziel: MemberId,
+        an: bool,
+        jetzt_ms: i64,
+    ) -> Result<(), Error> {
+        self.stummschalten(wer, ziel, true, an, jetzt_ms)
+    }
+
+    /// Verschiebt ein Mitglied in einen anderen Raum.
+    pub fn verschieben(
+        &mut self,
+        wer: MemberId,
+        ziel: MemberId,
+        raum: RoomId,
+        jetzt_ms: i64,
+    ) -> Result<(), Error> {
+        let (handelnder_name, ergebnis) = self.vorpruefung_person(
+            wer,
+            Capability::PersonEingreifen,
+            jetzt_ms,
+            "verschoben",
+            ziel.text(),
+        );
+        ergebnis?;
+        if !self.raeume.contains_key(&raum) {
+            self.protokolliere(
+                jetzt_ms,
+                Some(wer),
+                &handelnder_name,
+                "verschoben",
+                ziel.text(),
+                None,
+                None,
+                "abgelehnt: Raum unbekannt".into(),
+            );
+            return Err(Error::RaumUnbekannt);
+        }
+        if !self.mitglieder.contains_key(&ziel) {
+            return Err(Error::MitgliedUnbekannt);
+        }
+        let alt;
+        {
+            let m = self.mitglieder.get_mut(&ziel).expect("vorher geprüft");
+            alt = m.raum.map(|r| r.text());
+            m.raum = Some(raum);
+            m.raum_seit = Some(jetzt_ms);
+        }
+        self.protokolliere(
+            jetzt_ms,
+            Some(wer),
+            &handelnder_name,
+            "verschoben",
+            ziel.text(),
+            alt,
+            Some(raum.text()),
+            "erlaubt".into(),
+        );
+        Ok(())
+    }
+
+    /// Wirft ein Mitglied aus seinem Raum (zurück in den Wurzelraum).
+    ///
+    /// Kein Rauswurf vom Server — das ist [`State::sperren`] bzw. eine Trennung
+    /// durch den Verbindungsbetreuer. Hier geht es nur um den Raum.
+    pub fn aus_raum_werfen(
+        &mut self,
+        wer: MemberId,
+        ziel: MemberId,
+        jetzt_ms: i64,
+    ) -> Result<(), Error> {
+        let (handelnder_name, ergebnis) = self.vorpruefung_person(
+            wer,
+            Capability::PersonEingreifen,
+            jetzt_ms,
+            "aus_raum_geworfen",
+            ziel.text(),
+        );
+        ergebnis?;
+        let wurzel = self.wurzel_raum();
+        let alt;
+        {
+            let m = self
+                .mitglieder
+                .get_mut(&ziel)
+                .ok_or(Error::MitgliedUnbekannt)?;
+            alt = m.raum.map(|r| r.text());
+            if alt.is_none() {
+                return Err(Error::RaumUnbekannt);
+            }
+            m.raum = wurzel;
+            m.raum_seit = Some(jetzt_ms);
+        }
+        self.protokolliere(
+            jetzt_ms,
+            Some(wer),
+            &handelnder_name,
+            "aus_raum_geworfen",
+            ziel.text(),
+            alt,
+            wurzel.map(|r| r.text()),
+            "erlaubt".into(),
+        );
+        Ok(())
+    }
+
     // ---- Sperren -------------------------------------------------------
 
     /// Verhängt eine Sperre über Kennung und/oder Adresse.
@@ -1344,6 +1556,63 @@ mod tests {
         }
         let namen: Vec<&str> = s.anwesende(raum).iter().map(|m| m.name.as_str()).collect();
         assert_eq!(namen, vec!["Ada", "anton", "Berta"]);
+    }
+
+    #[test]
+    fn stummschalten_braucht_eingriffsrecht() {
+        let mut s = zustand();
+        let a = admin(&mut s);
+        let b = s.anmelden("k2", "Bosse", 1_001).unwrap();
+        let c = s.anmelden("k3", "Mira", 1_002).unwrap();
+        // Mitglied darf nicht.
+        assert_eq!(
+            s.stummschalten(b, c, false, true, 1_003),
+            Err(Error::RechtFehlt(Capability::PersonEingreifen))
+        );
+        // Administrator darf.
+        s.stummschalten(a, c, false, true, 1_004).unwrap();
+        assert!(s.mitglied(c).unwrap().stumm);
+        assert!(!s.mitglied(c).unwrap().taub, "stumm macht nicht taub");
+        s.stummschalten(a, c, false, false, 1_005).unwrap();
+        assert!(!s.mitglied(c).unwrap().stumm);
+    }
+
+    #[test]
+    fn taub_schliesst_stumm_ein() {
+        let mut s = zustand();
+        let a = admin(&mut s);
+        let b = s.anmelden("k2", "Bosse", 1_001).unwrap();
+        s.taubschalten(a, b, true, 1_002).unwrap();
+        let m = s.mitglied(b).unwrap();
+        assert!(m.taub && m.stumm, "wer nichts hört, spricht auch nicht");
+        // Sprechen freigeben hebt beides auf.
+        s.stummschalten(a, b, false, false, 1_003).unwrap();
+        let m = s.mitglied(b).unwrap();
+        assert!(!m.stumm && !m.taub);
+    }
+
+    #[test]
+    fn verschieben_setzt_raum_und_protokolliert() {
+        let mut s = zustand();
+        let a = admin(&mut s);
+        let b = s.anmelden("k2", "Bosse", 1_001).unwrap();
+        let raum = s.raum_anlegen(a, None, "Vorstand", 1_002).unwrap();
+        s.betreten(b, s.wurzel_raum().unwrap(), 1_003).unwrap();
+        s.verschieben(a, b, raum, 1_004).unwrap();
+        assert_eq!(s.mitglied(b).unwrap().raum, Some(raum));
+        let eintrag = s.protokoll.last().unwrap();
+        assert_eq!(eintrag.aktion, "verschoben");
+    }
+
+    #[test]
+    fn aus_raum_werfen_setzt_in_die_wurzel() {
+        let mut s = zustand();
+        let a = admin(&mut s);
+        let b = s.anmelden("k2", "Bosse", 1_001).unwrap();
+        let raum = s.raum_anlegen(a, None, "Vorstand", 1_002).unwrap();
+        s.betreten(b, raum, 1_003).unwrap();
+        s.aus_raum_werfen(a, b, 1_004).unwrap();
+        assert_eq!(s.mitglied(b).unwrap().raum, s.wurzel_raum());
     }
 
     #[test]
