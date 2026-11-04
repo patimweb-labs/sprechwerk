@@ -83,7 +83,7 @@ async function entfernen() {
         <p>Gemerkte Server. Ein Klick verbindet — kein Suchen nach der Adresse.</p>
       </div>
       <UI.WpButton
-        label="Server merken"
+        label="Server hinzufügen"
         size="sm"
         variant="secondary"
         :icon="IconPlus"
@@ -141,9 +141,9 @@ async function entfernen() {
 
     <UI.WpDialog
       :open="zeigeHinzufuegen"
-      title="Server merken"
+      title="Server hinzufügen"
       description="Name ist frei wählbar; die Adresse ist Host und Port, etwa verein.example:7443."
-      confirm-label="Merken"
+      confirm-label="Hinzufügen"
       @confirm="hinzufuegen"
       @cancel="zeigeHinzufuegen = false"
     >
