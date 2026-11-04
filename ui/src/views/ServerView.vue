@@ -200,8 +200,7 @@ async function entfernen() {
 .inhalt {
   flex: 1;
   overflow-y: auto;
-  padding: var(--wp-space-4);
-  max-width: 62rem;
+  padding: var(--wp-space-4) var(--wp-space-4) var(--wp-space-5);
   display: flex;
   flex-direction: column;
   gap: var(--wp-space-3);
@@ -216,7 +215,7 @@ async function entfernen() {
 .tabelle__kopf,
 .zeile {
   display: grid;
-  grid-template-columns: minmax(12rem, 1fr) minmax(14rem, 18rem) auto;
+  grid-template-columns: minmax(12rem, 1fr) minmax(14rem, 1fr) auto;
   align-items: center;
   gap: var(--wp-space-3);
   padding: var(--wp-space-2) var(--wp-space-3);
@@ -291,7 +290,6 @@ async function entfernen() {
   margin: 0;
   font-size: var(--wp-font-size-xs);
   color: var(--wp-color-text-faint);
-  max-width: 48rem;
 }
 
 .meldung {

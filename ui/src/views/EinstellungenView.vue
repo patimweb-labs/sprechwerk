@@ -44,21 +44,11 @@ async function thema(wert: string) {
     <UI.WpToolbar title="Einstellungen" subtitle="Was dieses Fenster betrifft — der Rest steht in der Serverkonfiguration." />
 
     <div class="inhalt">
-      <UI.WpCard title="Verbindung">
+      <UI.WpCard title="Ich" subtitle="Wie du auftrittst — der Server selbst steht in der Serverliste.">
         <div class="felder">
-          <UI.WpFormField label="Server">
-            <template #default="{ id }">
-              <UI.WpInput :id="id" v-model="einstellungen.server" placeholder="127.0.0.1:7443" />
-            </template>
-          </UI.WpFormField>
-          <UI.WpFormField label="Name">
+          <UI.WpFormField label="Name" hint="Der Name, mit dem du dich verbindest.">
             <template #default="{ id }">
               <UI.WpInput :id="id" v-model="einstellungen.name" placeholder="Wie heißt du?" />
-            </template>
-          </UI.WpFormField>
-          <UI.WpFormField label="Serverpasswort" hint="Nur wenn der Server eines verlangt.">
-            <template #default="{ id }">
-              <UI.WpInput :id="id" v-model="einstellungen.passwort" type="password" />
             </template>
           </UI.WpFormField>
           <UI.WpFactList v-if="fakten.length" :facts="fakten" />
@@ -139,11 +129,23 @@ async function thema(wert: string) {
 .inhalt {
   flex: 1;
   overflow-y: auto;
-  padding: var(--wp-space-3) var(--wp-space-4);
+  padding: var(--wp-space-3) var(--wp-space-4) var(--wp-space-5);
   display: flex;
   flex-direction: column;
   gap: var(--wp-space-3);
-  max-width: 46rem;
+}
+
+/* Zwei Spalten ab mittlerer Breite: Karten dehnen sich über die volle Fläche,
+   werden aber nicht zu breiten Textwüsten. */
+@media (min-width: 900px) {
+  .inhalt {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr));
+    align-items: start;
+  }
+  .inhalt > .aktionen {
+    grid-column: 1 / -1;
+  }
 }
 
 .felder {
