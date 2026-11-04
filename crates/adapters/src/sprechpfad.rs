@@ -61,10 +61,7 @@ impl Vorlauf {
         if self.puffer.len() == self.kapazitaet {
             self.puffer.remove(0);
         }
-        self.puffer.push(Rahmen {
-            folge,
-            daten,
-        });
+        self.puffer.push(Rahmen { folge, daten });
         folge
     }
 
@@ -152,7 +149,8 @@ impl JitterPuffer {
         // Erst ausgeben, wenn der Puffer tief genug ist oder eine Lücke
         // erkennbar ist (dann nicht ewig warten).
         let tief_genug = self.offen.len() >= self.tiefe;
-        let luecke = !self.offen.contains_key(&naechste) && self.offen.keys().next() > Some(&naechste);
+        let luecke =
+            !self.offen.contains_key(&naechste) && self.offen.keys().next() > Some(&naechste);
         if !tief_genug && !luecke {
             return None;
         }
@@ -360,7 +358,11 @@ mod tests {
             }
         }
         raus.extend(j.leeren().into_iter().map(|r| r.folge));
-        assert_eq!(raus, vec![1, 3], "die Lücke wird übersprungen, nicht blockiert");
+        assert_eq!(
+            raus,
+            vec![1, 3],
+            "die Lücke wird übersprungen, nicht blockiert"
+        );
         let (ausgegeben, _, luecken) = j.zaehler();
         assert_eq!(ausgegeben, 2);
         assert_eq!(luecken, 1);
@@ -384,7 +386,10 @@ mod tests {
     fn jitter_puffer_verwirft_doppelte() {
         let mut j = JitterPuffer::neu(1);
         assert!(j.aufnehmen(1, vec![1]));
-        assert!(!j.aufnehmen(1, vec![9]), "derselbe Rahmen zählt nicht zweimal");
+        assert!(
+            !j.aufnehmen(1, vec![9]),
+            "derselbe Rahmen zählt nicht zweimal"
+        );
         let r = j.ausgeben().expect("erster Rahmen");
         assert_eq!(r.daten, vec![1], "der erste Inhalt gewinnt");
         assert_eq!(j.zaehler(), (1, 1, 0));

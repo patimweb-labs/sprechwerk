@@ -67,14 +67,14 @@ async function thema(wert: string) {
 
       <UI.WpCard title="Darstellung">
         <div class="felder">
-          <UI.WpFormField label="Farbschema">
+          <div class="feld">
             <UI.WpToggleGroup
               :model-value="einstellungen.thema"
               :options="themen"
               label="Farbschema"
               @update:model-value="thema"
             />
-          </UI.WpFormField>
+          </div>
           <UI.WpFormField label="Sprache">
             <template #default="{ id }">
               <UI.WpSelect :id="id" v-model="einstellungen.sprache" :options="sprachen" />
@@ -150,6 +150,12 @@ async function thema(wert: string) {
   display: flex;
   flex-direction: column;
   gap: var(--wp-space-3);
+}
+
+.feld {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wp-space-1);
 }
 
 .aktionen {
