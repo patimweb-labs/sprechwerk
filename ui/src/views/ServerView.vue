@@ -1,12 +1,15 @@
 <script setup lang="ts">
-// Startseite: gemerkte Server (Favoriten). Von hier verbindet man sich, hier
-// verwaltet man die Liste. Ohne Verbindung ist das der erste Bildschirm.
+// Serverliste: die Startseite. Eine Zeile je Server, gleiche Höhe, gleiche
+// Spalten — kein Karten-Layout, keine Abzeichen, nichts, was unterschiedlich
+// groß wirkt.
 //
-// Kein Hauptweg versteckt: „Verbinden" steht auf jeder Zeile, nicht in einem
-// Menü (Kontextmenüs sind für Nebenwege, siehe ADR 0008).
+// „Gemerkte Server" ist der Normalfall; nur der zuletzt benutzte Eintrag, der
+// nicht gemerkt ist, wird als solcher benannt (kleine Beschriftung, kein
+// Abzeichen). Entfernen liegt im Menü der Zeile — Nebenwege gehören ins Menü,
+// der Hauptweg („Verbinden") steht sichtbar.
 import { computed, ref } from "vue";
 import * as UI from "@weppelmann/components";
-import { IconPlug, IconPlus, IconRefresh, IconTrash } from "@weppelmann/icons";
+import { IconMore, IconPlug, IconPlus } from "@weppelmann/icons";
 import {
   einstellungen,
   favoritEntfernen,
@@ -14,15 +17,15 @@ import {
   laeuft,
   modell,
   verbindeMit,
-  verbunden,
 } from "../store";
 
 const zeigeHinzufuegen = ref(false);
 const neuerName = ref("");
 const neueAdresse = ref("");
 const zeigeEntfernen = ref<string | null>(null);
+/** Welche Zeile hat ihr Menü offen? */
+const offen = ref<string | null>(null);
 
-/** Server, die zur Auswahl stehen: die Favoriten und der zuletzt benutzte. */
 const server = computed(() => {
   const liste = einstellungen.favoriten.map((f) => ({
     name: f.name || f.server,
@@ -35,6 +38,21 @@ const server = computed(() => {
   }
   return liste;
 });
+
+/** Menü einer Zeile: Verbinden, Bearbeiten, Entfernen. */
+function zeilenMenue(s: { server: string; gemerkt: boolean }): UI.MenuItem[] {
+  const punkte: UI.MenuItem[] = [{ id: "connect", label: "Verbinden" }];
+  if (s.gemerkt) {
+    punkte.push({ id: "remove", label: "Aus der Liste entfernen", separatorBefore: true, danger: true });
+  }
+  return punkte;
+}
+
+function zeilenMenueGewaehlt(s: { server: string; gemerkt: boolean }, wahl: string) {
+  offen.value = null;
+  if (wahl === "connect") void verbindeMit(s.server);
+  else if (wahl === "remove") zeigeEntfernen.value = s.server;
+}
 
 async function verbindenMit(adresse: string) {
   await verbindeMit(adresse);
@@ -60,66 +78,63 @@ async function entfernen() {
 <template>
   <div class="ansicht">
     <header class="kopf">
-      <div>
+      <div class="kopf__text">
         <h1>Server</h1>
         <p>Gemerkte Server. Ein Klick verbindet — kein Suchen nach der Adresse.</p>
       </div>
-      <div class="kopf__rechts">
-        <UI.WpButton
-          label="Server merken"
-          size="sm"
-          variant="secondary"
-          :icon="IconPlus"
-          @press="zeigeHinzufuegen = true"
-        />
-      </div>
+      <UI.WpButton
+        label="Server merken"
+        size="sm"
+        variant="secondary"
+        :icon="IconPlus"
+        @press="zeigeHinzufuegen = true"
+      />
     </header>
 
     <div class="inhalt">
-      <UI.WpEmptyState
-        v-if="server.length === 0"
-        title="Noch kein Server gemerkt"
-        description="Trage die Adresse deines Servers ein — danach steht sie hier."
-      >
-        <template #action>
-          <UI.WpButton label="Server merken" variant="primary" @press="zeigeHinzufuegen = true" />
-        </template>
-      </UI.WpEmptyState>
+      <div class="tabelle">
+        <div class="tabelle__kopf">
+          <span class="spalte spalte--name">Name</span>
+          <span class="spalte spalte--adresse">Adresse</span>
+          <span class="spalte spalte--aktion">Aktion</span>
+        </div>
 
-      <ul v-else class="liste">
-        <li v-for="s in server" :key="s.server" class="zeile">
-          <UI.WpChoiceCard
-            :title="s.name"
-            :meta="s.server"
-            :active="verbunden && einstellungen.server === s.server"
-            :clickable="false"
-          />
-          <div class="zeile__aktionen">
-            <UI.WpBadge v-if="s.gemerkt" label="gemerkt" tone="neutral" />
+        <p v-if="server.length === 0" class="leer">
+          Noch kein Server gemerkt — trag die Adresse deines Servers ein.
+        </p>
+
+        <div v-for="s in server" :key="s.server" class="zeile">
+          <span class="spalte spalte--name">
+            <span class="name">{{ s.name }}</span>
+            <span v-if="!s.gemerkt" class="hinweis">zuletzt benutzt</span>
+          </span>
+          <span class="spalte spalte--adresse adresse">{{ s.server }}</span>
+          <span class="spalte spalte--aktion aktionen">
             <UI.WpButton
               :label="laeuft ? 'verbinde …' : 'Verbinden'"
               :state="laeuft ? 'busy' : 'default'"
               size="sm"
-              variant="primary"
+              variant="secondary"
               :icon="IconPlug"
               @press="verbindenMit(s.server)"
             />
-            <UI.WpIconButton
-              v-if="s.gemerkt"
-              :icon="IconTrash"
-              label="Aus der Liste entfernen"
-              size="sm"
-              variant="ghost"
-              @press="zeigeEntfernen = s.server"
-            />
-          </div>
-        </li>
-      </ul>
+            <UI.WpMenu
+              :items="zeilenMenue(s)"
+              :label="`Menü für ${s.name}`"
+              :open="offen === s.server"
+              @update:open="(istOffen: boolean) => (offen = istOffen ? s.server : null)"
+              @select="(wahl: string) => zeilenMenueGewaehlt(s, wahl)"
+            >
+              <UI.WpIconButton :icon="IconMore" :label="`Menü für ${s.name}`" size="sm" variant="ghost" />
+            </UI.WpMenu>
+          </span>
+        </div>
+      </div>
 
-      <UI.WpText variant="caption" tone="muted">
-        <IconRefresh /> Die Kennung liegt auf diesem Rechner (Schlüsseldatei). Auf einem anderen
-        Gerät nimmst du sie mit — sonst bist du dort ein neues Mitglied.
-      </UI.WpText>
+      <p class="fussnote">
+        Die Kennung liegt auf diesem Rechner (Schlüsseldatei). Auf einem anderen Gerät nimmst du sie
+        mit — sonst bist du dort ein neues Mitglied.
+      </p>
 
       <p v-if="modell.meldung" class="meldung">{{ modell.meldung }}</p>
     </div>
@@ -162,23 +177,23 @@ async function entfernen() {
   display: flex;
   align-items: center;
   gap: var(--wp-space-3);
-  padding: var(--wp-space-4);
+  padding: var(--wp-space-3) var(--wp-space-4);
   border-bottom: var(--wp-size-border) solid var(--wp-color-border-subtle);
 }
 
-.kopf h1 {
+.kopf__text h1 {
   margin: 0;
-  font-size: var(--wp-font-size-xl);
+  font-size: var(--wp-font-size-lg);
   font-weight: var(--wp-font-weight-semibold);
 }
 
-.kopf p {
-  margin: var(--wp-space-1) 0 0;
-  font-size: var(--wp-font-size-sm);
+.kopf__text p {
+  margin: 2px 0 0;
+  font-size: var(--wp-font-size-xs);
   color: var(--wp-color-text-muted);
 }
 
-.kopf__rechts {
+.kopf > :last-child {
   margin-left: auto;
 }
 
@@ -186,47 +201,108 @@ async function entfernen() {
   flex: 1;
   overflow-y: auto;
   padding: var(--wp-space-4);
-  max-width: 56rem;
+  max-width: 62rem;
   display: flex;
   flex-direction: column;
-  gap: var(--wp-space-4);
+  gap: var(--wp-space-3);
 }
 
-.liste {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--wp-space-2);
+/* Eine Tabelle, keine Karten: gleiche Spalten, gleiche Zeilenhöhe. */
+.tabelle {
+  border: var(--wp-size-border) solid var(--wp-color-border-subtle);
+  background: var(--wp-color-bg-panel);
+}
+
+.tabelle__kopf,
+.zeile {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(14rem, 18rem) auto;
+  align-items: center;
+  gap: var(--wp-space-3);
+  padding: var(--wp-space-2) var(--wp-space-3);
+}
+
+.tabelle__kopf {
+  min-height: var(--wp-size-control-md);
+  border-bottom: var(--wp-size-border) solid var(--wp-color-border-subtle);
+  font-size: var(--wp-font-size-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--wp-color-text-faint);
 }
 
 .zeile {
-  display: flex;
-  align-items: center;
-  gap: var(--wp-space-2);
+  min-height: var(--wp-size-control-lg);
+  border-bottom: var(--wp-size-border) solid var(--wp-color-border-subtle);
 }
 
-.zeile > :first-child {
-  flex: 1;
-  min-width: 0;
+.zeile:last-child {
+  border-bottom: 0;
 }
 
-.zeile__aktionen {
-  display: flex;
-  align-items: center;
-  gap: var(--wp-space-2);
+.zeile:hover {
+  background: var(--wp-color-bg-hover);
 }
 
-.dialogfelder {
+.spalte--name {
   display: flex;
   flex-direction: column;
-  gap: var(--wp-space-2);
+  min-width: 0;
+  gap: 1px;
+}
+
+.name {
+  font-size: var(--wp-font-size-sm);
+  color: var(--wp-color-text-default);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hinweis {
+  font-size: var(--wp-font-size-xs);
+  color: var(--wp-color-text-faint);
+}
+
+.adresse {
+  font-family: var(--wp-font-family-mono);
+  font-size: var(--wp-font-size-xs);
+  color: var(--wp-color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aktionen {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--wp-space-1);
+}
+
+.leer {
+  margin: 0;
+  padding: var(--wp-space-4) var(--wp-space-3);
+  font-size: var(--wp-font-size-sm);
+  color: var(--wp-color-text-muted);
+}
+
+.fussnote {
+  margin: 0;
+  font-size: var(--wp-font-size-xs);
+  color: var(--wp-color-text-faint);
+  max-width: 48rem;
 }
 
 .meldung {
   margin: 0;
   color: var(--wp-color-status-error);
   font-size: var(--wp-font-size-sm);
+}
+
+.dialogfelder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wp-space-2);
 }
 </style>

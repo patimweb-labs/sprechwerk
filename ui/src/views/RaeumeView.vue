@@ -70,11 +70,6 @@ const eigeneId = computed(() => {
   return v && v.art === "verbunden" ? v.ich : null;
 });
 
-const hierAnwesend = computed(() =>
-  modell.mitglieder.filter((m) => m.raum && m.raum === meinRaum.value?.id),
-);
-
-const sprechender = computed(() => hierAnwesend.value.find((m) => m.spricht)?.name ?? null);
 
 function anwesendeVon(raumId: string) {
   return modell.mitglieder.filter((m) => m.raum === raumId);
@@ -227,7 +222,7 @@ async function absenden() {
             <UI.WpMenu
               :items="raumMenuePunkte()"
               label="Raum-Menü"
-              align="left"
+              align="right"
               :open="offenerRaum === raum.id"
               @update:open="(offen: boolean) => (offenerRaum = offen ? raum.id : null)"
               @select="(wahl: string) => raumMenueGewaehlt(raum.id, wahl)"
@@ -261,6 +256,7 @@ async function absenden() {
                 v-if="!m.ich && darfEingreifen"
                 :items="mitgliedMenue(m.id)"
                 :label="`Menü für ${m.name}`"
+                align="right"
                 :open="offenesMitglied === m.id"
                 @update:open="(offen: boolean) => (offenesMitglied = offen ? m.id : null)"
                 @select="(wahl: string) => mitgliedMenueGewaehlt(m.id, wahl)"
@@ -278,13 +274,6 @@ async function absenden() {
       <header class="kopf">
         <div class="kopf__text">
           <h1>{{ meinRaum ? meinRaum.name : "Kein Raum" }}</h1>
-          <p>
-            <template v-if="meinRaum">{{ hierAnwesend.length }} anwesend · {{ modell.nachrichten.length }} Nachrichten</template>
-            <template v-else>Wähle links einen Raum.</template>
-          </p>
-        </div>
-        <div class="kopf__rechts">
-          <UI.WpBadge v-if="sprechender" :label="`${sprechender} spricht`" tone="ok" />
         </div>
       </header>
 
@@ -306,10 +295,9 @@ async function absenden() {
           class="beitrag"
           :class="{ 'ist-eigene': n.verfasser === eigeneId }"
         >
-          <UI.WpAvatar :name="n.verfasser_name" size="md" :tone="n.verfasser === eigeneId ? 'accent' : 'neutral'" />
           <div class="beitrag__text">
             <header class="beitrag__kopf">
-              <span class="beitrag__wer">{{ n.verfasser_name }}</span>
+              <span class="beitrag__wer" :class="{ 'ist-eigene': n.verfasser === eigeneId }">{{ n.verfasser_name }}</span>
               <span class="beitrag__wann">{{ uhrzeit(n.zeit) }}</span>
               <button v-if="n.loeschbar" class="beitrag__aktion" type="button" @click="loesche(n.id)">
                 löschen
@@ -612,9 +600,18 @@ async function absenden() {
 }
 
 .beitrag {
-  display: flex;
-  gap: var(--wp-space-3);
   padding: var(--wp-space-1) 0 var(--wp-space-3);
+  border-left: 2px solid transparent;
+  padding-left: var(--wp-space-2);
+}
+
+/* Eigene Beiträge: Akzentkante links statt Farbe im Text. */
+.beitrag.ist-eigene {
+  border-left-color: var(--wp-color-accent-default);
+}
+
+.beitrag__wer.ist-eigene {
+  color: var(--wp-color-accent-default);
 }
 
 .beitrag__text {

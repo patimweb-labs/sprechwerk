@@ -215,6 +215,7 @@ async function tonUmschalten() {
   display: flex;
   align-items: center;
   gap: var(--wp-space-1);
+  line-height: var(--wp-font-line-tight);
   font-size: var(--wp-font-size-xs);
   color: var(--wp-color-text-faint);
   max-width: 18rem;
