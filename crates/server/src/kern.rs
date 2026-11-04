@@ -125,7 +125,6 @@ impl Kern {
             .map(|r| Raumansicht {
                 id: r.id,
                 name: r.name.clone(),
-                eltern: r.eltern,
                 reihenfolge: r.reihenfolge,
                 anwesend: self.state.anwesende(r.id).len(),
             })
@@ -194,8 +193,9 @@ impl Kern {
             .map(|m| m.rolle)
             .unwrap_or(Role::Gast);
 
-        // Der Verlauf des Raums, in dem das Mitglied zuletzt war.
-        let verlauf = match self.state.mitglied(id).and_then(|m| m.raum) {
+        // Der Raum, in dem das Mitglied landet, und sein Verlauf.
+        let raum = self.state.mitglied(id).and_then(|m| m.raum);
+        let verlauf = match raum {
             Some(raum) => self.state.verlauf(id, raum, jetzt).unwrap_or_default(),
             None => Vec::new(),
         };
@@ -207,6 +207,7 @@ impl Kern {
             rolle,
             raeume: self.raeume(),
             mitglieder: self.mitglieder(),
+            raum,
             verlauf,
         };
         let _ = self.speichern();
@@ -323,50 +324,27 @@ impl Kern {
                 }
             }
 
-            ClientFrame::RaumAnlegen { name, eltern } => {
-                match self.state.raum_anlegen(ich, eltern, &name, jetzt) {
-                    Ok(_) => {
-                        let raeume = self.raeume();
-                        self.rundruf(
-                            None,
-                            None,
-                            ServerFrame::Raeume {
-                                raeume: raeume.clone(),
-                            },
-                        );
-                        let _ = self.speichern();
-                        vec![ServerFrame::Raeume { raeume }]
-                    }
-                    Err(e) => vec![Kern::fehler(match e {
-                        sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
-                        _ => Fehlercode::UngueltigeEingabe,
-                    })],
+            ClientFrame::RaumAnlegen { name } => match self.state.raum_anlegen(ich, &name, jetzt) {
+                Ok(_) => {
+                    let raeume = self.raeume();
+                    self.rundruf(
+                        None,
+                        None,
+                        ServerFrame::Raeume {
+                            raeume: raeume.clone(),
+                        },
+                    );
+                    let _ = self.speichern();
+                    vec![ServerFrame::Raeume { raeume }]
                 }
-            }
+                Err(e) => vec![Kern::fehler(match e {
+                    sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                    _ => Fehlercode::UngueltigeEingabe,
+                })],
+            },
 
             ClientFrame::RaumUmbenennen { raum, name } => {
                 match self.state.raum_umbenennen(ich, raum, &name, jetzt) {
-                    Ok(()) => {
-                        let raeume = self.raeume();
-                        self.rundruf(
-                            None,
-                            None,
-                            ServerFrame::Raeume {
-                                raeume: raeume.clone(),
-                            },
-                        );
-                        let _ = self.speichern();
-                        vec![ServerFrame::Raeume { raeume }]
-                    }
-                    Err(e) => vec![Kern::fehler(match e {
-                        sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
-                        _ => Fehlercode::UngueltigeEingabe,
-                    })],
-                }
-            }
-
-            ClientFrame::RaumVerschieben { raum, eltern } => {
-                match self.state.raum_verschieben(ich, raum, eltern, jetzt) {
                     Ok(()) => {
                         let raeume = self.raeume();
                         self.rundruf(
@@ -402,7 +380,6 @@ impl Kern {
                     }
                     Err(e) => vec![Kern::fehler(match e {
                         sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
-                        sprechwerk_domain::Error::RaumNichtLeer => Fehlercode::UngueltigeAnfrage,
                         _ => Fehlercode::Unbekannt,
                     })],
                 }

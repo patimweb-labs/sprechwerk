@@ -55,15 +55,6 @@ pub async fn betreten(
     }
 }
 
-/// Verlässt den aktuellen Raum.
-#[tauri::command]
-pub async fn verlassen(anwendung: State<'_, Arc<Anwendung>>) -> Result<(), String> {
-    match anwendung.befehl(sprechwerk_ipc::Befehl::Verlassen).await {
-        Antwort::Fehler { text } => Err(text),
-        _ => Ok(()),
-    }
-}
-
 /// Schreibt einen Text in den aktuellen Raum.
 #[tauri::command]
 pub async fn text_senden(
@@ -99,10 +90,9 @@ pub async fn nachricht_loeschen(
 pub async fn raum_anlegen(
     anwendung: State<'_, Arc<Anwendung>>,
     name: String,
-    eltern: Option<sprechwerk_domain::RoomId>,
 ) -> Result<(), String> {
     match anwendung
-        .befehl(sprechwerk_ipc::Befehl::RaumAnlegen { name, eltern })
+        .befehl(sprechwerk_ipc::Befehl::RaumAnlegen { name })
         .await
     {
         Antwort::Fehler { text } => Err(text),
@@ -230,22 +220,6 @@ pub async fn sperren(
 ) -> Result<(), String> {
     match anwendung
         .befehl(sprechwerk_ipc::Befehl::Sperren { mitglied, grund })
-        .await
-    {
-        Antwort::Fehler { text } => Err(text),
-        _ => Ok(()),
-    }
-}
-
-/// Fragt das Prüfprotokoll an.
-#[tauri::command]
-pub async fn protokoll(
-    anwendung: State<'_, Arc<Anwendung>>,
-    ab: usize,
-    anzahl: usize,
-) -> Result<(), String> {
-    match anwendung
-        .befehl(sprechwerk_ipc::Befehl::Protokoll { ab, anzahl })
         .await
     {
         Antwort::Fehler { text } => Err(text),

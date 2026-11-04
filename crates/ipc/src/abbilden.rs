@@ -5,7 +5,7 @@
 //! gleicher Stand ergibt denselben neuen Stand, ohne Netz, ohne Uhr, ohne
 //! Seitenwirkung. Damit ist sie ohne Sockets prüfbar.
 
-use crate::{Mitglied, Nachricht, Protokolleintrag, Raum, Verbindung, Zustand};
+use crate::{Mitglied, Nachricht, Raum, Verbindung, Zustand};
 use sprechwerk_domain::role::darf;
 use sprechwerk_domain::{Capability, Message, Role, RoomId};
 use sprechwerk_protocol::{Mitgliedsansicht, Raumansicht, ServerFrame};
@@ -19,6 +19,7 @@ pub fn aus_willkommen(
     rolle: Role,
     raeume: Vec<Raumansicht>,
     mitglieder: Vec<Mitgliedsansicht>,
+    raum: Option<RoomId>,
     verlauf: Vec<Message>,
 ) -> Zustand {
     let mut z = Zustand::neu();
@@ -29,11 +30,12 @@ pub fn aus_willkommen(
         name: mein_name,
         rolle,
     });
-    z.raeume = raeume_abbilden(raeume, None);
+    z.raeume = raeume_abbilden(raeume, raum);
     z.mitglieder = mitglieder_abbilden(mitglieder, Some(ich));
-    // Der zuletzt besuchte Raum: den Verlauf zeigen wir erst, wenn der Client
-    // ihn betritt — bis dahin nur die Räume.
-    let _ = verlauf;
+    // Man ist immer in einem Raum: der Standardraum mit seinem Verlauf.
+    z.aktueller_raum = raum;
+    z.nachrichten = verlauf.iter().map(|n| nachricht_abbilden(n, &z)).collect();
+    zaehle_anwesende(&mut z);
     z
 }
 
@@ -46,6 +48,7 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
             rolle,
             raeume,
             mitglieder,
+            raum,
             verlauf,
             ..
         } => {
@@ -72,6 +75,7 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
                 rolle,
                 raeume,
                 mitglieder,
+                raum,
                 verlauf,
             );
         }
@@ -153,20 +157,6 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
             }
         }
 
-        ServerFrame::Protokoll { eintraege } => {
-            zustand.protokoll = eintraege
-                .into_iter()
-                .map(|e| Protokolleintrag {
-                    laufnummer: e.laufnummer,
-                    zeit: e.zeit,
-                    handelnder_name: e.handelnder_name,
-                    aktion: e.aktion,
-                    ziel: e.ziel,
-                    ergebnis: e.ergebnis,
-                })
-                .collect();
-        }
-
         ServerFrame::Fehler { text, .. } => {
             zustand.meldung = Some(text);
         }
@@ -174,6 +164,11 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
         ServerFrame::Ok | ServerFrame::Pong => {
             zustand.meldung = None;
         }
+
+        // Das Prüfprotokoll wird **nicht** mehr ins Fenster gespiegelt: es ist
+        // ein Protokoll (Datenbank und Log des Servers), keine Ansicht. Der
+        // Rahmen bleibt im Protokoll, damit die Kommandozeile ihn lesen kann.
+        ServerFrame::Protokoll { .. } => {}
 
         ServerFrame::Anforderung { .. } => {}
     }
@@ -190,39 +185,8 @@ pub fn getrennt(zustand: &mut Zustand, grund: Option<String>) {
     zustand.raeume.clear();
 }
 
-fn raeume_abbilden(raeume: Vec<Raumansicht>, hier: Option<RoomId>) -> Vec<Raum> {
-    // Tiefe aus der Elternkette, damit die Oberfläche einrücken kann, ohne den
-    // Baum selbst nachzubauen.
-    let eltern: std::collections::HashMap<RoomId, Option<RoomId>> =
-        raeume.iter().map(|r| (r.id, r.eltern)).collect();
-    raeume
-        .into_iter()
-        .map(|r| {
-            let mut tiefe = 0usize;
-            let mut lauf = r.eltern;
-            while let Some(e) = lauf {
-                tiefe += 1;
-                lauf = *eltern.get(&e).unwrap_or(&None);
-                if tiefe > 64 {
-                    break; // Schutz gegen kaputte Daten
-                }
-            }
-            Raum {
-                id: r.id,
-                name: r.name,
-                eltern: r.eltern,
-                tiefe,
-                anwesend: r.anwesend,
-                hier: hier == Some(r.id),
-            }
-        })
-        .collect()
-}
-
-/// Setzt die Anwesenheitszahlen aus der Mitgliederliste.
-///
-/// Die Zahlen kommen **aus dem Modell**, nicht aus der Meldung: sonst zeigt ein
-/// Raum „0", während daneben ein Mitglied darin sitzt (live gesehen).
+/// Setzt die Anwesenheitszahlen aus der Mitgliederliste (nicht aus der Meldung —
+/// sonst zeigt ein Raum „0", während daneben ein Mitglied darin sitzt).
 fn zaehle_anwesende(zustand: &mut Zustand) {
     let mut zahlen: std::collections::HashMap<RoomId, usize> = std::collections::HashMap::new();
     for m in &zustand.mitglieder {
@@ -233,6 +197,18 @@ fn zaehle_anwesende(zustand: &mut Zustand) {
     for r in zustand.raeume.iter_mut() {
         r.anwesend = zahlen.get(&r.id).copied().unwrap_or(0);
     }
+}
+
+fn raeume_abbilden(raeume: Vec<Raumansicht>, hier: Option<RoomId>) -> Vec<Raum> {
+    raeume
+        .into_iter()
+        .map(|r| Raum {
+            id: r.id,
+            name: r.name,
+            anwesend: r.anwesend,
+            hier: hier == Some(r.id),
+        })
+        .collect()
 }
 
 fn raeume_hier_setzen(zustand: &mut Zustand, hier: Option<RoomId>) {
@@ -299,11 +275,10 @@ mod tests {
         z
     }
 
-    fn raum(id: u128, eltern: Option<u128>) -> Raumansicht {
+    fn raum(id: u128) -> Raumansicht {
         Raumansicht {
             id: RoomId::aus_roh(id),
             name: format!("Raum {id}"),
-            eltern: eltern.map(RoomId::aus_roh),
             reihenfolge: 0,
             anwesend: 0,
         }
@@ -334,21 +309,10 @@ mod tests {
     }
 
     #[test]
-    fn raumtiefe_wird_gerechnet() {
-        let raeume = vec![raum(1, None), raum(2, Some(1)), raum(3, Some(2))];
-        let abgebildet = raeume_abbilden(raeume, Some(RoomId::aus_roh(2)));
-        assert_eq!(abgebildet[0].tiefe, 0);
-        assert_eq!(abgebildet[1].tiefe, 1);
-        assert_eq!(abgebildet[2].tiefe, 2);
-        assert!(abgebildet[1].hier);
-        assert!(!abgebildet[0].hier);
-    }
-
-    #[test]
     fn betreten_setzt_raum_und_verlauf() {
         let mut z = verbunden(Role::Mitglied);
         let r = RoomId::aus_roh(7);
-        z.raeume = raeume_abbilden(vec![raum(7, None)], None);
+        z.raeume = raeume_abbilden(vec![raum(7)], None);
         verarbeite(
             &mut z,
             ServerFrame::Betreten {
@@ -449,7 +413,7 @@ mod tests {
     fn anwesenheitszahl_kommt_aus_dem_modell() {
         let mut z = verbunden(Role::Mitglied);
         let r = RoomId::aus_roh(7);
-        z.raeume = raeume_abbilden(vec![raum(7, None)], None);
+        z.raeume = raeume_abbilden(vec![raum(7)], None);
         assert_eq!(z.raeume[0].anwesend, 0);
         verarbeite(
             &mut z,

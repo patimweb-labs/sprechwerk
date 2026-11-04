@@ -140,6 +140,8 @@ pub struct Verbindung {
     pub server_name: String,
     /// Raumliste aus der Begrüßung (wird bei Änderungen aktualisiert).
     pub raeume: Vec<Raumansicht>,
+    /// Raum, in dem man nach der Anmeldung sitzt (der Standardraum).
+    pub raum: Option<sprechwerk_domain::RoomId>,
     /// Mitgliederliste aus der Begrüßung.
     pub mitglieder: Vec<sprechwerk_protocol::Mitgliedsansicht>,
     /// Verlauf des zuletzt besuchten Raums.
@@ -218,6 +220,7 @@ impl Verbindung {
                 server_name,
                 raeume,
                 mitglieder,
+                raum,
                 verlauf,
                 ..
             } => Ok(Self {
@@ -229,6 +232,7 @@ impl Verbindung {
                 rolle,
                 server_name,
                 raeume,
+                raum,
                 mitglieder,
                 verlauf,
             }),

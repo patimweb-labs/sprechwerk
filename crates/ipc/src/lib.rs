@@ -45,9 +45,6 @@ impl Verbindung {
 pub struct Raum {
     pub id: RoomId,
     pub name: String,
-    pub eltern: Option<RoomId>,
-    /// Tiefe im Baum, 0 = oberste Ebene. Die Oberfläche rückt danach ein.
-    pub tiefe: usize,
     pub anwesend: usize,
     /// Ist das der Raum, in dem ich sitze?
     pub hier: bool,
@@ -84,17 +81,6 @@ pub struct Nachricht {
     pub loeschbar: bool,
 }
 
-/// Ein Eintrag im Prüfprotokoll, wie ihn das Fenster zeigt.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Protokolleintrag {
-    pub laufnummer: u64,
-    pub zeit: i64,
-    pub handelnder_name: String,
-    pub aktion: String,
-    pub ziel: String,
-    pub ergebnis: String,
-}
-
 /// Der vollständige Modellstand für die Oberfläche.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Zustand {
@@ -104,8 +90,6 @@ pub struct Zustand {
     pub raeume: Vec<Raum>,
     pub mitglieder: Vec<Mitglied>,
     pub nachrichten: Vec<Nachricht>,
-    /// Prüfprotokoll, nur gefüllt, wenn angefordert und erlaubt.
-    pub protokoll: Vec<Protokolleintrag>,
     /// Letzte Meldung an den Nutzer (Fehler, Hinweis).
     pub meldung: Option<String>,
 }
@@ -177,7 +161,6 @@ pub enum Befehl {
     Betreten {
         raum: RoomId,
     },
-    Verlassen,
     Text {
         text: String,
     },
@@ -186,8 +169,6 @@ pub enum Befehl {
     },
     RaumAnlegen {
         name: String,
-        #[serde(default)]
-        eltern: Option<RoomId>,
     },
     RaumUmbenennen {
         raum: RoomId,
@@ -227,10 +208,6 @@ pub enum Befehl {
         mitglied: MemberId,
         #[serde(default)]
         grund: String,
-    },
-    Protokoll {
-        ab: usize,
-        anzahl: usize,
     },
 }
 
@@ -273,7 +250,6 @@ mod tests {
         z.aktueller_raum = Some(raum);
         assert!(z.ich().is_some());
         assert!(!z.darf_raeume_verwalten());
-        assert!(!z.darf_protokoll_lesen());
 
         z.verbindung = Some(Verbindung::Verbunden {
             server: "127.0.0.1:7443".into(),
@@ -283,7 +259,6 @@ mod tests {
             rolle: Role::Moderator,
         });
         assert!(z.darf_raeume_verwalten());
-        assert!(z.darf_protokoll_lesen());
         assert!(!z.darf_rollen_vergeben());
     }
 

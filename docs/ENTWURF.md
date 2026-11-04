@@ -10,7 +10,7 @@ Legende: **✔ gebaut und geprüft** · **◐ entworfen, nicht gebaut** · **○
 | Transport (QUIC) | ✔ | `docs/adr/0003-quic-als-transport.md` |
 | Verschlüsselung (Transport) | ✔ | `docs/adr/0002-verschluesselung.md` |
 | Anmeldung (Ed25519-Beweis) | ✔ | `docs/adr/0002`, `crates/adapters` |
-| Räume, Rollen, Rechte | ✔ | `SPEC.md` §5, `crates/domain` |
+| Räume (flach, ohne Unterräume), Rollen, Rechte | ✔ | `SPEC.md` §5, ADR 0009 |
 | Text (dauerhaft, Verlauf, Löschen) | ✔ | `SPEC.md` §6 |
 | Prüfprotokoll | ✔ | `SPEC.md` §8 |
 | Eingriffe: stumm, taub, verschieben, rauswerfen, trennen, sperren | ✔ | `docs/adr/0008-eingriffe-und-kontextmenues.md` |

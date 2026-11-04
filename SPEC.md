@@ -70,8 +70,15 @@ Aufbewahrung auf Wunsch, Rechte auf fremde Nachrichten.
 
 **[P] Ein Raum ist beides:** Sprachraum mit Text darunter (wie TS3/Discord).
 
-**[P] Baum mit Eltern-Kind-Beziehung**, beliebig tief, Unterräume erlaubt;
-Räume entstehen durch Rollen, nicht nur durch den Administrator.
+**[P] Ein Standardraum.** Wer den Server betritt, landet dort — es gibt keinen
+Zustand „in keinem Raum". Ein Raum lässt sich deshalb nicht „verlassen"; man
+wechselt nur. Wer den Server verlassen will, trennt die Verbindung (Knopf oben
+rechts) und landet auf der Serverliste.
+
+**[P] Flache Raumliste**, keine Unterräume, keine Kategorien. Räume entstehen
+durch Rollen (Administrator, Moderator), nicht nur durch den Betreiber.
+Begründung: Unterräume brachten Vererbung, Einrückung und Sonderfälle — und
+niemand hat sie vermisst (Entscheidung 2026-11-04, ADR 0009).
 
 ## 4. Identität und Zugang
 

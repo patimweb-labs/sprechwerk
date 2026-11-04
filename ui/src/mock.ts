@@ -17,8 +17,8 @@ const minut = 60_000;
 let folge = 1;
 const neueId = (vorsilbe: string) => `${vorsilbe}_${(folge++).toString(16).padStart(32, "0")}`;
 
-function raum(id: string, name: string, tiefe: number, eltern: string | null, anwesend = 0, hier = false): Raum {
-  return { id, name, eltern, tiefe, anwesend, hier };
+function raum(id: string, name: string, anwesend = 0, hier = false): Raum {
+  return { id, name, anwesend, hier };
 }
 
 function mitglied(
@@ -49,13 +49,11 @@ function nachricht(id: string, verfasser: string, verfasserName: string, text: s
 const ICH = "mitglied_aaaa0000000000000000000000000001";
 
 const raeume: Raum[] = [
-  raum("raum_0001", "Empfang", 0, null, 1),
-  raum("raum_0002", "Vorstand", 0, null, 1),
-  raum("raum_0003", "Sitzung", 1, "raum_0002"),
-  raum("raum_0004", "Trainingsraum", 0, null, 2, true),
-  raum("raum_0005", "Gruppe A", 1, "raum_0004"),
-  raum("raum_0006", "Technik", 0, null),
-  raum("raum_0007", "Off-Topic", 0, null, 1),
+  raum("raum_0001", "Empfang", 1),
+  raum("raum_0002", "Vorstand", 1),
+  raum("raum_0004", "Trainingsraum", 2, true),
+  raum("raum_0006", "Technik"),
+  raum("raum_0007", "Off-Topic", 1),
 ];
 
 const mitglieder: Mitglied[] = [
@@ -99,7 +97,7 @@ function zustandDerWahrheit(verbunden: boolean): Zustand {
     raeume: verbunden ? raumListe : [],
     mitglieder: verbunden ? mitglieder.filter((m) => m.raum) : [],
     nachrichten: verbunden ? (nachrichten[aktuellerRaum] ?? []).map((n) => ({ ...n, loeschbar: true })) : [],
-    protokoll: [],
+
     meldung: null,
   };
 }
@@ -134,6 +132,11 @@ export const einstellungenVorgabe: Einstellungen = {
   ptt_taste: "Leertaste",
   schwelle: 30,
   vorlauf_ms: 60,
+  favoriten: [
+    { name: "Trainingsabend", server: "sprechwerk.verein.example:7443" },
+    { name: "Vorstand (Test)", server: "192.0.2.11:7443" },
+    { name: "Werkstatt", server: "192.0.2.12:7443" },
+  ],
 };
 
 export const mockApi = {
@@ -178,13 +181,6 @@ export const mockApi = {
     }
   },
 
-  async verlassen(): Promise<void> {
-    stand.aktueller_raum = null;
-    stand.raeume = stand.raeume.map((x) => ({ ...x, hier: false }));
-    stand.nachrichten = [];
-    melden();
-  },
-
   async textSenden(text: string): Promise<void> {
     const raumId = stand.aktueller_raum ?? "raum_0004";
     const n = nachricht(neueId("nachricht"), ICH, "Ada", text, 0);
@@ -206,9 +202,8 @@ export const mockApi = {
     melden();
   },
 
-  async raumAnlegen(name: string, eltern: string | null): Promise<void> {
-    const tiefe = eltern ? (raeume.find((r) => r.id === eltern)?.tiefe ?? 0) + 1 : 0;
-    raeume.push(raum(neueId("raum"), name, tiefe, eltern));
+  async raumAnlegen(name: string): Promise<void> {
+    raeume.push(raum(neueId("raum"), name));
     stand.raeume = raeume.map((r) => ({ ...r, hier: r.id === stand.aktueller_raum, anwesend: mitglieder.filter((m) => m.raum === r.id).length }));
     melden();
   },
@@ -289,21 +284,6 @@ export const mockApi = {
     if (index >= 0) mitglieder.splice(index, 1);
     stand.mitglieder = stand.mitglieder.filter((x) => x.id !== mitgliedId);
     stand.meldung = grund ? `gesperrt: ${grund}` : "gesperrt";
-    melden();
-  },
-
-  async protokoll(): Promise<void> {
-    stand.protokoll = [
-      { laufnummer: 9, zeit: jetzt - 2 * minut, handelnder_name: "Ada", aktion: "raum_angelegt", ziel: "raum_0005", ergebnis: "erlaubt" },
-      { laufnummer: 8, zeit: jetzt - 6 * minut, handelnder_name: "Timo", aktion: "raum_angelegt", ziel: "Gruppe B", ergebnis: "abgelehnt: Recht fehlt (RaumVerwalten)" },
-      { laufnummer: 7, zeit: jetzt - 14 * minut, handelnder_name: "Ada", aktion: "rolle_gesetzt", ziel: "mitglied_…0003", ergebnis: "erlaubt" },
-      { laufnummer: 6, zeit: jetzt - 18 * minut, handelnder_name: "Bosse", aktion: "text_geloescht", ziel: "nachricht_…0006", ergebnis: "erlaubt: hart" },
-      { laufnummer: 5, zeit: jetzt - 26 * minut, handelnder_name: "Mira", aktion: "raum_betreten", ziel: "raum_0004", ergebnis: "erlaubt" },
-      { laufnummer: 4, zeit: jetzt - 33 * minut, handelnder_name: "Timo", aktion: "text_gesendet", ziel: "raum_0001", ergebnis: "erlaubt" },
-      { laufnummer: 3, zeit: jetzt - 41 * minut, handelnder_name: "Bosse", aktion: "raum_umbenannt", ziel: "raum_0006", ergebnis: "erlaubt" },
-      { laufnummer: 2, zeit: jetzt - 55 * minut, handelnder_name: "Ada", aktion: "sperre_verhaengt", ziel: "Adresse 192.0.2.7", ergebnis: "erlaubt" },
-      { laufnummer: 1, zeit: jetzt - 70 * minut, handelnder_name: "Ada", aktion: "erster_beitritt", ziel: "mitglied_…0001", ergebnis: "erlaubt" },
-    ];
     melden();
   },
 

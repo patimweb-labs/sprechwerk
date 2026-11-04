@@ -47,7 +47,6 @@ impl Fehlercode {
 pub struct Raumansicht {
     pub id: RoomId,
     pub name: String,
-    pub eltern: Option<RoomId>,
     pub reihenfolge: i32,
     /// Wie viele gerade drin sind.
     pub anwesend: usize,
@@ -161,20 +160,10 @@ pub enum ClientFrame {
     NachrichtLoeschen {
         nachricht: sprechwerk_domain::MessageId,
     },
-    /// Raum anlegen.
-    RaumAnlegen {
-        name: String,
-        #[serde(default)]
-        eltern: Option<RoomId>,
-    },
+    /// Raum anlegen (flache Liste, keine Unterräume).
+    RaumAnlegen { name: String },
     /// Raum umbenennen.
     RaumUmbenennen { raum: RoomId, name: String },
-    /// Raum verschieben.
-    RaumVerschieben {
-        raum: RoomId,
-        #[serde(default)]
-        eltern: Option<RoomId>,
-    },
     /// Raum löschen.
     RaumLoeschen { raum: RoomId },
     /// Mikrofon oder Wiedergabe eines Mitglieds serverseitig stummschalten.
@@ -243,7 +232,10 @@ pub enum ServerFrame {
         rolle: Role,
         raeume: Vec<Raumansicht>,
         mitglieder: Vec<Mitgliedsansicht>,
-        /// Verlauf des Raums, in dem das Mitglied zuletzt war (falls).
+        /// Raum, in dem das Mitglied landet (der Standardraum).
+        #[serde(default)]
+        raum: Option<RoomId>,
+        /// Dessen Verlauf.
         #[serde(default)]
         verlauf: Vec<Message>,
     },

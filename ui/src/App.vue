@@ -1,81 +1,161 @@
 <script setup lang="ts">
-// Fensterhülle: Kopfleiste, Ansichtenleiste, Bildschirm, Fußzeile.
-// Alles, was ein Baustein sein kann, kommt aus der Bibliothek
-// (`@weppelmann/components`); in dieser Datei steht nur, was sprechwerk eigen ist.
+// Fensterhülle mit Kopfzeile wie in einem Verwaltungsprogramm üblich:
+// links Marke, daneben die Bereiche, rechts Verbindungszustand, eigenes
+// Namenszeichen, Mikrofon/Ton und das Kontomenü (Einstellungen, Serverliste,
+// Trennen).
 //
-// Die Ansichten hängen am Modell: „Protokoll" erscheint nur mit Leserecht,
-// „Räume" nur mit Verbindung.
+// Keine Leiste links: die Breite gehört dem Inhalt — im Gespräch sind das
+// Räume, Menschen und Verlauf.
 import { computed } from "vue";
-import type { Component } from "vue";
 import * as UI from "@weppelmann/components";
-import { IconFolder, IconInfo, IconSettings, IconWifi, IconWifiOff } from "@weppelmann/icons";
-import { ansicht, darfProtokollLesen, modell, trennen, verbunden } from "./store";
-import VerbindenView from "./views/VerbindenView.vue";
+import {
+  IconBrand,
+  IconHeadphoneOff,
+  IconHeadphones,
+  IconMic,
+  IconMicOff,
+  IconMore,
+  IconWifiOff,
+} from "@weppelmann/icons";
+import {
+  ansicht,
+  eigeneStumm,
+  eigeneTaub,
+  einstellungen,
+  geheZu,
+  modell,
+  stummschalten,
+  trennen,
+  verbunden,
+  meineRolle,
+} from "./store";
+import ServerView from "./views/ServerView.vue";
 import RaeumeView from "./views/RaeumeView.vue";
-import ProtokollView from "./views/ProtokollView.vue";
 import EinstellungenView from "./views/EinstellungenView.vue";
 
-const seiten = computed(() => {
-  const liste: { id: string; label: string; icon: Component; count?: string }[] = [
-    { id: "raeume", label: "Räume", icon: IconFolder, count: String(modell.raeume.length || "") },
-  ];
-  if (darfProtokollLesen.value) {
-    liste.push({ id: "protokoll", label: "Protokoll", icon: IconInfo });
-  }
-  liste.push({ id: "einstellungen", label: "Einstellungen", icon: IconSettings });
-  return liste;
-});
-
-/** Kopfzeile: Name und Zustand. */
-const kopf = computed(() => {
+/** Eigene Kennung, falls verbunden. */
+const eigeneId = computed(() => {
   const v = modell.verbindung;
-  if (v?.art === "verbunden") {
-    return { titel: v.server_name, untertitel: `${v.name} · ${v.rolle}` };
-  }
-  if (v?.art === "verbindet") return { titel: "Sprechwerk", untertitel: `verbinde zu ${v.server}` };
-  if (v?.art === "fehler") return { titel: "Sprechwerk", untertitel: v.text };
-  return { titel: "Sprechwerk", untertitel: "nicht verbunden" };
+  return v && v.art === "verbunden" ? v.ich : null;
 });
 
-const anwesende = computed(() => modell.mitglieder.length);
-const nachrichten = computed(() => modell.nachrichten.length);
+const eigenerName = computed(() => {
+  const v = modell.verbindung;
+  return v && v.art === "verbunden" ? v.name : "";
+});
+
+/** Kontomenü — Nebenwege, der Hauptweg steht sichtbar in der Leiste. */
+const kontomenue = computed<UI.MenuItem[]>(() => {
+  const punkte: UI.MenuItem[] = [];
+  if (verbunden.value) {
+    punkte.push({ id: "raeume", label: "Räume" });
+  }
+  punkte.push({ id: "server", label: "Serverliste" });
+  punkte.push({ id: "einstellungen", label: "Einstellungen" });
+  if (verbunden.value) {
+    punkte.push({ id: "trennen", label: "Verbindung trennen", separatorBefore: true, danger: true });
+  }
+  return punkte;
+});
+
+function kontomenueGewaehlt(wahl: string) {
+  if (wahl === "trennen") {
+    void trennen();
+    ansicht.value = "server";
+    return;
+  }
+  geheZu(wahl as typeof ansicht.value);
+}
+
+const verbindungsText = computed(() => {
+  const v = modell.verbindung;
+  if (!v) return "…";
+  if (v.art === "verbunden") return v.server_name;
+  if (v.art === "verbindet") return `verbinde zu ${v.server} …`;
+  if (v.art === "fehler") return v.text;
+  return "nicht verbunden";
+});
+
+async function mikrofonUmschalten() {
+  if (!eigeneId.value) return;
+  await stummschalten(eigeneId.value, false, !eigeneStumm.value);
+}
+
+/** Server verlassen: trennen und zur Serverliste zurück. */
+async function verlassenServer() {
+  await trennen();
+  ansicht.value = "server";
+}
+
+async function tonUmschalten() {
+  if (!eigeneId.value) return;
+  await stummschalten(eigeneId.value, true, !eigeneTaub.value);
+}
 </script>
 
 <template>
   <div class="fenster">
-    <UI.WpAppBar :title="kopf.titel" :subtitle="kopf.untertitel" :icon="verbunden ? IconWifi : IconWifiOff">
-      <template #status>
-        <UI.WpBadge v-if="verbunden" label="verbunden" tone="ok" />
-        <UI.WpBadge v-else label="getrennt" tone="neutral" />
-      </template>
-      <template #actions>
-        <UI.WpButton v-if="verbunden" label="Trennen" size="sm" @press="trennen" />
-      </template>
-    </UI.WpAppBar>
+    <header class="kopf">
+      <div class="marke">
+        <IconBrand class="marke__zeichen" />
+        <div class="marke__text">
+          <span class="marke__name">Sprechwerk</span>
+          <span class="marke__server">{{ verbindungsText }}</span>
+        </div>
+      </div>
 
-    <div class="rumpf">
-      <UI.WpNavList
-        v-model="ansicht"
-        :entries="seiten"
-        title="Ansicht"
-        label="Ansichten"
-        class="leiste"
-      />
-
-      <main class="bildschirm">
-        <VerbindenView v-if="!verbunden" />
-        <template v-else>
-          <RaeumeView v-if="ansicht === 'raeume'" />
-          <ProtokollView v-else-if="ansicht === 'protokoll'" />
-          <EinstellungenView v-else />
+      <div class="rechts">
+        <template v-if="verbunden">
+          <UI.WpIconButton
+            :icon="eigeneStumm ? IconMicOff : IconMic"
+            :label="eigeneStumm ? 'Mikrofon einschalten' : 'Mikrofon stummschalten'"
+            :active="!eigeneStumm"
+            size="sm"
+            variant="ghost"
+            @press="mikrofonUmschalten"
+          />
+          <UI.WpIconButton
+            :icon="eigeneTaub ? IconHeadphoneOff : IconHeadphones"
+            :label="eigeneTaub ? 'Ton einschalten' : 'Ton stummschalten'"
+            :active="!eigeneTaub"
+            size="sm"
+            variant="ghost"
+            @press="tonUmschalten"
+          />
+          <UI.WpAvatar :name="eigenerName" size="sm" tone="accent" :muted="eigeneStumm" />
+          <span class="eigener">
+            <span class="eigener__name">{{ eigenerName }}</span>
+            <span class="eigener__rolle">{{ meineRolle }}</span>
+          </span>
+          <UI.WpIconButton
+            :icon="IconWifiOff"
+            label="Server verlassen"
+            size="sm"
+            variant="ghost"
+            @press="verlassenServer"
+          />
         </template>
-      </main>
-    </div>
+
+        <UI.WpMenu
+          :items="kontomenue"
+          label="Kontomenü"
+          @select="kontomenueGewaehlt"
+        >
+          <UI.WpIconButton :icon="IconMore" label="Kontomenü" size="sm" variant="ghost" />
+        </UI.WpMenu>
+      </div>
+    </header>
+
+    <main class="bildschirm">
+      <ServerView v-if="ansicht === 'server' || !verbunden" />
+      <RaeumeView v-else-if="ansicht === 'raeume'" />
+      <EinstellungenView v-else />
+    </main>
 
     <UI.WpStatusBar
       brand="SPRECHWERK"
-      :state="kopf.untertitel"
-      :counts="verbunden ? `${anwesende} anwesend · ${nachrichten} im Raum` : ''"
+      :state="verbindungsText"
+      :counts="verbunden ? `${modell.mitglieder.length} anwesend · ${modell.nachrichten.length} im Raum` : `${einstellungen.favoriten.length} gemerkte Server`"
     >
       <template #lead>
         <span v-if="modell.meldung" class="meldung">{{ modell.meldung }}</span>
@@ -91,20 +171,76 @@ const nachrichten = computed(() => modell.nachrichten.length);
   height: 100%;
 }
 
-.rumpf {
+.kopf {
   display: flex;
-  flex: 1;
-  min-height: 0;
+  align-items: stretch;
+  gap: var(--wp-space-3);
+  height: var(--wp-size-control-lg);
+  padding: 0 0 0 var(--wp-space-4);
+  background: var(--wp-color-bg-panel);
+  border-bottom: var(--wp-size-border) solid var(--wp-color-border-subtle);
 }
 
-.leiste {
-  flex: none;
-  border-right: var(--wp-size-border) solid var(--wp-color-border-subtle);
+.marke {
+  display: flex;
+  align-items: center;
+  gap: var(--wp-space-2);
+  padding-right: var(--wp-space-2);
+}
+
+.marke__zeichen {
+  width: 18px;
+  height: 18px;
+  color: var(--wp-color-accent-default);
+}
+
+.marke__text {
+  display: flex;
+  flex-direction: column;
+  line-height: var(--wp-font-line-tight);
+}
+
+.marke__name {
+  font-family: var(--wp-font-family-mono);
+  font-size: var(--wp-font-size-sm);
+  letter-spacing: 0.06em;
+}
+
+.marke__server {
+  font-size: var(--wp-font-size-xs);
+  color: var(--wp-color-text-faint);
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rechts {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--wp-space-2);
+  padding-right: var(--wp-space-3);
+}
+
+.eigener {
+  display: flex;
+  flex-direction: column;
+  line-height: var(--wp-font-line-tight);
+}
+
+.eigener__name {
+  font-size: var(--wp-font-size-sm);
+}
+
+.eigener__rolle {
+  font-size: var(--wp-font-size-xs);
+  color: var(--wp-color-text-faint);
 }
 
 .bildschirm {
   flex: 1;
-  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }

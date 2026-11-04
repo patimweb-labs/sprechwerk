@@ -163,7 +163,6 @@ async fn protokoll_ist_lesbar_und_rechte_werden_geprueft() {
     bosse
         .sende(ClientFrame::RaumAnlegen {
             name: "Verboten".into(),
-            eltern: None,
         })
         .await
         .unwrap();
@@ -178,7 +177,6 @@ async fn protokoll_ist_lesbar_und_rechte_werden_geprueft() {
     // Dieselbe Aktion als Administrator: erlaubt.
     ada.sende(ClientFrame::RaumAnlegen {
         name: "Vorstand".into(),
-        eltern: None,
     })
     .await
     .unwrap();
@@ -338,7 +336,6 @@ async fn sprache_wird_nur_im_eigenen_raum_verteilt() {
     // Zweiten Raum anlegen (nur der Administrator darf das).
     ada.sende(ClientFrame::RaumAnlegen {
         name: "Nebenraum".into(),
-        eltern: None,
     })
     .await
     .unwrap();

@@ -179,15 +179,11 @@ impl Store {
         let mut raeume = std::collections::BTreeMap::new();
         while let Some(z) = zeilen.next()? {
             let id = RoomId::from_text(&z.get::<_, String>(0)?)?;
-            let eltern = match z.get::<_, Option<String>>(1)? {
-                Some(t) => Some(RoomId::from_text(&t)?),
-                None => None,
-            };
+            let _alte_eltern: Option<String> = z.get(1)?;
             raeume.insert(
                 id,
                 Room {
                     id,
-                    eltern,
                     name: z.get(2)?,
                     reihenfolge: z.get(3)?,
                     angelegt_am: z.get(4)?,
@@ -337,7 +333,7 @@ impl Store {
                      reihenfolge = excluded.reihenfolge, angelegt_am = excluded.angelegt_am",
                     params![
                         r.id.text(),
-                        r.eltern.map(|e| e.text()),
+                        Option::<String>::None,
                         r.name,
                         r.reihenfolge,
                         r.angelegt_am
@@ -541,7 +537,7 @@ mod tests {
     fn zustand() -> State {
         let mut s = State::neu("Testwerk", Role::Mitglied, 1_000);
         let a = s.anmelden("k-admin", "Ada", 1_000).unwrap();
-        let raum = s.raum_anlegen(a, None, "Vorstand", 1_010).unwrap();
+        let raum = s.raum_anlegen(a, "Vorstand", 1_010).unwrap();
         s.betreten(a, raum, 1_011).unwrap();
         s.text_senden(a, "Protokoll", 1_012).unwrap();
         s.sperren(

@@ -240,6 +240,8 @@ async fn lauf<F>(
                         let server_name = verbindung.server_name.clone();
                         let raeume = verbindung.raeume.clone();
                         let mitglieder = verbindung.mitglieder.clone();
+                        let raum = verbindung.raum;
+                        let verlauf = verbindung.verlauf.clone();
                         let ich = verbindung.ich;
                         let rolle = verbindung.rolle;
                         netz = Some(verbindung);
@@ -253,7 +255,8 @@ async fn lauf<F>(
                                     rolle,
                                     raeume,
                                     mitglieder,
-                                    verlauf: Vec::new(),
+                                    raum,
+                                    verlauf,
                                 },
                             );
                             // Der eigene Name gehört ins Modell (er kommt nicht
@@ -309,13 +312,12 @@ async fn lauf<F>(
                     Befehl::Betreten { raum } => {
                         sprechwerk_protocol::ClientFrame::Betreten { raum }
                     }
-                    Befehl::Verlassen => sprechwerk_protocol::ClientFrame::Verlassen,
                     Befehl::Text { text } => sprechwerk_protocol::ClientFrame::Text { text },
                     Befehl::NachrichtLoeschen { nachricht } => {
                         sprechwerk_protocol::ClientFrame::NachrichtLoeschen { nachricht }
                     }
-                    Befehl::RaumAnlegen { name, eltern } => {
-                        sprechwerk_protocol::ClientFrame::RaumAnlegen { name, eltern }
+                    Befehl::RaumAnlegen { name } => {
+                        sprechwerk_protocol::ClientFrame::RaumAnlegen { name }
                     }
                     Befehl::RaumUmbenennen { raum, name } => {
                         sprechwerk_protocol::ClientFrame::RaumUmbenennen { raum, name }
@@ -340,9 +342,6 @@ async fn lauf<F>(
                     }
                     Befehl::Sperren { mitglied, grund } => {
                         sprechwerk_protocol::ClientFrame::MitgliedSperren { mitglied, grund }
-                    }
-                    Befehl::Protokoll { ab, anzahl } => {
-                        sprechwerk_protocol::ClientFrame::Protokoll { ab, anzahl }
                     }
                     Befehl::Zustand | Befehl::Verbinden { .. } | Befehl::Trennen => unreachable!(),
                 };

@@ -27,14 +27,10 @@ pub enum Error {
     NachrichtUnbekannt,
     #[error("dafür fehlt das Recht: {0:?}")]
     RechtFehlt(Capability),
-    #[error("der Raum ist nicht leer")]
-    RaumNichtLeer,
     #[error("ungültiger Name")]
     NameUngueltig,
     #[error("der letzte Administrator kann nicht herabgestuft werden")]
     LetzterAdministrator,
-    #[error("ein Raum kann nicht unter sich selbst gehängt werden")]
-    Kreis,
     #[error("Nachricht ist zu lang (höchstens {MAX_MESSAGE_LEN} Zeichen)")]
     NachrichtZuLang,
     #[error("der Raum ist gesperrt")]
@@ -76,8 +72,6 @@ pub struct Member {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Room {
     pub id: RoomId,
-    #[serde(default)]
-    pub eltern: Option<RoomId>,
     pub name: String,
     /// Sortierung unter Geschwistern.
     pub reihenfolge: i32,
@@ -169,7 +163,6 @@ impl State {
             id,
             Room {
                 id,
-                eltern: None,
                 name: DEFAULT_ROOM_NAME.to_string(),
                 reihenfolge: 0,
                 angelegt_am: jetzt_ms,
@@ -263,12 +256,17 @@ impl State {
 
         if let Some(id) = self.mitglied_nach_schluessel(schluessel) {
             let (alter_name, alte_rolle);
+            let standard = self.standard_raum();
             {
                 let m = self.mitglieder.get_mut(&id).expect("gerade gefunden");
                 alter_name = m.name.clone();
                 alte_rolle = m.rolle.text();
                 m.name = name.to_string();
                 m.zuletzt_gesehen = jetzt_ms;
+                // Beim Verbinden landet jeder im Standardraum — es gibt keinen
+                // Zustand „in keinem Raum".
+                m.raum = standard;
+                m.raum_seit = Some(jetzt_ms);
             }
             if alter_name != name {
                 self.protokolliere(
@@ -294,6 +292,7 @@ impl State {
             self.standard_rolle
         };
         let id = MemberId::neu();
+        let standard = self.standard_raum();
         self.mitglieder.insert(
             id,
             Member {
@@ -301,8 +300,8 @@ impl State {
                 schluessel: schluessel.to_string(),
                 name: name.to_string(),
                 rolle,
-                raum: None,
-                raum_seit: None,
+                raum: standard,
+                raum_seit: Some(jetzt_ms),
                 angelegt_am: jetzt_ms,
                 zuletzt_gesehen: jetzt_ms,
                 stumm: false,
@@ -341,11 +340,10 @@ impl State {
 
     // ---- Räume ---------------------------------------------------------
 
-    /// Legt einen Raum an. `eltern = None` heißt oberste Ebene.
+    /// Legt einen Raum an.
     pub fn raum_anlegen(
         &mut self,
         wer: MemberId,
-        eltern: Option<RoomId>,
         name: &str,
         jetzt_ms: i64,
     ) -> Result<RoomId, Error> {
@@ -373,26 +371,10 @@ impl State {
             );
             return Err(Error::NameUngueltig);
         }
-        if let Some(p) = eltern {
-            if !self.raeume.contains_key(&p) {
-                self.protokolliere(
-                    jetzt_ms,
-                    Some(wer),
-                    &handelnder_name,
-                    "raum_angelegt",
-                    name,
-                    None,
-                    None,
-                    "abgelehnt: Elternraum unbekannt".into(),
-                );
-                return Err(Error::RaumUnbekannt);
-            }
-        }
         let id = RoomId::neu();
         let reihenfolge = self
             .raeume
             .values()
-            .filter(|r| r.eltern == eltern)
             .map(|r| r.reihenfolge + 1)
             .max()
             .unwrap_or(0);
@@ -400,7 +382,6 @@ impl State {
             id,
             Room {
                 id,
-                eltern,
                 name: name.clone(),
                 reihenfolge,
                 angelegt_am: jetzt_ms,
@@ -468,88 +449,6 @@ impl State {
         Ok(())
     }
 
-    /// Hängt einen Raum unter einen anderen (oder an die Wurzel).
-    pub fn raum_verschieben(
-        &mut self,
-        wer: MemberId,
-        raum: RoomId,
-        neuer_eltern: Option<RoomId>,
-        jetzt_ms: i64,
-    ) -> Result<(), Error> {
-        let (handelnder_name, ergebnis) = self.vorpruefung_person(
-            wer,
-            Capability::RaumVerwalten,
-            jetzt_ms,
-            "raum_verschoben",
-            raum.text(),
-        );
-        ergebnis?;
-        if !self.raeume.contains_key(&raum) {
-            return Err(Error::RaumUnbekannt);
-        }
-        if let Some(ziel) = neuer_eltern {
-            if !self.raeume.contains_key(&ziel) {
-                self.protokolliere(
-                    jetzt_ms,
-                    Some(wer),
-                    &handelnder_name,
-                    "raum_verschoben",
-                    raum.text(),
-                    None,
-                    None,
-                    "abgelehnt: Ziel unbekannt".into(),
-                );
-                return Err(Error::RaumUnbekannt);
-            }
-            // Kreisprüfung: kein Vorfahre von `raum` darf Ziel sein.
-            let mut lauf = Some(ziel);
-            while let Some(k) = lauf {
-                if k == raum {
-                    self.protokolliere(
-                        jetzt_ms,
-                        Some(wer),
-                        &handelnder_name,
-                        "raum_verschoben",
-                        raum.text(),
-                        None,
-                        None,
-                        "abgelehnt: Kreis".into(),
-                    );
-                    return Err(Error::Kreis);
-                }
-                lauf = self.raeume.get(&k).and_then(|r| r.eltern);
-            }
-        }
-        let alt = self
-            .raeume
-            .get(&raum)
-            .and_then(|r| r.eltern)
-            .map(|e| e.text());
-        let reihenfolge = self
-            .raeume
-            .values()
-            .filter(|r| r.eltern == neuer_eltern)
-            .map(|r| r.reihenfolge + 1)
-            .max()
-            .unwrap_or(0);
-        {
-            let r = self.raeume.get_mut(&raum).expect("vorher geprüft");
-            r.eltern = neuer_eltern;
-            r.reihenfolge = reihenfolge;
-        }
-        self.protokolliere(
-            jetzt_ms,
-            Some(wer),
-            &handelnder_name,
-            "raum_verschoben",
-            raum.text(),
-            alt,
-            neuer_eltern.map(|e| e.text()),
-            "erlaubt".into(),
-        );
-        Ok(())
-    }
-
     /// Löscht einen Raum. Nur möglich, wenn er keine Unterräume mehr hat; die
     /// Nachrichten des Raums werden mitgelöscht (**Festlegung SPEC §6**).
     pub fn raum_loeschen(
@@ -568,19 +467,6 @@ impl State {
         ergebnis?;
         if !self.raeume.contains_key(&raum) {
             return Err(Error::RaumUnbekannt);
-        }
-        if self.raeume.values().any(|r| r.eltern == Some(raum)) {
-            self.protokolliere(
-                jetzt_ms,
-                Some(wer),
-                &handelnder_name,
-                "raum_geloescht",
-                raum.text(),
-                None,
-                None,
-                "abgelehnt: Unterräume vorhanden".into(),
-            );
-            return Err(Error::RaumNichtLeer);
         }
         // Anwesende in die Wurzel setzen, damit niemand in einem Loch sitzt.
         let wurzel = self.wurzel_raum();
@@ -611,33 +497,27 @@ impl State {
         Ok(())
     }
 
-    /// Oberster Raum (erster ohne Eltern), falls vorhanden.
-    pub fn wurzel_raum(&self) -> Option<RoomId> {
-        self.raeume
-            .values()
-            .filter(|r| r.eltern.is_none())
-            .min_by_key(|r| (r.reihenfolge, r.name.clone()))
-            .map(|r| r.id)
+    /// Der Standardraum: der erste Raum der Liste.
+    ///
+    /// **Dorthin kommt jeder beim Verbinden**, und dorthin führt auch
+    /// „aus dem Raum werfen". Es gibt keinen Zustand „in keinem Raum".
+    pub fn standard_raum(&self) -> Option<RoomId> {
+        self.raumliste().first().map(|r| r.id)
     }
 
-    /// Alle Räume, nach Baumlage sortiert (Eltern vor Kindern).
+    /// Alte Bezeichnung, gleiche Bedeutung (Ziel für „aus dem Raum werfen").
+    pub fn wurzel_raum(&self) -> Option<RoomId> {
+        self.standard_raum()
+    }
+
+    /// Alle Räume in Anzeigereihenfolge.
+    ///
+    /// **Flach, ohne Unterräume.** Sortiert nach `reihenfolge`, dann Name —
+    /// dieselbe Ordnung, die das Fenster zeigt.
     pub fn raumliste(&self) -> Vec<&Room> {
-        fn sammle<'a>(
-            raeume: &'a BTreeMap<RoomId, Room>,
-            eltern: Option<RoomId>,
-            tiefe: usize,
-            aus: &mut Vec<(usize, &'a Room)>,
-        ) {
-            let mut kinder: Vec<&Room> = raeume.values().filter(|r| r.eltern == eltern).collect();
-            kinder.sort_by(|a, b| (a.reihenfolge, &a.name).cmp(&(b.reihenfolge, &b.name)));
-            for k in kinder {
-                aus.push((tiefe, k));
-                sammle(raeume, Some(k.id), tiefe + 1, aus);
-            }
-        }
-        let mut aus = Vec::new();
-        sammle(&self.raeume, None, 0, &mut aus);
-        aus.into_iter().map(|(_, r)| r).collect()
+        let mut alle: Vec<&Room> = self.raeume.values().collect();
+        alle.sort_by(|a, b| (a.reihenfolge, &a.name).cmp(&(b.reihenfolge, &b.name)));
+        alle
     }
 
     // ---- Anwesenheit ---------------------------------------------------
@@ -999,14 +879,25 @@ impl State {
         } else {
             "sprechen_freigegeben"
         };
-        let (handelnder_name, ergebnis) = self.vorpruefung_person(
-            wer,
-            Capability::PersonEingreifen,
-            jetzt_ms,
-            aktion,
-            ziel.text(),
-        );
-        ergebnis?;
+        // Das eigene Mikrofon darf jeder selbst schalten — nur fremde brauchen
+        // das Eingriffsrecht. Ohne das könnte sich niemand stummschalten, ohne
+        // einen Moderator zu rufen.
+        let handelnder_name = if wer == ziel {
+            let Some(m) = self.mitglieder.get(&wer) else {
+                return Err(Error::MitgliedUnbekannt);
+            };
+            m.name.clone()
+        } else {
+            let (name, ergebnis) = self.vorpruefung_person(
+                wer,
+                Capability::PersonEingreifen,
+                jetzt_ms,
+                aktion,
+                ziel.text(),
+            );
+            ergebnis?;
+            name
+        };
         let vorher;
         {
             let m = self
@@ -1323,7 +1214,7 @@ mod tests {
         let a = admin(&mut s);
         let b = s.anmelden("k2", "Bosse", 1_001).unwrap();
         assert_eq!(
-            s.raum_anlegen(b, None, "Verbote", 1_002),
+            s.raum_anlegen(b, "Verbote", 1_002),
             Err(Error::RechtFehlt(Capability::RaumVerwalten))
         );
         // Die Ablehnung steht im Protokoll.
@@ -1331,58 +1222,15 @@ mod tests {
             .protokoll
             .iter()
             .any(|e| e.aktion == "raum_angelegt" && e.ergebnis.starts_with("abgelehnt")));
-        let id = s.raum_anlegen(a, None, "Vorstand", 1_003).unwrap();
+        let id = s.raum_anlegen(a, "Vorstand", 1_003).unwrap();
         assert_eq!(s.raeume.get(&id).unwrap().name, "Vorstand");
-    }
-
-    #[test]
-    fn unterraum_und_sortierung() {
-        let mut s = zustand();
-        let a = admin(&mut s);
-        let oben = s.raum_anlegen(a, None, "B", 1_010).unwrap();
-        let unten = s.raum_anlegen(a, Some(oben), "B1", 1_011).unwrap();
-        let liste = s.raumliste();
-        let namen: Vec<&str> = liste.iter().map(|r| r.name.as_str()).collect();
-        // Empfang ist der Wurzelraum, danach kommt B, darunter B1.
-        assert_eq!(namen, vec![DEFAULT_ROOM_NAME, "B", "B1"]);
-        assert_eq!(s.raeume.get(&unten).unwrap().eltern, Some(oben));
-    }
-
-    #[test]
-    fn raum_kann_nicht_unter_sich_selbst() {
-        let mut s = zustand();
-        let a = admin(&mut s);
-        let oben = s.raum_anlegen(a, None, "A", 1_010).unwrap();
-        let unten = s.raum_anlegen(a, Some(oben), "A1", 1_011).unwrap();
-        assert_eq!(
-            s.raum_verschieben(a, oben, Some(unten), 1_012),
-            Err(Error::Kreis)
-        );
-    }
-
-    #[test]
-    fn raum_mit_unterraum_laesst_sich_nicht_loeschen() {
-        let mut s = zustand();
-        let a = admin(&mut s);
-        let oben = s.raum_anlegen(a, None, "A", 1_010).unwrap();
-        s.raum_anlegen(a, Some(oben), "A1", 1_011).unwrap();
-        assert_eq!(s.raum_loeschen(a, oben, 1_012), Err(Error::RaumNichtLeer));
-        let unten = s
-            .raeume
-            .values()
-            .find(|r| r.eltern == Some(oben))
-            .unwrap()
-            .id;
-        s.raum_loeschen(a, unten, 1_013).unwrap();
-        s.raum_loeschen(a, oben, 1_014).unwrap();
-        assert!(!s.raeume.contains_key(&oben));
     }
 
     #[test]
     fn loeschen_setzt_anwesende_in_die_wurzel() {
         let mut s = zustand();
         let a = admin(&mut s);
-        let raum = s.raum_anlegen(a, None, "A", 1_010).unwrap();
+        let raum = s.raum_anlegen(a, "A", 1_010).unwrap();
         s.betreten(a, raum, 1_011).unwrap();
         s.raum_loeschen(a, raum, 1_012).unwrap();
         let wurzel = s.wurzel_raum().unwrap();
@@ -1578,6 +1426,39 @@ mod tests {
     }
 
     #[test]
+    fn jeder_landet_beim_anmelden_im_standardraum() {
+        let mut s = zustand();
+        let standard = s.standard_raum().unwrap();
+        let a = s.anmelden("k1", "Ada", 1_000).unwrap();
+        assert_eq!(s.mitglied(a).unwrap().raum, Some(standard));
+        let b = s.anmelden("k2", "Bosse", 1_001).unwrap();
+        assert_eq!(s.mitglied(b).unwrap().raum, Some(standard));
+        // Auch nach einem Raumwechsel: Neuanmeldung führt zurück.
+        let anderer = s.raum_anlegen(a, "Technik", 1_002).unwrap();
+        s.betreten(b, anderer, 1_003).unwrap();
+        s.anmelden("k2", "Bosse", 1_004).unwrap();
+        assert_eq!(s.mitglied(b).unwrap().raum, Some(standard));
+    }
+
+    #[test]
+    fn jeder_darf_sich_selbst_stummschalten() {
+        let mut s = zustand();
+        let _a = admin(&mut s);
+        let b = s.anmelden("k2", "Bosse", 1_001).unwrap();
+        // Bosse ist Mitglied und darf sich selbst schalten.
+        s.stummschalten(b, b, false, true, 1_002).unwrap();
+        assert!(s.mitglied(b).unwrap().stumm);
+        s.taubschalten(b, b, true, 1_003).unwrap();
+        assert!(s.mitglied(b).unwrap().taub);
+        // Fremde aber nicht.
+        let c = s.anmelden("k3", "Mira", 1_004).unwrap();
+        assert_eq!(
+            s.stummschalten(b, c, false, true, 1_005),
+            Err(Error::RechtFehlt(Capability::PersonEingreifen))
+        );
+    }
+
+    #[test]
     fn taub_schliesst_stumm_ein() {
         let mut s = zustand();
         let a = admin(&mut s);
@@ -1596,7 +1477,7 @@ mod tests {
         let mut s = zustand();
         let a = admin(&mut s);
         let b = s.anmelden("k2", "Bosse", 1_001).unwrap();
-        let raum = s.raum_anlegen(a, None, "Vorstand", 1_002).unwrap();
+        let raum = s.raum_anlegen(a, "Vorstand", 1_002).unwrap();
         s.betreten(b, s.wurzel_raum().unwrap(), 1_003).unwrap();
         s.verschieben(a, b, raum, 1_004).unwrap();
         assert_eq!(s.mitglied(b).unwrap().raum, Some(raum));
@@ -1609,7 +1490,7 @@ mod tests {
         let mut s = zustand();
         let a = admin(&mut s);
         let b = s.anmelden("k2", "Bosse", 1_001).unwrap();
-        let raum = s.raum_anlegen(a, None, "Vorstand", 1_002).unwrap();
+        let raum = s.raum_anlegen(a, "Vorstand", 1_002).unwrap();
         s.betreten(b, raum, 1_003).unwrap();
         s.aus_raum_werfen(a, b, 1_004).unwrap();
         assert_eq!(s.mitglied(b).unwrap().raum, s.wurzel_raum());
@@ -1620,7 +1501,7 @@ mod tests {
         let mut s = zustand();
         let a = admin(&mut s);
         let b = s.anmelden("k2", "Bosse", 1_001).unwrap();
-        let _ = s.raum_anlegen(b, None, "Verboten", 1_002);
+        let _ = s.raum_anlegen(b, "Verboten", 1_002);
         let eintrag = s.protokoll.last().unwrap();
         assert_eq!(eintrag.aktion, "raum_angelegt");
         assert_eq!(eintrag.handelnder, Some(b));
@@ -1633,8 +1514,7 @@ mod tests {
         let mut s = zustand();
         let a = admin(&mut s);
         for i in 0..10 {
-            s.raum_anlegen(a, None, &format!("R{i}"), 2_000 + i)
-                .unwrap();
+            s.raum_anlegen(a, &format!("R{i}"), 2_000 + i).unwrap();
         }
         let seite = s.protokoll_lesen(2, 3);
         assert_eq!(seite.len(), 3);
@@ -1654,7 +1534,7 @@ mod tests {
     fn export_und_import_sind_verlustfrei() {
         let mut s = zustand();
         let a = admin(&mut s);
-        let raum = s.raum_anlegen(a, None, "Vorstand", 1_010).unwrap();
+        let raum = s.raum_anlegen(a, "Vorstand", 1_010).unwrap();
         s.betreten(a, raum, 1_011).unwrap();
         s.text_senden(a, "Protokoll", 1_012).unwrap();
         s.sperren(

@@ -1,45 +1,41 @@
 <script setup lang="ts">
-// Räume, Menschen, Verlauf.
+// Räume: „Du bist hier" oben, darunter die Wechselliste. Zwei Spalten, nicht
+// drei — der Raum, in dem man sitzt, ist eine Karte mit seinen Leuten; die
+// anderen Räume sind eine dichte Wechselliste. Der Verlauf bekommt die Breite.
 //
-// Gestaltung nach den Regeln für Kontextmenüs (NN/G, Apple HIG, Paste):
-// • Harmlose Eingriffe oben, **trennende Linie**, destruktive unten und in
-//   Warnfarbe — nie neben einer harmlosen Aktion.
-// • Kein verschachteltes Bedienelement im Eintrag; wer eine Auswahl braucht,
-//   bekommt einen Dialog (Verschieben, Kicken, Sperren).
-// • Sprech-, Stumm- und Taubzustand sind **getrennt** gekennzeichnet: der Ring
-//   am Namenszeichen zeigt Sprechen, ein Strich Stumm, ein Punkt Taub.
-// • Das Menü öffnet per Rechtsklick **und** über den Knopf (Tastatur, Touch).
+// Regeln, an die sich das hält:
+// • Kanten sind scharf, getrennt wird mit 1-px-Linien, nicht mit Schatten.
+// • Akzentfarbe nur für Zustand (hier, spricht), nicht als Dekoration.
+// • Eingriffe liegen im Kontextmenü (Rechtsklick oder „…"), nie im Hauptweg.
 import { computed, nextTick, ref, watch } from "vue";
 import * as UI from "@weppelmann/components";
-import { IconInfo, IconMore, IconPlus, IconTrash } from "@weppelmann/icons";
+import { IconMore, IconPlus } from "@weppelmann/icons";
 import {
-  anwesenheitText,
+  ausRaumWerfen,
   betreten,
   darfEingreifen,
   darfRaeumeVerwalten,
+  eingreifen,
   legeRaumAn,
   loesche,
   meinRaum,
   modell,
-  sende,
-  stummschalten,
-  uhrzeit,
-  verschieben,
-  ausRaumWerfen,
-  trenneMitglied,
-  sperreMitglied,
   raumUmbenennen,
-  verlassen,
+  sende,
+  sperreMitglied,
+  stummschalten,
+  trenneMitglied,
+  uhrzeit,
+  verbunden,
+  verschieben,
 } from "../store";
 import { api } from "../api";
 
 const eingabe = ref("");
 const verlauf = ref<HTMLElement | null>(null);
 
-// ---- Kontextmenüs -------------------------------------------------------
-/** Welches Mitgliedsmenü ist offen? (Kennung oder null) */
+// ---- Menüs --------------------------------------------------------------
 const offenesMitglied = ref<string | null>(null);
-/** Welches Raummenü ist offen? */
 const offenerRaum = ref<string | null>(null);
 
 function oeffneMitgliedMenue(id: string, ereignis?: MouseEvent) {
@@ -62,14 +58,10 @@ const eingabeName = ref("");
 const eingabeGrund = ref("");
 const zielRaumWahl = ref<string | null>(null);
 
-const zielName = computed(
-  () => modell.mitglieder.find((m) => m.id === zielMitglied.value)?.name ?? "",
-);
-const raumName = computed(
-  () => modell.raeume.find((r) => r.id === zielRaum.value)?.name ?? "",
-);
+const zielName = computed(() => modell.mitglieder.find((m) => m.id === zielMitglied.value)?.name ?? "");
+const raumName = computed(() => modell.raeume.find((r) => r.id === zielRaum.value)?.name ?? "");
 const raumWahl = computed(() =>
-  modell.raeume.map((r) => ({ value: r.id, label: `${"— ".repeat(r.tiefe)}${r.name}` })),
+  modell.raeume.map((r) => ({ value: r.id, label: r.name })),
 );
 
 // ---- Daten --------------------------------------------------------------
@@ -84,38 +76,21 @@ const hierAnwesend = computed(() =>
 
 const sprechender = computed(() => hierAnwesend.value.find((m) => m.spricht)?.name ?? null);
 
-const raumBaum = computed(() => {
-  const oben = modell.raeume.filter((r) => r.eltern === null);
-  return oben.map((r) => ({ ...r, kinder: modell.raeume.filter((k) => k.eltern === r.id) }));
-});
-
-function kachelMeta(raumId: string, anwesend: number): string {
-  const teile = [anwesend === 0 ? "leer" : anwesend === 1 ? "1 anwesend" : `${anwesend} anwesend`];
-  const spricht = modell.mitglieder.find((m) => m.raum === raumId && m.spricht);
-  if (spricht) teile.push(`${spricht.name} spricht`);
-  return teile.join(" · ");
+function anwesendeVon(raumId: string) {
+  return modell.mitglieder.filter((m) => m.raum === raumId);
 }
 
-/** Menüpunkte für ein Mitglied. */
+// ---- Menüpunkte ---------------------------------------------------------
 function mitgliedMenue(id: string): UI.MenuItem[] {
   const m = modell.mitglieder.find((x) => x.id === id);
   if (!m) return [];
   const punkte: UI.MenuItem[] = [
-    {
-      id: "mute",
-      label: m.stumm ? "Sprechen freigeben" : "Mikrofon stummschalten",
-      hint: "Server",
-    },
-    {
-      id: "deaf",
-      label: m.taub ? "Ton freigeben" : "Ton stummschalten",
-      hint: "Server",
-    },
+    { id: "mute", label: m.stumm ? "Sprechen freigeben" : "Mikrofon stummschalten", hint: "Server" },
+    { id: "deaf", label: m.taub ? "Ton freigeben" : "Ton stummschalten", hint: "Server" },
     { id: "move", label: "In Raum verschieben …", separatorBefore: true },
   ];
-  if (m.raum !== modell.raeume.find((r) => r.eltern === null)?.id) {
-    punkte.push({ id: "kick-room", label: "Aus Raum werfen" });
-  }
+  const erster = modell.raeume[0]?.id;
+  if (m.raum !== erster) punkte.push({ id: "kick-room", label: "Aus Raum werfen" });
   punkte.push({ id: "role", label: "Rolle setzen …", separatorBefore: true });
   punkte.push({ id: "kick", label: "Vom Server trennen …", separatorBefore: true, danger: true });
   punkte.push({ id: "ban", label: "Sperren …", danger: true });
@@ -141,9 +116,7 @@ function mitgliedMenueGewaehlt(id: string, wahl: string) {
       void ausRaumWerfen(id);
       break;
     case "role":
-      zielRaumWahl.value = m?.rolle ?? null;
-      dialog.value = "umbenennen"; // wird unten in „ro lle" umgedeutet
-      dialog.value = "verschieben";
+      eingreifen(id);
       break;
     case "kick":
       eingabeGrund.value = "";
@@ -157,12 +130,11 @@ function mitgliedMenueGewaehlt(id: string, wahl: string) {
 }
 
 function raumMenuePunkte(): UI.MenuItem[] {
-  const punkte: UI.MenuItem[] = [
-    { id: "enter", label: "Betreten" },
-    { id: "new", label: "Unterraum anlegen …", separatorBefore: true },
-    { id: "rename", label: "Umbenennen …" },
-  ];
+  const punkte: UI.MenuItem[] = [{ id: "enter", label: "Betreten" }];
+  // Verwalten nur mit Recht — wer es nicht darf, sieht es auch nicht.
   if (darfRaeumeVerwalten.value) {
+    punkte.push({ id: "new", label: "Raum anlegen …", separatorBefore: true });
+    punkte.push({ id: "rename", label: "Umbenennen …" });
     punkte.push({ id: "delete", label: "Raum löschen …", separatorBefore: true, danger: true });
   }
   return punkte;
@@ -193,7 +165,7 @@ async function bestaetigen() {
   const art = dialog.value;
   dialog.value = null;
   if (art === "raum") {
-    await legeRaumAn(eingabeName.value, meinRaum.value?.id ?? null);
+    await legeRaumAn(eingabeName.value);
   } else if (art === "umbenennen" && zielRaum.value) {
     await raumUmbenennen(zielRaum.value, eingabeName.value);
   } else if (art === "loeschen" && zielRaum.value) {
@@ -224,9 +196,10 @@ async function absenden() {
 
 <template>
   <div class="ansicht">
-    <!-- Räume -->
-    <UI.WpSidePanel title="Räume" :count="modell.raeume.length" width="18rem">
-      <template #actions>
+    <!-- Spalte 1: Räume mit ihren Leuten — eine Liste, kein Springen -->
+    <aside class="seite">
+      <header class="seite__kopf">
+        <span class="marke">Räume</span>
         <UI.WpIconButton
           v-if="darfRaeumeVerwalten"
           :icon="IconPlus"
@@ -235,21 +208,22 @@ async function absenden() {
           variant="ghost"
           @press="(eingabeName = ''), (zielRaum = null), (dialog = 'raum')"
         />
-      </template>
+      </header>
 
       <div class="raeume">
-        <section v-for="raum in raumBaum" :key="raum.id" class="gruppe">
-          <div class="kachelzeile" @contextmenu="oeffneRaumMenue(raum.id, $event)">
-            <UI.WpChoiceCard
-              :title="raum.name"
-              :meta="kachelMeta(raum.id, raum.anwesend)"
-              :active="raum.hier"
-              @press="betreten(raum.id)"
+        <section v-for="raum in modell.raeume" :key="raum.id" class="block">
+          <div class="zeile">
+            <button
+              type="button"
+              class="raum"
+              :class="{ 'ist-hier': raum.hier }"
+              @click="(e: MouseEvent) => e.button === 0 && betreten(raum.id)"
+              @contextmenu="oeffneRaumMenue(raum.id, $event)"
             >
-              <template #trailing>
-                <UI.WpBadge v-if="raum.anwesend > 0" :label="String(raum.anwesend)" tone="neutral" />
-              </template>
-            </UI.WpChoiceCard>
+              <span class="raum__marke" aria-hidden="true" />
+              <span class="raum__name">{{ raum.name }}</span>
+              <span class="raum__zahl">{{ anwesendeVon(raum.id).length || "" }}</span>
+            </button>
             <UI.WpMenu
               :items="raumMenuePunkte()"
               label="Raum-Menü"
@@ -262,116 +236,55 @@ async function absenden() {
             </UI.WpMenu>
           </div>
 
-          <div v-if="raum.kinder.length" class="kinder">
-            <div
-              v-for="kind in raum.kinder"
-              :key="kind.id"
-              class="kachelzeile"
-              @contextmenu="oeffneRaumMenue(kind.id, $event)"
+          <ul v-if="anwesendeVon(raum.id).length" class="leute">
+            <li
+              v-for="m in anwesendeVon(raum.id)"
+              :key="m.id"
+              class="mensch"
+              @contextmenu="m.ich ? undefined : oeffneMitgliedMenue(m.id, $event)"
             >
-              <UI.WpChoiceCard
-                :title="kind.name"
-                :meta="kachelMeta(kind.id, kind.anwesend)"
-                :active="kind.hier"
-                @press="betreten(kind.id)"
-              >
-                <template #trailing>
-                  <UI.WpBadge v-if="kind.anwesend > 0" :label="String(kind.anwesend)" tone="neutral" />
-                </template>
-              </UI.WpChoiceCard>
+              <UI.WpAvatar
+                :name="m.name"
+                :speaking="m.spricht"
+                :muted="m.stumm"
+                :away="m.taub"
+                :tone="m.ich ? 'accent' : 'neutral'"
+                size="sm"
+              />
+              <span class="mensch__text">
+                <span class="mensch__name">{{ m.name }}<span v-if="m.ich" class="mensch__ich"> du</span></span>
+                <span class="mensch__rolle">
+                  {{ m.rolle }}<template v-if="m.stumm"> · stumm</template><template v-if="m.taub"> · taub</template>
+                </span>
+              </span>
               <UI.WpMenu
-                :items="raumMenuePunkte()"
-                label="Raum-Menü"
-                align="left"
-                :open="offenerRaum === kind.id"
-                @update:open="(offen: boolean) => (offenerRaum = offen ? kind.id : null)"
-                @select="(wahl: string) => raumMenueGewaehlt(kind.id, wahl)"
+                v-if="!m.ich && darfEingreifen"
+                :items="mitgliedMenue(m.id)"
+                :label="`Menü für ${m.name}`"
+                :open="offenesMitglied === m.id"
+                @update:open="(offen: boolean) => (offenesMitglied = offen ? m.id : null)"
+                @select="(wahl: string) => mitgliedMenueGewaehlt(m.id, wahl)"
               >
-                <UI.WpIconButton :icon="IconMore" label="Raum-Menü" size="sm" variant="ghost" />
+                <UI.WpIconButton :icon="IconMore" :label="`Menü für ${m.name}`" size="sm" variant="ghost" />
               </UI.WpMenu>
-            </div>
-          </div>
+            </li>
+          </ul>
         </section>
       </div>
+    </aside>
 
-      <template #footer>
-        <UI.WpButton v-if="meinRaum" label="Raum verlassen" size="sm" variant="ghost" @press="verlassen" />
-      </template>
-    </UI.WpSidePanel>
-
-    <!-- Anwesende -->
-    <UI.WpSidePanel title="Hier" :count="hierAnwesend.length" width="16rem">
-      <ul class="menschen">
-        <li
-          v-for="m in hierAnwesend"
-          :key="m.id"
-          class="mensch"
-          @contextmenu="m.ich ? undefined : oeffneMitgliedMenue(m.id, $event)"
-        >
-          <UI.WpAvatar
-            :name="m.name"
-            :speaking="m.spricht"
-            :muted="m.stumm"
-            :away="m.taub"
-            :tone="m.ich ? 'accent' : 'neutral'"
-            size="md"
-          />
-          <span class="mensch__text">
-            <span class="mensch__name">
-              {{ m.name }}<span v-if="m.ich" class="mensch__ich"> · du</span>
-            </span>
-            <span class="mensch__rolle">
-              {{ m.rolle }}
-              <template v-if="m.stumm"> · stumm</template>
-              <template v-if="m.taub"> · taub</template>
-            </span>
-          </span>
-
-          <UI.WpMenu
-            v-if="!m.ich && darfEingreifen"
-            :items="mitgliedMenue(m.id)"
-            :label="`Menü für ${m.name}`"
-            :open="offenesMitglied === m.id"
-            @update:open="(offen: boolean) => (offenesMitglied = offen ? m.id : null)"
-            @select="(wahl: string) => mitgliedMenueGewaehlt(m.id, wahl)"
-          >
-            <UI.WpIconButton :icon="IconMore" :label="`Menü für ${m.name}`" size="sm" variant="ghost" />
-          </UI.WpMenu>
-        </li>
-        <li v-if="hierAnwesend.length === 0" class="leer">
-          <UI.WpText variant="caption" tone="muted">niemand hier</UI.WpText>
-        </li>
-      </ul>
-
-      <template #footer>
-        <UI.WpText variant="caption" tone="muted">
-          <IconInfo /> Rechtsklick auf eine Person öffnet die Eingriffe.
-        </UI.WpText>
-      </template>
-    </UI.WpSidePanel>
-
-    <!-- Verlauf -->
+    <!-- Spalte 2: Verlauf -->
     <section class="haupt">
       <header class="kopf">
         <div class="kopf__text">
           <h1>{{ meinRaum ? meinRaum.name : "Kein Raum" }}</h1>
-          <p>{{ meinRaum ? anwesenheitText() : "Wähle links einen Raum." }}</p>
+          <p>
+            <template v-if="meinRaum">{{ hierAnwesend.length }} anwesend · {{ modell.nachrichten.length }} Nachrichten</template>
+            <template v-else>Wähle links einen Raum.</template>
+          </p>
         </div>
         <div class="kopf__rechts">
           <UI.WpBadge v-if="sprechender" :label="`${sprechender} spricht`" tone="ok" />
-          <UI.WpBadge
-            v-if="meinRaum"
-            :label="hierAnwesend.filter((m) => m.stumm).length ? `${hierAnwesend.filter((m) => m.stumm).length} stumm` : 'Mikrofone offen'"
-            :tone="hierAnwesend.some((m) => m.stumm) ? 'warn' : 'neutral'"
-          />
-          <UI.WpButton
-            v-if="meinRaum && darfRaeumeVerwalten"
-            label="Löschen"
-            size="sm"
-            variant="ghost"
-            :icon="IconTrash"
-            @press="(zielRaum = meinRaum.id), (dialog = 'loeschen')"
-          />
         </div>
       </header>
 
@@ -408,7 +321,7 @@ async function absenden() {
         </article>
       </div>
 
-      <div v-if="meinRaum" class="schreiben">
+      <div v-if="meinRaum && verbunden" class="schreiben">
         <UI.WpInput v-model="eingabe" placeholder="Schreiben … (Enter sendet)" @keyup.enter="absenden" />
         <UI.WpButton
           label="Senden"
@@ -419,11 +332,11 @@ async function absenden() {
       </div>
     </section>
 
-    <!-- Dialoge: nur wo eine Eingabe nötig ist (Menüs verschachteln nichts). -->
+    <!-- Dialoge -->
     <UI.WpDialog
       :open="dialog === 'raum'"
-      title="Unterraum anlegen"
-      description="Der Raum entsteht unter dem aktuellen Raum."
+      title="Raum anlegen"
+      description="Der Raum erscheint in der Wechselliste."
       confirm-label="Anlegen"
       @confirm="bestaetigen"
       @cancel="dialog = null"
@@ -445,7 +358,7 @@ async function absenden() {
     <UI.WpDialog
       :open="dialog === 'loeschen'"
       title="Raum löschen"
-      :description="`„${raumName}“ wird gelöscht. Nur möglich, wenn keine Unterräume mehr darin sind; die Nachrichten des Raums verschwinden mit.`"
+      :description="`„${raumName}“ wird gelöscht. Nur möglich, wenn keine Unterräume mehr darin sind.`"
       tone="warn"
       confirm-label="Löschen"
       @confirm="bestaetigen"
@@ -466,7 +379,7 @@ async function absenden() {
     <UI.WpDialog
       :open="dialog === 'kicken'"
       :title="`${zielName} vom Server trennen`"
-      description="Die Person fliegt aus dem Gespräch und kann sofort wieder beitreten. Der Grund erscheint bei ihr."
+      description="Die Person fliegt aus dem Gespräch und kann sofort wieder beitreten."
       tone="warn"
       confirm-label="Trennen"
       @confirm="bestaetigen"
@@ -478,7 +391,7 @@ async function absenden() {
     <UI.WpDialog
       :open="dialog === 'sperren'"
       :title="`${zielName} sperren`"
-      description="Die Kennung wird gesperrt; ein Wiederkommen ist mit diesem Gerät nicht möglich. Das lässt sich nur über das Prüfprotokoll zurücknehmen."
+      description="Die Kennung wird gesperrt; Wiederkommen ist mit diesem Gerät nicht möglich."
       tone="error"
       confirm-label="Sperren"
       @cancel="dialog = null"
@@ -496,58 +409,113 @@ async function absenden() {
   min-height: 0;
 }
 
-/* ---- Räume ---- */
+/* ---- Spalte 1: Räume mit Leuten ---- */
+.seite {
+  width: 19rem;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-right: var(--wp-size-border) solid var(--wp-color-border-subtle);
+  background: var(--wp-color-bg-panel);
+  overflow-y: auto;
+}
+
+.seite__kopf {
+  display: flex;
+  align-items: center;
+  gap: var(--wp-space-2);
+  padding: var(--wp-space-2) var(--wp-space-3);
+  border-bottom: var(--wp-size-border) solid var(--wp-color-border-subtle);
+  min-height: var(--wp-size-control-md);
+}
+
+/* Kleine Versalien: Beschriftung, keine Überschrift. */
+.marke {
+  font-size: var(--wp-font-size-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--wp-color-text-faint);
+}
+
+.seite__kopf .marke {
+  flex: 1;
+}
+
 .raeume {
   display: flex;
   flex-direction: column;
-  gap: var(--wp-space-3);
-  padding: var(--wp-space-1);
+  padding: var(--wp-space-1) 0 var(--wp-space-3);
 }
 
-.gruppe {
+.block {
   display: flex;
   flex-direction: column;
-  gap: var(--wp-space-1);
 }
 
-.kachelzeile {
-  position: relative;
+.zeile {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: var(--wp-space-1);
+  padding-right: var(--wp-space-1);
 }
 
-.kachelzeile > :first-child {
+.raum {
+  position: relative;
   flex: 1;
   min-width: 0;
-}
-
-/* Der Menü-Knopf erscheint erst bei Hover oder Fokus — die Kachel bleibt ruhig. */
-.kachelzeile > :last-child {
-  align-self: center;
-  opacity: 0;
-  transition: opacity var(--wp-duration-fast) ease;
-}
-
-.kachelzeile:hover > :last-child,
-.kachelzeile:focus-within > :last-child {
-  opacity: 1;
-}
-
-.kinder {
   display: flex;
-  flex-direction: column;
-  gap: var(--wp-space-1);
-  margin-left: var(--wp-space-3);
-  padding-left: var(--wp-space-3);
-  border-left: var(--wp-size-border) solid var(--wp-color-border-subtle);
+  align-items: baseline;
+  gap: var(--wp-space-2);
+  padding: var(--wp-space-1) var(--wp-space-2) var(--wp-space-1) var(--wp-space-3);
+  background: transparent;
+  border: 0;
+  color: var(--wp-color-text-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-/* ---- Menschen ---- */
-.menschen {
+.raum:hover {
+  background: var(--wp-color-bg-hover);
+  color: var(--wp-color-text-default);
+}
+
+/* Aktiver Raum: Fläche + 2-px-Akzentkante links. Kein Rahmen, keine Rundung. */
+.raum.ist-hier {
+  background: var(--wp-color-bg-raised);
+  color: var(--wp-color-text-default);
+  font-weight: var(--wp-font-weight-semibold);
+}
+
+.raum.ist-hier .raum__marke {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--wp-color-accent-default);
+}
+
+.raum__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--wp-font-size-sm);
+}
+
+.raum__zahl {
+  font-family: var(--wp-font-family-mono);
+  font-size: var(--wp-font-size-xs);
+  color: var(--wp-color-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Die Leute eines Raums hängen direkt darunter — eine Liste, ein Blick. */
+.leute {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 var(--wp-space-1) 0;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -557,7 +525,7 @@ async function absenden() {
   display: flex;
   align-items: center;
   gap: var(--wp-space-2);
-  padding: var(--wp-space-1) var(--wp-space-2);
+  padding: 2px var(--wp-space-2) 2px calc(var(--wp-space-4) + var(--wp-space-1));
 }
 
 .mensch:hover {
@@ -569,6 +537,7 @@ async function absenden() {
   flex-direction: column;
   min-width: 0;
   flex: 1;
+  line-height: 1.2;
 }
 
 .mensch__name {
@@ -580,6 +549,7 @@ async function absenden() {
 
 .mensch__ich {
   color: var(--wp-color-text-faint);
+  font-size: var(--wp-font-size-xs);
 }
 
 .mensch__rolle {
@@ -587,21 +557,20 @@ async function absenden() {
   color: var(--wp-color-text-faint);
 }
 
+.zeile > :last-child,
 .mensch > :last-child {
   opacity: 0;
   transition: opacity var(--wp-duration-fast) ease;
 }
 
+.zeile:hover > :last-child,
+.zeile:focus-within > :last-child,
 .mensch:hover > :last-child,
 .mensch:focus-within > :last-child {
   opacity: 1;
 }
 
-.leer {
-  padding: var(--wp-space-2);
-}
-
-/* ---- Verlauf ---- */
+/* ---- Spalte 2 ---- */
 .haupt {
   flex: 1;
   min-width: 0;

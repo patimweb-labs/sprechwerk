@@ -42,7 +42,6 @@ pub fn run() {
             commands::verbinden,
             commands::trennen,
             commands::betreten,
-            commands::verlassen,
             commands::text_senden,
             commands::nachricht_loeschen,
             commands::raum_anlegen,
@@ -54,7 +53,6 @@ pub fn run() {
             commands::aus_raum_werfen,
             commands::trennen_mitglied,
             commands::sperren,
-            commands::protokoll,
             commands::einstellungen_lesen,
             commands::einstellungen_speichern,
         ])

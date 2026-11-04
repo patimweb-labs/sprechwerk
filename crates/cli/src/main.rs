@@ -167,7 +167,7 @@ async fn main() -> Result<()> {
                     continue;
                 }
                 if let Some(rest) = zeile.strip_prefix("/anlegen ") {
-                    verbindung.sende(ClientFrame::RaumAnlegen { name: rest.trim().to_string(), eltern: None }).await?;
+                    verbindung.sende(ClientFrame::RaumAnlegen { name: rest.trim().to_string() }).await?;
                     continue;
                 }
                 if zeile == "/protokoll" {

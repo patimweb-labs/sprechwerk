@@ -18,8 +18,6 @@ export type Verbindung =
 export interface Raum {
   id: string;
   name: string;
-  eltern: string | null;
-  tiefe: number;
   anwesend: number;
   hier: boolean;
 }
@@ -45,15 +43,6 @@ export interface Nachricht {
   loeschbar: boolean;
 }
 
-export interface Protokolleintrag {
-  laufnummer: number;
-  zeit: number;
-  handelnder_name: string;
-  aktion: string;
-  ziel: string;
-  ergebnis: string;
-}
-
 /** Der vollständige Modellstand — die Oberfläche ist `render(modell)`. */
 export interface Zustand {
   verbindung: Verbindung | null;
@@ -61,8 +50,13 @@ export interface Zustand {
   raeume: Raum[];
   mitglieder: Mitglied[];
   nachrichten: Nachricht[];
-  protokoll: Protokolleintrag[];
   meldung: string | null;
+}
+
+/** Ein gemerkter Server (Favorit). */
+export interface Favorit {
+  name: string;
+  server: string;
 }
 
 export interface Einstellungen {
@@ -77,6 +71,7 @@ export interface Einstellungen {
   ptt_taste: string;
   schwelle: number;
   vorlauf_ms: number;
+  favoriten: Favorit[];
 }
 
 /** Läuft die Oberfläche in der Fensteranwendung (echter Rust-Teil)? */
@@ -100,11 +95,9 @@ const echtApi = {
     invoke<string>("verbinden", { server, name, passwort: passwort || null }),
   trennen: () => invoke<void>("trennen"),
   betreten: (raum: string) => invoke<void>("betreten", { raum }),
-  verlassen: () => invoke<void>("verlassen"),
   textSenden: (text: string) => invoke<void>("text_senden", { text }),
   nachrichtLoeschen: (nachricht: string) => invoke<void>("nachricht_loeschen", { nachricht }),
-  raumAnlegen: (name: string, eltern?: string | null) =>
-    invoke<void>("raum_anlegen", { name, eltern: eltern ?? null }),
+  raumAnlegen: (name: string) => invoke<void>("raum_anlegen", { name }),
   raumUmbenennen: (raum: string, name: string) => invoke<void>("raum_umbenennen", { raum, name }),
   raumLoeschen: (raum: string) => invoke<void>("raum_loeschen", { raum }),
   rolleSetzen: (mitglied: string, rolle: Rolle) => invoke<void>("rolle_setzen", { mitglied, rolle }),
@@ -115,7 +108,6 @@ const echtApi = {
   trenneMitglied: (mitglied: string, grund: string) =>
     invoke<void>("trennen_mitglied", { mitglied, grund }),
   sperreMitglied: (mitglied: string, grund: string) => invoke<void>("sperren", { mitglied, grund }),
-  protokoll: (ab: number, anzahl: number) => invoke<void>("protokoll", { ab, anzahl }),
   einstellungenLesen: () => invoke<Einstellungen>("einstellungen_lesen"),
   einstellungenSpeichern: (einstellungen: Einstellungen) =>
     invoke<void>("einstellungen_speichern", { einstellungen }),

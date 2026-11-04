@@ -11,7 +11,7 @@ export const modell = reactive<Zustand>({
   raeume: [],
   mitglieder: [],
   nachrichten: [],
-  protokoll: [],
+
   meldung: null,
 });
 
@@ -27,10 +27,13 @@ export const einstellungen = reactive<Einstellungen>({
   ptt_taste: "Leertaste",
   schwelle: 30,
   vorlauf_ms: 60,
+  favoriten: [],
 });
 
 /** Welche Ansicht ist offen? (Die Leiste links schreibt hier hinein.) */
-export const ansicht = ref<"raeume" | "protokoll" | "einstellungen">("raeume");
+// Startseite ist die Serverliste; im Klickdummy ist man schon verbunden und
+// landet direkt im Gespräch.
+export const ansicht = ref<"server" | "raeume" | "einstellungen">(istDummy ? "raeume" : "server");
 
 export const laeuft = ref(false);
 
@@ -49,11 +52,6 @@ export const darfRaeumeVerwalten = computed(() =>
 
 /** Darf ich Rollen vergeben? */
 export const darfRollenVergeben = computed(() => meineRolle.value === "administrator");
-
-/** Darf ich das Prüfprotokoll lesen? */
-export const darfProtokollLesen = computed(() =>
-  ["administrator", "moderator"].includes(meineRolle.value ?? ""),
-);
 
 /** Raum, in dem ich sitze. */
 export const meinRaum = computed(() => modell.raeume.find((r) => r.hier) ?? null);
@@ -115,6 +113,48 @@ export async function speichere() {
   }
 }
 
+/** Bereich wechseln (Reiter in der Kopfzeile). */
+export function geheZu(bereich: "server" | "raeume" | "einstellungen") {
+  ansicht.value = bereich;
+}
+
+/** Eigenes Mikrofon stumm? (Der Server führt den Zustand.) */
+export const eigeneStumm = computed(() => {
+  const id = modell.verbindung?.art === "verbunden" ? modell.verbindung.ich : null;
+  return modell.mitglieder.find((m) => m.id === id)?.stumm ?? false;
+});
+
+/** Eigener Ton stumm? */
+export const eigeneTaub = computed(() => {
+  const id = modell.verbindung?.art === "verbunden" ? modell.verbindung.ich : null;
+  return modell.mitglieder.find((m) => m.id === id)?.taub ?? false;
+});
+
+/** Verbindet zu einem gemerkten Server (aus der Serverliste). */
+export async function verbindeMit(server: string, name?: string) {
+  if (server) einstellungen.server = server;
+  if (name) einstellungen.name = name;
+  ansicht.value = "raeume";
+  await verbinden();
+}
+
+/** Nimmt einen Server in die Favoriten auf. */
+export async function favoritHinzufuegen(favorit: { name: string; server: string }) {
+  const vorhanden = einstellungen.favoriten.find((f) => f.server === favorit.server);
+  if (vorhanden) {
+    vorhanden.name = favorit.name;
+  } else {
+    einstellungen.favoriten.push(favorit);
+  }
+  await speichere();
+}
+
+/** Entfernt einen Favoriten. */
+export async function favoritEntfernen(server: string) {
+  einstellungen.favoriten = einstellungen.favoriten.filter((f) => f.server !== server);
+  await speichere();
+}
+
 export async function verbinden() {
   laeuft.value = true;
   modell.meldung = null;
@@ -130,14 +170,12 @@ export async function verbinden() {
 
 export async function trennen() {
   await api.trennen();
+  // Nach dem Trennen gehört der Blick der Serverliste.
+  ansicht.value = "server";
 }
 
 export async function betreten(raum: string) {
   await api.betreten(raum);
-}
-
-export async function verlassen() {
-  await api.verlassen();
 }
 
 export async function sende(text: string) {
@@ -176,6 +214,16 @@ export async function sperreMitglied(mitglied: string, grund: string) {
   await api.sperreMitglied(mitglied, grund);
 }
 
+/** Merkt sich das Mitglied, dessen Rolle geändert werden soll (Dialog im Fenster). */
+let rollenZiel: string | null = null;
+export function eingreifen(mitglied: string) {
+  rollenZiel = mitglied;
+  ansicht.value = "einstellungen";
+}
+export function rollenZielLesen() {
+  return rollenZiel;
+}
+
 export async function raumUmbenennen(raum: string, name: string) {
   await api.raumUmbenennen(raum, name);
 }
@@ -192,14 +240,10 @@ export async function loesche(nachricht: string) {
   await api.nachrichtLoeschen(nachricht);
 }
 
-export async function legeRaumAn(name: string, eltern: string | null = null) {
+export async function legeRaumAn(name: string) {
   const bereinigt = name.trim();
   if (!bereinigt) return;
-  await api.raumAnlegen(bereinigt, eltern);
-}
-
-export async function holeProtokoll() {
-  await api.protokoll(0, 50);
+  await api.raumAnlegen(bereinigt);
 }
 
 /** Zeit als „14:07" für die Nachrichtenliste. */
