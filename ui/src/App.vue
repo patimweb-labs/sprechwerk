@@ -10,12 +10,13 @@ import { computed } from "vue";
 import * as UI from "@weppelmann/components";
 import {
   IconBrand,
+  IconPlug,
   IconHeadphoneOff,
   IconHeadphones,
   IconMic,
   IconMicOff,
   IconMore,
-  IconWifiOff,
+  IconUnplug,
 } from "@weppelmann/icons";
 import {
   ansicht,
@@ -100,7 +101,11 @@ async function tonUmschalten() {
         <IconBrand class="marke__zeichen" />
         <div class="marke__text">
           <span class="marke__name">Sprechwerk</span>
-          <span class="marke__server">{{ verbindungsText }}</span>
+          <span class="marke__server">
+            <!-- Serververbindung: immer der Stecker. Eingesteckt = verbunden. -->
+            <IconPlug class="marke__stecker" :class="{ 'ist-drin': verbunden }" />
+            {{ verbindungsText }}
+          </span>
         </div>
       </div>
 
@@ -128,7 +133,7 @@ async function tonUmschalten() {
             <span class="eigener__rolle">{{ meineRolle }}</span>
           </span>
           <UI.WpIconButton
-            :icon="IconWifiOff"
+            :icon="IconUnplug"
             label="Server verlassen"
             size="sm"
             variant="ghost"
@@ -207,12 +212,27 @@ async function tonUmschalten() {
 }
 
 .marke__server {
+  display: flex;
+  align-items: center;
+  gap: var(--wp-space-1);
   font-size: var(--wp-font-size-xs);
   color: var(--wp-color-text-faint);
-  max-width: 16rem;
+  max-width: 18rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Der Stecker: grau, wenn getrennt; Akzent, wenn die Verbindung steht. */
+.marke__stecker {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: var(--wp-color-text-faint);
+}
+
+.marke__stecker.ist-drin {
+  color: var(--wp-color-status-ok);
 }
 
 .rechts {
