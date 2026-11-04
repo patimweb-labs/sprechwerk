@@ -1,0 +1,37 @@
+[package]
+name = "sprechwerk-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "sprechwerk"
+path = "src/main.rs"
+
+[dev-dependencies]
+sprechwerk-client.workspace = true
+bytes = "1"
+tokio.workspace = true
+
+[dependencies]
+sprechwerk-core.workspace = true
+sprechwerk-proto.workspace = true
+sprechwerk-store.workspace = true
+
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml = "0.8"
+thiserror = "2"
+quinn = "0.11"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rcgen = "0.13"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+getrandom = "0.2"
+hex = "0.4"
+bytes = "1"
+ring = "0.17"
+time = "0.3"

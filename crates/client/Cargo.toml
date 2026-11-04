@@ -1,0 +1,18 @@
+[package]
+name = "sprechwerk-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sprechwerk-core.workspace = true
+sprechwerk-proto.workspace = true
+
+anyhow.workspace = true
+tokio.workspace = true
+quinn.workspace = true
+rustls.workspace = true
+ed25519-dalek.workspace = true
+getrandom.workspace = true
+hex.workspace = true
+bytes = "1"

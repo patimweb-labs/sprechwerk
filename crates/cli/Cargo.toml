@@ -1,0 +1,22 @@
+[package]
+name = "sprechwerk-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "sprechwerk-cli"
+path = "src/main.rs"
+
+[dependencies]
+sprechwerk-core.workspace = true
+sprechwerk-proto.workspace = true
+sprechwerk-client.workspace = true
+
+anyhow.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+ed25519-dalek = { version = "2", features = ["rand_core", "pkcs8"] }
+getrandom = "0.2"
+hex = "0.4"
+rand = "0.8"

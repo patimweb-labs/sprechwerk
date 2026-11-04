@@ -1,0 +1,7 @@
+/target
+*.sqlitedb
+*.sqlitedb-wal
+*.sqlitedb-shm
+/data
+sicherungen/
+*.tmp

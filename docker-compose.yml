@@ -1,0 +1,24 @@
+# sprechwerk mit docker compose up -d
+services:
+  sprechwerk:
+    build: .
+    image: sprechwerk:dev
+    restart: unless-stopped
+    ports:
+      # Nur UDP: QUIC braucht kein TCP.
+      - "7443:7443/udp"
+    volumes:
+      - sprechwerk-daten:/data
+    environment:
+      SPRECHWERK_NAME: "Sprechwerk"
+      # SPRECHWERK_PASSWORT: "geheim"
+      # SPRECHWERK_STANDARD_ROLLE: "gast"
+      SPRECHWERK_SICHERUNG_AKTIV: "1"
+      SPRECHWERK_SICHERUNG_INTERVALL_MINUTEN: "1440"
+      SPRECHWERK_SICHERUNG_BEHALTEN: "14"
+    # Der Server braucht keine besonderen Rechte.
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  sprechwerk-daten:
