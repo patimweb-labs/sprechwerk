@@ -21,6 +21,20 @@ use tauri::{Emitter, Manager};
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+            // Fenster- und Taskleistensymbol: kommt aus der Anwendung selbst,
+            // nicht aus dem Paket — so stimmt es auch beim Start aus dem
+            // Quellbaum (`cargo run`), wo es kein Paket gibt.
+            if let Some(fenster) = app.get_webview_window("main") {
+                match tauri::image::Image::from_bytes(include_bytes!("../icons/icon-256.png")) {
+                    Ok(bild) => {
+                        if let Err(fehler) = fenster.set_icon(bild) {
+                            eprintln!("Fenstersymbol: {fehler}");
+                        }
+                    }
+                    Err(fehler) => eprintln!("Fenstersymbol nicht lesbar: {fehler}"),
+                }
+            }
+
             let verzeichnis = app
                 .path()
                 .app_config_dir()

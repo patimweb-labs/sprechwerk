@@ -16,8 +16,8 @@
         "title": "Sprechwerk",
         "width": 1120,
         "height": 760,
-        "minWidth": 880,
-        "minHeight": 560,
+        "minWidth": 340,
+        "minHeight": 260,
         "resizable": true
       }
     ],
@@ -27,11 +27,18 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "rpm", "appimage"],
+    "targets": [
+      "deb",
+      "rpm",
+      "appimage"
+    ],
     "icon": [
       "icons/icon-32.png",
       "icons/icon-128.png",
-      "icons/icon-256.png"
+      "icons/icon-256.png",
+      "icons/icon-512.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
     ]
   }
 }

@@ -9,7 +9,6 @@
 import { computed, onMounted, onUnmounted } from "vue";
 import * as UI from "@weppelmann/components";
 import {
-  IconBrand,
   IconPlug,
   IconHeadphoneOff,
   IconHeadphones,
@@ -34,6 +33,7 @@ import {
   verbunden,
   meineRolle,
 } from "./store";
+import SprechwerkMarke from "./marke/SprechwerkMarke.vue";
 import ServerView from "./views/ServerView.vue";
 import RaeumeView from "./views/RaeumeView.vue";
 import EinstellungenView from "./views/EinstellungenView.vue";
@@ -151,7 +151,7 @@ async function tonUmschalten() {
   <div class="fenster">
     <header class="kopf">
       <div class="marke">
-        <IconBrand class="marke__zeichen" />
+        <SprechwerkMarke class="marke__zeichen" />
         <div class="marke__text">
           <span class="marke__name">Sprechwerk</span>
           <span class="marke__server">
@@ -268,7 +268,8 @@ async function tonUmschalten() {
 .marke__zeichen {
   width: 18px;
   height: 18px;
-  color: var(--wp-color-accent-default);
+  /* Weiß, wie die Zeichnung in der Marke selbst — nicht der Akzent. */
+  color: var(--wp-color-text);
 }
 
 .marke__text {
@@ -336,9 +337,59 @@ async function tonUmschalten() {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* Kein waagerechtes Scrollen: was zu breit ist, bricht um. */
+  overflow-x: hidden;
 }
 
 .meldung {
   color: var(--wp-color-status-error);
+}
+
+/* ---------------------------------------------------------------------------
+ * Schmale Fenster (bis „ICQ-Größe")
+ *
+ * Der Anspruch: bei 340 px Breite muss alles noch bedienbar sein. Was Platz
+ * kostet und nicht nötig ist, verschwindet — in dieser Reihenfolge:
+ * Serverzeile, Pegelbalken, Name und Rolle (das Zeichen bleibt), Zähler.
+ * ------------------------------------------------------------------------- */
+@media (max-width: 760px) {
+  .kopf {
+    gap: var(--wp-space-2);
+    padding-left: var(--wp-space-3);
+  }
+
+  /* Der Pegel ist Beiwerk — er verschwindet zuerst. */
+  .pegel {
+    display: none;
+  }
+
+  .marke__server {
+    max-width: 12rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (max-width: 560px) {
+  /* Name und Rolle stehen zusätzlich im Menü — hier zählt jede Spalte. */
+  .eigener {
+    display: none;
+  }
+
+  .marke__server {
+    display: none;
+  }
+}
+
+@media (max-width: 400px) {
+  .kopf {
+    padding-left: var(--wp-space-2);
+  }
+
+  .rechts {
+    gap: var(--wp-space-1);
+    padding-right: var(--wp-space-2);
+  }
 }
 </style>

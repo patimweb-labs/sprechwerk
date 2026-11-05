@@ -46,3 +46,34 @@ entscheidet.
 * Multi-Arch baut doppelt (oder über Emulation, langsam).
 * Ohne automatische Updates muss der Betreiber selbst dran denken — dafür
   überrascht ihn nichts.
+
+## Anwendungssymbol
+
+Das Symbol wird **nicht gezeichnet, sondern erzeugt**: `markenwerk` in
+`weppelmann-ui` liest ein ASCII-Raster (`marken/sprechwerk.pm`) und schreibt
+SVG, PNG in allen Desktop-Größen, ein Tray-Bild und eine monochrome Fassung
+(`symbolic.svg`). Dieselbe Kachelform (Achteck) und derselbe Strich wie
+Hexwerk und WLED Ambilight — die Apps gehören sichtbar zusammen.
+
+Damit das Symbol auch in der **Taskleiste** erscheint, reicht die Datei in der
+Anwendung nicht: unter Linux muss eine `.desktop`-Datei die Fensterklasse
+nennen. Deshalb liegen beide im Baum:
+
+```
+crates/desktop/icons/                     # was Tauri einbettet (.png/.ico/.icns)
+crates/desktop/packaging/
+  de.weppelmann.Sprechwerk.desktop        # StartupWMClass=sprechwerk-desktop
+  icons/hicolor/<größe>/apps/sprechwerk.png
+```
+
+Installation im Benutzerbereich (ohne root):
+
+```bash
+cp -r crates/desktop/packaging/icons/hicolor ~/.local/share/icons/
+cp crates/desktop/packaging/de.weppelmann.Sprechwerk.desktop ~/.local/share/applications/
+gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor
+```
+
+Im Fenster selbst steht dieselbe Zeichnung links neben dem Namen — als Maske
+(`mask-image` auf `symbolic.svg`), damit sie die Textfarbe annimmt und nicht als
+zweite Bilddatei gepflegt werden muss.

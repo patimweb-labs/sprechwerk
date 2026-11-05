@@ -21,7 +21,8 @@ sprechwerk-protocol = { path = "../protocol" }
 sprechwerk-adapters = { path = "../adapters" }
 sprechwerk-ipc = { path = "../ipc" }
 
-tauri = { version = "2", features = [] }
+# `image-png`: damit das Fenstersymbol aus einer PNG-Datei gesetzt werden kann.
+tauri = { version = "2", features = ["image-png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "net", "macros"] }

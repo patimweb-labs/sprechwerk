@@ -299,4 +299,43 @@ async function entfernen() {
   flex-direction: column;
   gap: var(--wp-space-2);
 }
+
+/* ---------------------------------------------------------------------------
+ * Schmale Fenster
+ *
+ * Die Tabelle hat drei Spalten; unter 560 px sind drei nicht zu halten. Dann
+ * rückt die Adresse unter den Namen (zwei Zeilen in einer Zelle) — die Aktion
+ * bleibt sichtbar, denn „Verbinden" ist der Hauptweg.
+ * ------------------------------------------------------------------------- */
+@media (max-width: 560px) {
+  .tabelle__kopf {
+    display: none;
+  }
+
+  .zeile {
+    grid-template-columns: 1fr auto;
+    gap: var(--wp-space-2);
+    padding: var(--wp-space-2);
+  }
+
+  .spalte--adresse {
+    grid-column: 1;
+    font-size: var(--wp-font-size-xs);
+  }
+
+  .spalte--name {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .spalte--aktion {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .kopf {
+    flex-wrap: wrap;
+    gap: var(--wp-space-2);
+  }
+}
 </style>

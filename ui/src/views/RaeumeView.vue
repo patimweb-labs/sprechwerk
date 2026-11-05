@@ -9,7 +9,7 @@
 // • Eingriffe liegen im Kontextmenü (Rechtsklick oder „…"), nie im Hauptweg.
 import { computed, nextTick, ref, watch } from "vue";
 import * as UI from "@weppelmann/components";
-import { IconChat, IconLock, IconMore, IconPanelRight, IconPlus } from "@weppelmann/icons";
+import { IconLock, IconMore, IconPanelRight, IconPlus, IconSprechblase } from "@weppelmann/icons";
 import {
   ausRaumWerfen,
   betreten,
@@ -444,7 +444,7 @@ async function absenden() {
       :title="t('chat.expand')"
       @click="chatUmschalten"
     >
-      <IconChat class="schiene__zeichen" />
+      <UI.WpIcon :icon="IconSprechblase" size="md" class="schiene__zeichen" />
       <span v-if="ungelesen > 0" class="schiene__zahl">{{ ungelesen }}</span>
       <span class="schiene__text">{{ meinRaum ? meinRaum.name : t("chat.title") }}</span>
     </button>
@@ -787,8 +787,7 @@ async function absenden() {
 }
 
 .schiene__zeichen {
-  width: 16px;
-  height: 16px;
+  color: inherit;
 }
 
 .schiene__zahl {
@@ -893,5 +892,39 @@ async function absenden() {
 
 .schreiben > :first-child {
   flex: 1;
+}
+
+/* ---------------------------------------------------------------------------
+ * Schmale Fenster: eine Spalte statt zwei
+ *
+ * Unter 620 px passen Raumliste und Verlauf nicht mehr nebeneinander. Dann gilt
+ * dieselbe Regel wie in einem Telefon: **eine** Ansicht zur Zeit. Der
+ * Zuklapp-Knopf wird damit zum Zurück-Knopf — die Schiene führt zur Liste,
+ * ein Klick auf die Liste zum Chat.
+ * ------------------------------------------------------------------------- */
+@media (max-width: 620px) {
+  .ansicht:not(.chat-zu) .seite {
+    display: none;
+  }
+
+  .ansicht.chat-zu .seite {
+    width: 100%;
+  }
+
+  .verlauf {
+    padding: var(--wp-space-3);
+  }
+
+  .schreiben {
+    padding: var(--wp-space-2) var(--wp-space-3);
+  }
+
+  .kopf {
+    padding: var(--wp-space-2) var(--wp-space-3);
+  }
+
+  .schiene {
+    width: var(--wp-size-control-md);
+  }
 }
 </style>
