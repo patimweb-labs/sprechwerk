@@ -16,3 +16,4 @@ ed25519-dalek.workspace = true
 getrandom.workspace = true
 hex.workspace = true
 bytes = "1"
+nnnoiseless.workspace = true

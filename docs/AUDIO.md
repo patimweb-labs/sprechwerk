@@ -53,18 +53,23 @@ Zwei verschiedene Dinge, die oft verwechselt werden:
 
 | | Wirkung | Wo | Einstellung |
 |---|---|---|---|
-| **Rauschunterdrückung** | filtert Störgeräusche *innerhalb* des Signals (Lüfter, Tastatur, Brummen) | Aufnahmepfad, vor der Kodierung | `rauschunterdrueckung` (Vorgabe: **an**) |
+| **Rauschunterdrückung** | **RNNoise** (neuronales Netz) filtert Störgeräusche im Signal und liefert eine Sprachwahrscheinlichkeit | Aufnahmepfad, vor der Kodierung | `rauschunterdrueckung` (Vorgabe: **an**) |
 | **Noisegate** | unterhalb der Sprechschwelle wird **gar nichts** gesendet | Aufnahmepfad, vor der Kodierung | `noisegate` (Vorgabe: **an**), Schwelle über `schwelle` |
 
 Umsetzung im Sprachpfad (noch zu bauen, Einstellungen liegen schon):
 
-1. Aufnahme → **Gate**: Pegel unter `schwelle` ⇒ Rahmen verwerfen (nicht leise
-   senden, sondern *nicht* senden). Das spart Bandbreite und hält den Raum ruhig.
-2. Aufnahme → **Denoiser** (RNNoise o. ä.) auf den 20-ms-Rahmen, dann Opus.
-   Reihenfolge ist wichtig: erst entrauschen, dann kodieren — sonst kodiert Opus
-   das Rauschen mit.
+1. Aufnahme → **RNNoise** (`nnnoiseless`, reines Rust) auf 10-ms-Rahmen; es
+   liefert den entrauschten Rahmen **und** die Sprachwahrscheinlichkeit.
+2. Aufnahme → **Gate**: unter der Schwelle wird nichts gesendet — **außer**
+   RNNoise erkennt klar Sprache (≥ 0,6). Der Pegel allein ist ein schlechter
+   Richter: ein Rascheln ist laut, ein leises „ja" nicht.
 3. TeamSpeak macht dasselbe (`denoise=true`, `denoiser_level=1`, `vad=true`,
    `voiceactivation_level=-40` in dessen Clientprofil).
+
+Gemessen an weißem Rauschen (Tests in `crates/adapters/src/klang.rs`):
+**98 % des Rauschens verschwinden**, Sprache bleibt zu ~66 % erhalten, die
+Sprachwahrscheinlichkeit trennt beides (0,02 gegen 0,75). Der frühere
+Pegel-Expander ist ersetzt — er war ein Notbehelf.
 
 ## Niemals die eigene Wiedergabe aufnehmen
 
@@ -97,7 +102,8 @@ Der Pfad ist **gebaut und läuft** — im Fenster und als Messwerkzeug.
 |---|---|---|
 | Hochpass, Rauschunterdrückung, Noisegate | `adapters/src/klang.rs` | 7 Einzeltests (Rauschen sinkt, Sprache bleibt, Gate mit Hysterese) |
 | Vorlauf (60 ms), Jitter-Puffer, Sprechsteuerung | `adapters/src/sprechpfad.rs` | 13 Einzeltests |
-| Opus-Kodierung (Bindung an `libopus.so.0`) | `audio/src/opus.rs` | 4 Einzeltests (Ton kommt mit Energie zurück, Rahmen < 1200 Byte) |
+| Opus, **zur Laufzeit geladen** (`libopus.so.0` / `libopus.dylib` / `opus.dll`) | `audio/src/opus.rs` | 6 Einzeltests (Ton kommt zurück, FEC liefert Ton statt Stille) |
+| Verlustausgleich (Paritätsrahmen, Verlusttest) | `audio/src/verlust.rs` | 5 Einzeltests (1 Verlust exakt ersetzt, 5 % Verlust vollständig) |
 | Sendekette (Block → Datagramm) | `audio/src/senden.rs` | 5 Einzeltests (Vorlauf beim Öffnen, Folgenummern lückenlos, Gate) |
 | Empfang (je Sprecher Dekodierer + Jitter, Mischen) | `audio/src/empfang.rs` | 5 Einzeltests (zwei Sprecher gemischt, Doppelte verworfen) |
 | Gerät (Aufnahme/Wiedergabe über `parec`/`pacat`) | `audio/src/lib.rs` | 3 Einzeltests + Messung |

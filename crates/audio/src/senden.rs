@@ -15,6 +15,7 @@
 //! fertige Datagramme zurück. Damit ist die ganze Kette prüfbar.
 
 use crate::opus::{Kodierer, RAHMEN_SAMPLES};
+use crate::verlust::{paritaets_datagramm, Paritaet, GRUPPE};
 use anyhow::Result;
 use sprechwerk_adapters::klang::{pegel_aus_rms, Entrauscher, Noisegate};
 use sprechwerk_adapters::sprechpfad::Vorlauf;
@@ -31,6 +32,8 @@ pub struct Sendeeinstellungen {
     pub schwelle: u8,
     /// Vorlauf in Millisekunden (wird auf ganze Rahmen abgerundet).
     pub vorlauf_ms: u32,
+    /// Paritätsrahmen senden (Verlustausgleich, +25 % Last).
+    pub paritaet: bool,
 }
 
 impl Default for Sendeeinstellungen {
@@ -40,6 +43,7 @@ impl Default for Sendeeinstellungen {
             noisegate: true,
             schwelle: 30,
             vorlauf_ms: 60,
+            paritaet: true,
         }
     }
 }
@@ -59,6 +63,8 @@ pub struct Sender {
     pegel: u8,
     /// Fertige Datagramme (Zwischenspeicher, um Allokation zu sparen).
     puffer: Vec<u8>,
+    /// Die Rahmen der laufenden Paritätsgruppe.
+    gruppe: Vec<Vec<u8>>,
 }
 
 impl Sender {
@@ -73,6 +79,7 @@ impl Sender {
             sendete: false,
             pegel: 0,
             puffer: vec![0u8; 4000],
+            gruppe: Vec::with_capacity(GRUPPE as usize),
         })
     }
 
@@ -110,10 +117,16 @@ impl Sender {
         }
         self.pegel = pegel_aus_rms(sprechwerk_adapters::klang::rms(block));
 
-        // Noisegate: unter der Schwelle wird **nicht** gesendet. Ohne Gate gilt
-        // allein die Entscheidung von außen (Push-to-Talk/offenes Mikrofon).
+        // Noisegate: unter der Schwelle wird **nicht** gesendet. Zweites
+        // Kriterium ist die Sprachwahrscheinlichkeit von RNNoise — ein leises
+        // „ja" ist unter der Schwelle, aber klar Sprache; ein Rascheln ist
+        // laut, aber keine.
         let gate_offen = if self.einstellungen.noisegate {
-            self.gate.durchlassen(self.pegel)
+            let ueber_schwelle = self.gate.durchlassen(self.pegel);
+            let sprache = self.entrauscher.sprachwahrscheinlichkeit()
+                >= sprechwerk_adapters::klang::SPRACHWAHRSCHEINLICHKEIT_GRENZE
+                && self.pegel >= 5;
+            ueber_schwelle || sprache
         } else {
             true
         };
@@ -134,6 +147,22 @@ impl Sender {
                 }
             }
             raus.push(Sprachkopf::neu(self.naechste_folge()).schreiben(&rahmen));
+            // Paritätsgruppe füllen. Der Paritätsrahmen geht **sofort** nach dem
+            // letzten Rahmen der Gruppe hinaus — dann ist die Wartezeit im
+            // Empfänger am kürzesten.
+            if self.einstellungen.paritaet {
+                self.gruppe.push(rahmen.clone());
+                if self.gruppe.len() == GRUPPE as usize {
+                    let laengen: Vec<u16> =
+                        self.gruppe.iter().map(|r| r.len() as u16).collect();
+                    let summe = Paritaet::summe(&self.gruppe);
+                    let ab = self.folge.wrapping_sub(GRUPPE);
+                    raus.push(paritaets_datagramm(ab, &laengen, &summe));
+                    self.gruppe.clear();
+                }
+            } else {
+                self.gruppe.clear();
+            }
             self.sendete = true;
         } else {
             self.vorlauf.aufnehmen(rahmen);
@@ -202,6 +231,10 @@ mod tests {
             let mut block = sinus(RAHMEN_SAMPLES, 0.5);
             for datagramm in s.block(&mut block, true).unwrap() {
                 let (kopf, _) = Sprachkopf::lesen(&datagramm).unwrap();
+                // Paritätsrahmen stehen neben der Folgenreihe, nicht darin.
+                if kopf.codec == crate::verlust::CODEC_PARITAET {
+                    continue;
+                }
                 if let Some(alt) = letzte {
                     assert_eq!(
                         kopf.folge,
@@ -210,6 +243,48 @@ mod tests {
                     );
                 }
                 letzte = Some(kopf.folge);
+            }
+        }
+    }
+
+    #[test]
+    fn paritaet_kommt_je_vier_rahmen() {
+        let mut s = Sender::neu(Sendeeinstellungen {
+            noisegate: false,
+            paritaet: true,
+            ..Default::default()
+        })
+        .unwrap();
+        let mut rahmen = 0;
+        let mut paritaeten = 0;
+        for _ in 0..8 {
+            let mut block = sinus(RAHMEN_SAMPLES, 0.5);
+            for d in s.block(&mut block, true).unwrap() {
+                let (kopf, _) = Sprachkopf::lesen(&d).unwrap();
+                if kopf.codec == crate::verlust::CODEC_PARITAET {
+                    paritaeten += 1;
+                } else {
+                    rahmen += 1;
+                }
+            }
+        }
+        assert_eq!(rahmen, 8);
+        assert_eq!(paritaeten, 2, "je vier Rahmen ein Paritätsrahmen");
+    }
+
+    #[test]
+    fn ohne_paritaet_bleibt_die_last_klein() {
+        let mut s = Sender::neu(Sendeeinstellungen {
+            noisegate: false,
+            paritaet: false,
+            ..Default::default()
+        })
+        .unwrap();
+        for _ in 0..8 {
+            let mut block = sinus(RAHMEN_SAMPLES, 0.5);
+            for d in s.block(&mut block, true).unwrap() {
+                let (kopf, _) = Sprachkopf::lesen(&d).unwrap();
+                assert_ne!(kopf.codec, crate::verlust::CODEC_PARITAET);
             }
         }
     }

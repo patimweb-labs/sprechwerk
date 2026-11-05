@@ -13,14 +13,18 @@
 //!               Trittschall)  dem Rauschboden)        nichts gesendet)
 //! ```
 //!
-//! # Was die Rauschunterdrückung ist — und was nicht
+//! # Rauschunterdrückung: RNNoise
 //!
-//! Sie ist **kein** Spektral-Denoiser wie RNNoise. Sie verfolgt den Rauschboden
-//! (das leiseste, was das Mikrofon dauerhaft liefert) und regelt die
-//! Verstärkung darüber herunter. Das hilft gegen Lüfter, Brummen und
-//! Grundrauschen — gegen einzelne Geräusche (Tastatur, Papier) hilft es
-//! weniger. Diese Grenze ist bewusst dokumentiert (`docs/AUDIO.md`), damit
-//! niemand mehr erwartet, als drin ist.
+//! Die Rauschunterdrückung ist **RNNoise** — ein kleines neuronales Netz, das
+//! in `nnnoiseless` als **reines Rust** vorliegt (kein C, kein `cmake`, läuft
+//! damit auf Windows, macOS und Linux gleich). Es arbeitet auf 10-ms-Rahmen
+//! (480 Werte bei 48 kHz), schätzt je Frequenzband einen Gewinn und liefert
+//! nebenbei eine **Sprachwahrscheinlichkeit** — die ist besser als jeder Pegel
+//! für die Frage „wird gerade gesprochen?".
+//!
+//! Der Hochpass davor bleibt: er nimmt Brummen und Trittschall weg, bevor das
+//! Netz sie als Sprache deuten kann. Der frühere Pegel-Expander ist ersetzt;
+//! er war nur ein Notbehelf, weil ich C-Abhängigkeiten vermeiden wollte.
 
 /// Ein Hochpass zweiter Ordnung (Butterworth), als Kaskade zweier
 /// Ein-Pol-Glieder. Entfernt Gleichanteil, Brummen und Trittschall.
@@ -83,9 +87,8 @@ pub fn pegel_aus_rms(wert: f32) -> u8 {
 
 /// Verfolgt den Rauschboden: fällt schnell auf leise Werte, steigt nur langsam.
 ///
-/// Das ist der Kern der Rauschunterdrückung. Ein schneller Anstieg würde
-/// Sprache als Rauschen deuten und wegdrücken; ein langsamer Abfall würde nach
-/// einer lauten Stelle zu lange taub bleiben.
+/// Wird nur noch für die **Anzeige** und als Rückfallebene gebraucht, wenn
+/// RNNoise nicht greift (andere Abtastrate als 48 kHz).
 #[derive(Debug, Clone)]
 pub struct Rauschboden {
     /// Aktueller Boden (Effektivwert).
@@ -125,27 +128,49 @@ impl Rauschboden {
     }
 }
 
-/// Rauschunterdrückung: Hochpass plus Pegel-Expander über dem Rauschboden.
-#[derive(Debug, Clone)]
+/// Rauschunterdrückung: Hochpass plus RNNoise.
+///
+/// RNNoise rechnet in 10-ms-Rahmen (480 Werte bei 48 kHz), unsere Blöcke sind
+/// 20 ms (960 Werte). Der Entrauscher hält deshalb einen kleinen Rest, damit
+/// die Rahmengrenzen stimmen, auch wenn ein Block nicht aufgeht.
 pub struct Entrauscher {
     hochpass: Hochpass,
+    /// Das neuronale Netz (RNNoise), sofern die Rate passt.
+    netz: Option<Box<nnnoiseless::DenoiseState<'static>>>,
+    /// Rest des letzten Blocks (weniger als ein 10-ms-Rahmen).
+    rest: Vec<f32>,
+    /// Zuletzt gemeldete Sprachwahrscheinlichkeit 0…1.
+    sprachwahrscheinlichkeit: f32,
+    /// Rauschboden als Ersatzmaß (Anzeige).
     boden: Rauschboden,
-    /// Wie weit über dem Boden ein Block als „Signal" gilt (Faktor).
-    abstand: f32,
-    /// Höchste Absenkung (0.1 = höchstens 20 dB leiser).
-    kleinste_verstaerkung: f32,
-    /// Geglättete Verstärkung, damit es nicht zischelt.
-    verstaerkung: f32,
+    /// Abtastrate, mit der dieser Entrauscher arbeitet.
+    rate: u32,
+}
+
+impl std::fmt::Debug for Entrauscher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Entrauscher")
+            .field("rate", &self.rate)
+            .field("netz", &self.netz.is_some())
+            .field("sprachwahrscheinlichkeit", &self.sprachwahrscheinlichkeit)
+            .finish()
+    }
 }
 
 impl Entrauscher {
     pub fn neu(abtastrate: u32) -> Self {
         Self {
             hochpass: Hochpass::neu(abtastrate, 90.0),
+            // RNNoise ist auf 48 kHz festgelegt (Modell und Fenster).
+            netz: if abtastrate == 48_000 {
+                Some(nnnoiseless::DenoiseState::new())
+            } else {
+                None
+            },
+            rest: Vec::new(),
+            sprachwahrscheinlichkeit: 0.0,
             boden: Rauschboden::neu(),
-            abstand: 2.5,
-            kleinste_verstaerkung: 0.12,
-            verstaerkung: 1.0,
+            rate: abtastrate,
         }
     }
 
@@ -154,31 +179,86 @@ impl Entrauscher {
         self.boden.wert
     }
 
+    /// Wie wahrscheinlich wird gerade Sprache angenommen? 0…1
+    ///
+    /// Kommt von RNNoise selbst — verlässlicher als ein reiner Pegel, weil das
+    /// Netz Rauschen von Stimme unterscheidet.
+    pub fn sprachwahrscheinlichkeit(&self) -> f32 {
+        self.sprachwahrscheinlichkeit
+    }
+
     /// Verarbeitet einen Block und liefert die angewendete Verstärkung.
     pub fn verarbeite(&mut self, block: &mut [f32]) -> f32 {
         self.hochpass.verarbeite(block);
-        let wert = rms(block);
-        let boden = self.boden.beobachte(wert);
+        let vorher = rms(block);
+        self.boden.beobachte(vorher);
 
-        // Verstärkung: 1.0 deutlich über dem Boden, darunter weich abgesenkt.
-        let ziel = if boden <= 1e-6 {
-            1.0
-        } else {
-            let verhaeltnis = wert / (boden * self.abstand);
-            let roh = (verhaeltnis - 0.5).clamp(0.0, 1.0);
-            // quadratisch: leise Stellen werden stärker abgesenkt als laute
-            roh * roh * (1.0 - self.kleinste_verstaerkung) + self.kleinste_verstaerkung
-        };
-        // Schnell aufmachen, langsam zumachen: sonst wird der Wortanfang
-        // leiser als der Rest des Wortes („Anschnitt").
-        let tempo = if ziel > self.verstaerkung { 0.95 } else { 0.2 };
-        self.verstaerkung += (ziel - self.verstaerkung) * tempo;
-        for probe in block.iter_mut() {
-            *probe *= self.verstaerkung;
+        match self.netz.as_mut() {
+            Some(netz) => {
+                // 20-ms-Block in 10-ms-Rahmen zerlegen; RNNoise erwartet Werte
+                // im 16-Bit-Bereich, nicht -1…1.
+                let mut zusammen = std::mem::take(&mut self.rest);
+                zusammen.extend_from_slice(block);
+                let rahmen = nnnoiseless::DenoiseState::FRAME_SIZE;
+                let mut aus = Vec::with_capacity(zusammen.len());
+                let mut gesamt_vad: f32 = 0.0;
+                let mut anzahl: f32 = 0.0;
+                for stueck in zusammen.chunks_exact(rahmen) {
+                    let eingang: Vec<f32> = stueck.iter().map(|w| w * 32768.0).collect();
+                    let mut ziel = vec![0.0f32; rahmen];
+                    let vad = netz.process_frame(&mut ziel, &eingang);
+                    aus.extend(ziel.iter().map(|w| (w / 32768.0).clamp(-1.0, 1.0)));
+                    // RNNoise liefert die Sprachwahrscheinlichkeit bereits
+                    // als 0…1 (nicht im 16-Bit-Bereich).
+                    gesamt_vad += vad.clamp(0.0, 1.0);
+                    anzahl += 1.0;
+                }
+                // Nicht aufgegangene Werte für den nächsten Block aufheben.
+                let verbraucht = zusammen.len() - (zusammen.len() % rahmen);
+                self.rest = zusammen[verbraucht..].to_vec();
+                self.sprachwahrscheinlichkeit = if anzahl > 0.0 {
+                    (gesamt_vad / anzahl).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                // Genau so viele Werte zurückgeben, wie hineinkamen.
+                let mut genommen = 0;
+                for (ziel, wert) in block.iter_mut().zip(aus.iter()) {
+                    *ziel = *wert;
+                    genommen += 1;
+                }
+                // Kein Rahmen fertig (Rest zu klein): Original behalten.
+                if genommen == 0 {
+                    self.sprachwahrscheinlichkeit = 0.0;
+                }
+            }
+            None => {
+                // Keine 48 kHz: nichts entrauschen, aber auch nichts kaputt
+                // machen. Die Rate wird im Sendepfad auf 48 kHz gebracht.
+                self.sprachwahrscheinlichkeit = if vorher > 0.01 { 1.0 } else { 0.0 };
+            }
         }
-        self.verstaerkung
+
+        let nachher = rms(block);
+        if nachher > 1e-9 {
+            (nachher / vorher.max(1e-9)).clamp(0.0, 1.0)
+        } else {
+            1.0
+        }
+    }
+
+    /// Abtastrate dieses Entrauschers.
+    pub fn rate(&self) -> u32 {
+        self.rate
     }
 }
+
+/// Noisegate: unterhalb der Schwelle wird **nicht gesendet** — es sei denn,
+/// RNNoise erkennt klar Sprache. Der Pegel allein ist ein schlechter Richter
+/// (ein Rascheln ist laut, ein leises „ja" nicht); die Sprachwahrscheinlichkeit
+/// des Netzes ist der bessere. Beides zusammen: Schwelle **oder** erkannte
+/// Sprache öffnet.
+pub const SPRACHWAHRSCHEINLICHKEIT_GRENZE: f32 = 0.6;
 
 /// Noisegate: unterhalb der Schwelle wird **nicht gesendet**.
 ///
@@ -279,12 +359,26 @@ mod tests {
         );
     }
 
+    /// Stimmenähnliches Signal: Grundton mit Obertönen, in Silben getaktet.
+    fn stimme(anzahl: usize, amplitude: f32) -> Vec<f32> {
+        (0..anzahl)
+            .map(|i| {
+                let t = i as f32 / 48_000.0;
+                let huelle = 0.5 + 0.5 * (2.0 * std::f32::consts::PI * 4.0 * t).sin();
+                let s = (2.0 * std::f32::consts::PI * 120.0 * t).sin()
+                    + 0.5 * (2.0 * std::f32::consts::PI * 240.0 * t).sin()
+                    + 0.3 * (2.0 * std::f32::consts::PI * 360.0 * t).sin();
+                amplitude * huelle * s / 1.8
+            })
+            .collect()
+    }
+
     #[test]
-    fn entrauscher_senkt_dauerrauschen() {
+    fn entrauscher_senkt_dauerrauschen_stark() {
         let mut e = Entrauscher::neu(48_000);
-        let block = rauschen(960, 0.02);
-        // Ein paar Blöcke, damit der Boden steht.
-        for _ in 0..50 {
+        let block = rauschen(960, 0.05);
+        // Ein paar Blöcke, damit das Netz den Rauschboden kennt.
+        for _ in 0..60 {
             let mut b = block.clone();
             e.verarbeite(&mut b);
         }
@@ -293,27 +387,66 @@ mod tests {
         e.verarbeite(&mut ruhe);
         let nachher = rms(&ruhe);
         assert!(
-            nachher < vorher * 0.6,
-            "Rauschen wird nicht gesenkt: {vorher} → {nachher}"
+            nachher < vorher * 0.15,
+            "RNNoise senkt Rauschen zu wenig: {vorher} → {nachher}"
+        );
+        assert!(
+            e.sprachwahrscheinlichkeit() < 0.2,
+            "Rauschen darf nicht als Sprache gelten ({})",
+            e.sprachwahrscheinlichkeit()
         );
     }
 
     #[test]
-    fn entrauscher_laesst_sprache_stehen() {
+    fn entrauscher_laesst_stimme_stehen() {
         let mut e = Entrauscher::neu(48_000);
-        let leise = rauschen(960, 0.002);
         for _ in 0..60 {
-            let mut b = leise.clone();
+            let mut b = stimme(960, 0.3);
             e.verarbeite(&mut b);
         }
-        let mut sprache = sinus(48_000, 500.0, 960, 0.3);
+        let mut sprache = stimme(960, 0.3);
         let vorher = rms(&sprache);
         e.verarbeite(&mut sprache);
         let nachher = rms(&sprache);
         assert!(
-            nachher > vorher * 0.85,
-            "Sprache wird weggedrückt: {vorher} → {nachher}"
+            nachher > vorher * 0.4,
+            "Stimme wird zu stark weggedrückt: {vorher} → {nachher}"
         );
+        assert!(
+            e.sprachwahrscheinlichkeit() > 0.4,
+            "Stimme wird nicht als Sprache erkannt ({})",
+            e.sprachwahrscheinlichkeit()
+        );
+    }
+
+    #[test]
+    fn sprachwahrscheinlichkeit_unterscheidet_rauschen_von_stimme() {
+        let mut e = Entrauscher::neu(48_000);
+        for _ in 0..40 {
+            let mut b = rauschen(960, 0.05);
+            e.verarbeite(&mut b);
+        }
+        let bei_rauschen = e.sprachwahrscheinlichkeit();
+        for _ in 0..40 {
+            let mut b = stimme(960, 0.3);
+            e.verarbeite(&mut b);
+        }
+        let bei_stimme = e.sprachwahrscheinlichkeit();
+        assert!(
+            bei_stimme > bei_rauschen + 0.3,
+            "VAD trennt nicht: Rauschen {bei_rauschen}, Stimme {bei_stimme}"
+        );
+    }
+
+    #[test]
+    fn ohne_48_khz_wird_nichts_kaputt_gemacht() {
+        // Andere Raten kann RNNoise nicht; dann bleibt das Signal unverändert.
+        let mut e = Entrauscher::neu(44_100);
+        assert!(e.rate() == 44_100);
+        let mut block = sinus(44_100, 500.0, 960, 0.3);
+        let vorher = rms(&block);
+        e.verarbeite(&mut block);
+        assert!(rms(&block) > vorher * 0.5, "Signal darf nicht verstummen");
     }
 
     #[test]

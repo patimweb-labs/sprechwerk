@@ -20,6 +20,12 @@ sprechwerk-adapters = { path = "../adapters" }
 sprechwerk-protocol = { path = "../protocol" }
 anyhow = "1"
 bytes = "1"
+# Opus wird zur **Laufzeit** geladen: dieselbe Binärdatei läuft damit unter
+# Windows (opus.dll), macOS (libopus.dylib) und Linux (libopus.so.0), und die
+# Bibliothek darf neben der Anwendung liegen.
+libloading = "0.9"
+# Rauschunterdrückung: RNNoise als reines Rust (kein C, kein cmake).
+nnnoiseless = "0.5"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 
 [lib]
