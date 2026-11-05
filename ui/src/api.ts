@@ -20,6 +20,8 @@ export interface Raum {
   name: string;
   anwesend: number;
   hier: boolean;
+  /** Sprache Ende zu Ende verschlüsselt. */
+  verschluesselt: boolean;
 }
 
 export interface Mitglied {
@@ -114,6 +116,8 @@ const echtApi = {
   trenneMitglied: (mitglied: string, grund: string) =>
     invoke<void>("trennen_mitglied", { mitglied, grund }),
   sperreMitglied: (mitglied: string, grund: string) => invoke<void>("sperren", { mitglied, grund }),
+  raumVerschluesseln: (raum: string, an: boolean) =>
+    invoke<void>("raum_verschluesseln", { raum, an }),
   audioGeraete: () => invoke<Geraeteliste>("audio_geraete"),
   audioPegel: (geraet: string, millisekunden: number) =>
     invoke<number>("audio_pegel", { geraet, millisekunden }),

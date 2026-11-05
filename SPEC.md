@@ -61,6 +61,10 @@ der bewusst gewählte Preis.
 „gestrichen": Dateien, Status/Abwesenheit, Bildschirm teilen, Video,
 Hintergrundeffekte, Emojis/Reaktionen, Suche.
 
+**[A] Ende-zu-Ende je Raum:** Sprache kann je Raum Ende zu Ende verschlüsselt
+werden (ADR 0006, umgesetzt). Text bleibt serverseitig lesbar — die Zusage gilt
+nur für Sprache. Kosten: 16 Byte je Rahmen.
+
 **[P] Aufnahme-Schutz:** Rauschunterdrückung und Noisegate sind eigene Schalter
 (Vorgabe an). Monitore (`.monitor`-Quellen) sind **keine** Mikrofone und werden
 abgelehnt — sonst hört man die eigene Wiedergabe. Siehe `docs/AUDIO.md`.

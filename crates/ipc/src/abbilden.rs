@@ -142,6 +142,10 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
             }
         }
 
+        // Schlüsselpakete gehören nicht in den Modellstand: sie sind ein
+        // Auftrag an die Schlüsselverwaltung, nicht eine Anzeige.
+        ServerFrame::Schluesselpaket { .. } => {}
+
         ServerFrame::Raeume { raeume } => {
             let hier = zustand.aktueller_raum;
             zustand.raeume = raeume_abbilden(raeume, hier);
@@ -207,6 +211,7 @@ fn raeume_abbilden(raeume: Vec<Raumansicht>, hier: Option<RoomId>) -> Vec<Raum> 
             name: r.name,
             anwesend: r.anwesend,
             hier: hier == Some(r.id),
+            verschluesselt: r.verschluesselt,
         })
         .collect()
 }
@@ -281,6 +286,8 @@ mod tests {
             name: format!("Raum {id}"),
             reihenfolge: 0,
             anwesend: 0,
+            verschluesselt: false,
+            verschluesselt_seit: 0,
         }
     }
 
@@ -288,6 +295,7 @@ mod tests {
         Mitgliedsansicht {
             id: MemberId::aus_roh(id),
             name: name.to_string(),
+            kennung: format!("k{id}"),
             rolle: Role::Mitglied,
             raum: None,
             spricht: false,

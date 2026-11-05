@@ -17,8 +17,14 @@ const minut = 60_000;
 let folge = 1;
 const neueId = (vorsilbe: string) => `${vorsilbe}_${(folge++).toString(16).padStart(32, "0")}`;
 
-function raum(id: string, name: string, anwesend = 0, hier = false): Raum {
-  return { id, name, anwesend, hier };
+function raum(
+  id: string,
+  name: string,
+  anwesend = 0,
+  hier = false,
+  verschluesselt = false,
+): Raum {
+  return { id, name, anwesend, hier, verschluesselt };
 }
 
 function mitglied(

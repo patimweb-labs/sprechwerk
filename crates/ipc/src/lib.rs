@@ -48,6 +48,8 @@ pub struct Raum {
     pub anwesend: usize,
     /// Ist das der Raum, in dem ich sitze?
     pub hier: bool,
+    /// Sprache Ende zu Ende verschlüsselt (ADR 0006).
+    pub verschluesselt: bool,
 }
 
 /// Ein Mitglied, wie es das Fenster zeigt.
@@ -202,6 +204,11 @@ pub enum Befehl {
         mitglied: MemberId,
         #[serde(default)]
         grund: String,
+    },
+    /// Ende-zu-Ende-Verschlüsselung eines Raums ein-/ausschalten.
+    RaumVerschluesseln {
+        raum: RoomId,
+        an: bool,
     },
     /// Ein Mitglied sperren und trennen.
     Sperren {

@@ -8,7 +8,7 @@
 use sprechwerk_domain::{MemberId, Role, RoomId, State};
 use sprechwerk_protocol::{
     ClientFrame, Fehlercode, Mitgliedsansicht, Raumansicht, ServerFrame, Sprachkopf, CODEC_OPUS,
-    SPRACHKOPF_LEN, SPRACHKOPF_VERSION,
+    CODEC_VERSCHLUESSELT, SPRACHKOPF_LEN, SPRACHKOPF_VERSION,
 };
 use sprechwerk_store::Store;
 use std::collections::HashMap;
@@ -133,6 +133,8 @@ impl Kern {
                 name: r.name.clone(),
                 reihenfolge: r.reihenfolge,
                 anwesend: self.state.anwesende(r.id).len(),
+                verschluesselt: r.verschluesselt,
+                verschluesselt_seit: r.verschluesselt_seit,
             })
             .collect()
     }
@@ -148,6 +150,11 @@ impl Kern {
         Some(Mitgliedsansicht {
             id: m.id,
             name: m.name.clone(),
+            // Öffentlich: die Kennung ist der Anmeldeschlüssel. Für Sprache
+            // Ende zu Ende zu verschlüsseln, muss jeder die Schlüssel der
+            // anderen kennen — der Server darf sie nur weitergeben, nicht
+            // ersetzen (der Umschlag ist unterschrieben).
+            kennung: m.schluessel.clone(),
             rolle: m.rolle,
             raum: m.raum,
             spricht,
@@ -349,6 +356,68 @@ impl Kern {
                 })],
             },
 
+            ClientFrame::RaumVerschluesseln { raum, an } => {
+                match self.state.raum_verschluesseln(ich, raum, an, jetzt) {
+                    Ok(()) => {
+                        let raeume = self.raeume();
+                        // Alle erfahren es sofort: die Oberfläche zeigt das
+                        // Schloss, und die Clients beginnen (oder beenden) den
+                        // Schlüsselaustausch.
+                        self.rundruf(
+                            None,
+                            None,
+                            ServerFrame::Raeume {
+                                raeume: raeume.clone(),
+                            },
+                        );
+                        let _ = self.speichern();
+                        vec![ServerFrame::Raeume { raeume }]
+                    }
+                    Err(e) => vec![Kern::fehler(match e {
+                        sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                        _ => Fehlercode::UngueltigeEingabe,
+                    })],
+                }
+            }
+
+            // Schlüsselpaket: **nur weiterleiten**, nicht lesen.
+            //
+            // Der Server prüft nur, was er prüfen kann und muss: dass Absender
+            // und Empfänger im selben verschlüsselten Raum sitzen. Alles andere
+            // (Öffnen, Prüfen der Unterschrift) macht der Empfänger — sonst
+            // wäre die Verschlüsselung eine Behauptung.
+            ClientFrame::Schluesselpaket {
+                raum,
+                epoche,
+                fuer,
+                daten,
+                unterschrift,
+            } => {
+                let im_raum = self.state.mitglied(ich).and_then(|m| m.raum) == Some(raum)
+                    && self.state.mitglied(fuer).and_then(|m| m.raum) == Some(raum);
+                let verschluesselt = self
+                    .state
+                    .raeume
+                    .get(&raum)
+                    .map(|r| r.verschluesselt)
+                    .unwrap_or(false);
+                if !im_raum || !verschluesselt {
+                    vec![Kern::fehler(Fehlercode::KeinRecht)]
+                } else {
+                    self.senden(
+                        fuer,
+                        ServerFrame::Schluesselpaket {
+                            raum,
+                            epoche,
+                            von: ich,
+                            daten,
+                            unterschrift,
+                        },
+                    );
+                    vec![ServerFrame::Ok]
+                }
+            }
+
             ClientFrame::RaumUmbenennen { raum, name } => {
                 match self.state.raum_umbenennen(ich, raum, &name, jetzt) {
                     Ok(()) => {
@@ -548,6 +617,10 @@ impl Kern {
                         mitglied: Mitgliedsansicht {
                             id: mitglied,
                             name: ziel_name,
+                            // Wer getrennt wurde, dessen Kennung steht im
+                            // Zustand; nach dem Trennen ist sie nicht mehr
+                            // abfragbar, deshalb leer.
+                            kennung: String::new(),
                             rolle: sprechwerk_domain::Role::Gast,
                             raum: None,
                             spricht: false,
@@ -693,7 +766,10 @@ impl Kern {
             self.verworfen += 1;
             return;
         };
-        if kopf.version != SPRACHKOPF_VERSION || kopf.codec != CODEC_OPUS {
+        // Zwei erlaubte Nutzlastarten: klarer Opus-Rahmen und Ende-zu-Ende
+        // verschlüsselter Rahmen. Alles andere wird verworfen.
+        let nutzlast_ok = kopf.codec == CODEC_OPUS || kopf.codec == CODEC_VERSCHLUESSELT;
+        if kopf.version != SPRACHKOPF_VERSION || !nutzlast_ok {
             self.verworfen += 1;
             return;
         }

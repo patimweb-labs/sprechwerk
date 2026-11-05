@@ -34,7 +34,6 @@ pub use empfang::Empfänger;
 pub use senden::{Sendeeinstellungen, Sender};
 
 use anyhow::{anyhow, Context, Result};
-use geraet::{Aufnahme, Wiedergabe};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::mpsc::{Receiver, Sender as Kanal};
 use std::sync::{mpsc, Arc};
@@ -125,9 +124,9 @@ pub struct Pfad {
     laeuft: Arc<AtomicBool>,
     /// Umstellen der Sendeseite.
     einstellungen: Kanal<Sendeeinstellungen>,
-    /// Aufnahme und Wiedergabe (cpal oder PipeWire — siehe `geraet`).
-    eingang: Option<Box<dyn Aufnahme>>,
-    ausgang: Option<Box<dyn Wiedergabe>>,
+    /// Wie die Geräte heißen (für die Oberfläche). Die Geräte selbst gehören
+    /// den Threads — deshalb steht hier nur der Name: `Pfad` bleibt damit
+    /// `Send`, und ein Gerät wird nie von einem fremden Thread angefasst.
     name_aufnahme: String,
     name_wiedergabe: String,
 }
@@ -274,8 +273,6 @@ impl Pfad {
             pegel,
             laeuft,
             einstellungen: stell_tx,
-            eingang: None,
-            ausgang: None,
             name_aufnahme,
             name_wiedergabe,
         })
@@ -324,21 +321,20 @@ impl Pfad {
     }
 
     /// Beendet beide Richtungen.
-    pub fn stoppen(mut self) {
+    pub fn stoppen(self) {
+        self.beenden();
+    }
+
+    /// Beendet beide Richtungen. Die Threads merken es beim nächsten Block
+    /// (spätestens nach 20 ms) und schließen dabei ihre Geräte.
+    fn beenden(&self) {
         self.laeuft.store(false, Ordering::Relaxed);
-        // Die Threads beenden sich über `laeuft`; die Geräte werden mit dem
-        // `Drop` des Pfads geschlossen.
-        self.eingang = None;
-        self.ausgang = None;
     }
 }
 
 impl Drop for Pfad {
     fn drop(&mut self) {
-        self.laeuft.store(false, Ordering::Relaxed);
-        // Geräte schließen (Kindprozesse bzw. Ströme).
-        self.eingang = None;
-        self.ausgang = None;
+        self.beenden();
     }
 }
 

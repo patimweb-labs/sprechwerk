@@ -11,6 +11,7 @@
 //! nicht anhalten.
 
 use crate::sprech::Sprechbetrieb;
+use crate::verschluesselung::Schluesselverwaltung;
 use sprechwerk_adapters::{Schluessel, Verbindung as Netz};
 use sprechwerk_ipc::{abbilden, Antwort, Befehl, Zustand};
 use std::path::PathBuf;
@@ -43,7 +44,12 @@ impl Anwendung {
     ///
     /// `melde` wird nach jeder Änderung mit dem vollständigen Stand aufgerufen
     /// (im Fenster: Ereignis `zustand`).
-    pub fn starten<F>(schluessel_pfad: PathBuf, sprech: Arc<Sprechbetrieb>, melde: F) -> Self
+    pub fn starten<F>(
+        schluessel_pfad: PathBuf,
+        sprech: Arc<Sprechbetrieb>,
+        verschluesselung: Arc<Schluesselverwaltung>,
+        melde: F,
+    ) -> Self
     where
         F: Fn(Zustand) + Send + 'static,
     {
@@ -52,6 +58,7 @@ impl Anwendung {
 
         let zustand_thread = zustand.clone();
         let sprech_thread = sprech.clone();
+        let verwaltung = verschluesselung.clone();
         std::thread::Builder::new()
             .name("sprechwerk-verbindung".to_string())
             .spawn(move || {
@@ -65,7 +72,14 @@ impl Anwendung {
                         return;
                     }
                 };
-                laufzeit.block_on(lauf(rx, zustand_thread, sprech_thread, schluessel_pfad, melde));
+                laufzeit.block_on(lauf(
+                    rx,
+                    zustand_thread,
+                    sprech_thread,
+                    verwaltung,
+                    schluessel_pfad,
+                    melde,
+                ));
             })
             .expect("Verbindungsthread");
 
@@ -141,14 +155,21 @@ async fn lauf<F>(
     mut rx: mpsc::UnboundedReceiver<Auftrag>,
     zustand: Arc<Mutex<Zustand>>,
     sprech: Arc<Sprechbetrieb>,
+    verwaltung: Arc<Schluesselverwaltung>,
     schluessel_pfad: PathBuf,
     melde: F,
 ) where
     F: Fn(Zustand) + Send + 'static,
 {
     let mut netz: Option<Netz> = None;
+    // Der eigene Anmeldeschlüssel — nötig, um Raumschlüssel zu verteilen und
+    // Umschläge zu öffnen.
+    let mut eigener: Option<Schluessel> = None;
     // Kommende Sprache aus dem Netz (eigene Aufgabe, eigener Pfad).
     let mut sprache: Option<mpsc::UnboundedReceiver<Vec<u8>>> = None;
+    // Raum, in dem wir gerade sitzen — für Ver- und Entschlüsselung im
+    // Netzrand (die Aufgaben dort kennen die Verbindung nicht).
+    let aktueller: Arc<Mutex<Option<sprechwerk_domain::RoomId>>> = Arc::new(Mutex::new(None));
 
     loop {
         let mut auftrag: Option<Auftrag> = None;
@@ -162,7 +183,9 @@ async fn lauf<F>(
                         f = verbindung.empfang() => rahmen = Some(f),
                         d = hoeren.recv() => {
                             if let Some(d) = d {
-                                sprech.hoeren(d);
+                                if let Some(klar) = entschluessle(&verwaltung, &aktueller, &d) {
+                                    sprech.hoeren(klar);
+                                }
                             }
                         }
                     }
@@ -182,10 +205,39 @@ async fn lauf<F>(
             let mut neu_melden = false;
             match ergebnis {
                 Ok(Some(frame)) => {
+                    // Schlüsselpaket: gehört nicht ins Modell, sondern in die
+                    // Schlüsselverwaltung.
+                    if let Some((raum, epoche, von, daten, unterschrift)) =
+                        crate::verschluesselung::aus_rahmen(&frame)
+                    {
+                        if let (Some(v), Some(e)) = (netz.as_ref(), eigener.as_ref()) {
+                            nimm_schluesselpaket(
+                                v,
+                                &verwaltung,
+                                e,
+                                raum,
+                                epoche,
+                                von,
+                                &daten,
+                                &unterschrift,
+                            );
+                        }
+                    }
+                    let mut raum_wechsel = false;
                     if let Ok(mut z) = zustand.lock() {
+                        let vorher = z.aktueller_raum;
                         abbilden::verarbeite(&mut z, frame);
+                        raum_wechsel = z.aktueller_raum != vorher;
                         neu_melden = true;
                     }
+                    if let Ok(mut a) = aktueller.lock() {
+                        *a = zustand.lock().ok().and_then(|z| z.aktueller_raum);
+                    }
+                    // Neuer Raum oder neue Mitglieder: Schlüssel prüfen.
+                    if let (Some(v), Some(e)) = (netz.as_mut(), eigener.as_ref()) {
+                        verteile_schluessel(v, &verwaltung, e).await;
+                    }
+                    let _ = raum_wechsel;
                 }
                 Ok(None) => {
                     if let Ok(mut z) = zustand.lock() {
@@ -266,6 +318,7 @@ async fn lauf<F>(
                         continue;
                     }
                 };
+                eigener = Some(schluessel.clone());
 
                 match Netz::oeffnen(ziel, &schluessel, &name, passwort.as_deref()).await {
                     Ok(verbindung) => {
@@ -299,13 +352,17 @@ async fn lauf<F>(
                         // Datagramme ab, hier gehen sie ins Netz.
                         let sendequelle = verbindung.datagramm_quelle();
                         let sprech_senden = sprech.clone();
+                        let sende_verwaltung = verwaltung.clone();
+                        let sende_raum = aktueller.clone();
                         tokio::spawn(async move {
                             loop {
                                 while let Some(d) = sprech_senden.naechstes_datagramm() {
-                                    if sendequelle
-                                        .send_datagram(bytes::Bytes::from(d))
-                                        .is_err()
-                                    {
+                                    let d = verschluessle(
+                                        &sende_verwaltung,
+                                        &sende_raum,
+                                        d,
+                                    );
+                                    if sendequelle.send_datagram(bytes::Bytes::from(d)).is_err() {
                                         return;
                                     }
                                 }
@@ -315,6 +372,11 @@ async fn lauf<F>(
 
                         sprache = Some(rx_sprache);
                         netz = Some(verbindung);
+                        // Verschlüsselte Räume: Schlüssel besorgen (oder, als
+                        // Wart, erzeugen und verteilen).
+                        if let (Some(v), Some(e)) = (netz.as_mut(), eigener.as_ref()) {
+                            verteile_schluessel(v, &verwaltung, e).await;
+                        }
                         if let Ok(mut z) = zustand.lock() {
                             abbilden::verarbeite(
                                 &mut z,
@@ -412,6 +474,9 @@ async fn lauf<F>(
                     Befehl::MitgliedTrennen { mitglied, grund } => {
                         sprechwerk_protocol::ClientFrame::Trennen { mitglied, grund }
                     }
+                    Befehl::RaumVerschluesseln { raum, an } => {
+                        sprechwerk_protocol::ClientFrame::RaumVerschluesseln { raum, an }
+                    }
                     Befehl::Sperren { mitglied, grund } => {
                         sprechwerk_protocol::ClientFrame::MitgliedSperren { mitglied, grund }
                     }
@@ -434,6 +499,112 @@ async fn lauf<F>(
 
     if let Some(v) = netz.take() {
         v.schliessen();
+    }
+}
+
+/// Verschlüsselt ein Sprach-Datagramm, wenn der Raum es verlangt.
+///
+/// Ohne Schlüssel geht der Rahmen **unverschlüsselt** hinaus — das darf nicht
+/// passieren, deshalb wird er dann verworfen.
+fn verschluessle(
+    verwaltung: &Schluesselverwaltung,
+    aktueller: &Arc<Mutex<Option<sprechwerk_domain::RoomId>>>,
+    datagramm: Vec<u8>,
+) -> Vec<u8> {
+    let raum = aktueller.lock().ok().and_then(|r| *r);
+    match (raum, raum.and_then(|r| verwaltung.hole(r).map(|k| (r, k)))) {
+        (_, Some((raum, schluessel))) => {
+            match sprechwerk_adapters::verschluesselt::rahmen_verschluesseln(
+                &datagramm,
+                &schluessel,
+                raum.text().as_str(),
+            ) {
+                Ok(geheim) => geheim,
+                Err(_) => Vec::new(),
+            }
+        }
+        _ => {
+            // Kein verschlüsselter Raum: unverändert hinaus.
+            datagramm
+        }
+    }
+}
+
+/// Entschlüsselt ein ankommendes Datagramm, wenn es verschlüsselt ist.
+fn entschluessle(
+    verwaltung: &Schluesselverwaltung,
+    aktueller: &Arc<Mutex<Option<sprechwerk_domain::RoomId>>>,
+    datagramm: &[u8],
+) -> Option<Vec<u8>> {
+    use sprechwerk_protocol::{Sprachkopf, CODEC_VERSCHLUESSELT};
+    let kopf = Sprachkopf::lesen(datagramm)?.0;
+    if kopf.codec != CODEC_VERSCHLUESSELT {
+        return Some(datagramm.to_vec());
+    }
+    let raum = aktueller.lock().ok().and_then(|r| *r)?;
+    let schluessel = verwaltung.hole(raum)?;
+    sprechwerk_adapters::verschluesselt::rahmen_entschluesseln(
+        datagramm,
+        &schluessel,
+        raum.text().as_str(),
+    )
+    .ok()
+}
+
+/// Sorgt für den Raumschlüssel: erzeugen und verteilen (als Wart) oder warten.
+///
+/// Wird nach jedem Verbinden, jedem Raumwechsel und jedem Mitgliederwechsel
+/// aufgerufen — der Wart kann gehen, dann übernimmt der nächste.
+async fn verteile_schluessel(
+    verbindung: &mut Netz,
+    verwaltung: &Schluesselverwaltung,
+    eigener: &Schluessel,
+) {
+    let Some(raum) = verbindung.raum else {
+        return;
+    };
+    let Some(ansicht) = verbindung.raeume.iter().find(|r| r.id == raum) else {
+        return;
+    };
+    if !ansicht.verschluesselt {
+        verwaltung.vergiss(raum);
+        return;
+    }
+    let pakete = verwaltung.sorge_fuer(
+        raum,
+        ansicht.verschluesselt_seit,
+        verbindung.ich,
+        eigener,
+        &verbindung.mitglieder,
+    );
+    for paket in pakete {
+        if let Err(fehler) = verbindung.sende(paket).await {
+            eprintln!("Schlüsselpaket nicht gesendet: {fehler}");
+        }
+    }
+}
+
+/// Nimmt ein Schlüsselpaket des Servers an.
+fn nimm_schluesselpaket(
+    verbindung: &Netz,
+    verwaltung: &Schluesselverwaltung,
+    eigener: &Schluessel,
+    raum: sprechwerk_domain::RoomId,
+    epoche: u32,
+    von: sprechwerk_domain::MemberId,
+    daten: &str,
+    unterschrift: &str,
+) {
+    if let Err(fehler) = verwaltung.nimm_paket(
+        raum,
+        epoche,
+        von,
+        daten,
+        unterschrift,
+        eigener,
+        &verbindung.mitglieder,
+    ) {
+        eprintln!("Schlüsselpaket abgelehnt: {fehler}");
     }
 }
 

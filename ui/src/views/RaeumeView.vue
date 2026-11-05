@@ -9,13 +9,14 @@
 // • Eingriffe liegen im Kontextmenü (Rechtsklick oder „…"), nie im Hauptweg.
 import { computed, nextTick, ref, watch } from "vue";
 import * as UI from "@weppelmann/components";
-import { IconMore, IconPlus } from "@weppelmann/icons";
+import { IconLock, IconMore, IconPlus } from "@weppelmann/icons";
 import {
   ausRaumWerfen,
   betreten,
   darfEingreifen,
   darfRaeumeVerwalten,
   eingreifen,
+  verschluesseln,
   einstellungen,
   legeRaumAn,
   loesche,
@@ -50,6 +51,9 @@ function oeffneMitgliedMenue(id: string, ereignis?: MouseEvent) {
 function oeffneRaumMenue(id: string, ereignis?: MouseEvent) {
   ereignis?.preventDefault();
   offenesMitglied.value = null;
+  // Der Zielraum muss **vor** dem Aufbau des Menüs stehen: die Einträge hängen
+  // davon ab (Schloss auf/zu).
+  zielRaum.value = id;
   offenerRaum.value = id;
 }
 
@@ -141,6 +145,15 @@ function raumMenuePunkte(): UI.MenuItem[] {
   if (darfRaeumeVerwalten.value) {
     punkte.push({ id: "new", label: t("room.add"), separatorBefore: true });
     punkte.push({ id: "rename", label: t("room.rename") });
+    // Ende-zu-Ende-Verschlüsselung: je Raum, nur mit Recht.
+    const verschluesselt =
+      modell.raeume.find((r) => r.id === zielRaum.value)?.verschluesselt ?? false;
+    punkte.push({
+      id: verschluesselt ? "klar" : "verschluesseln",
+      label: verschluesselt ? t("room.unencrypt") : t("room.encrypt"),
+      hint: t("room.encrypt.hint"),
+      separatorBefore: true,
+    });
     punkte.push({ id: "delete", label: t("room.delete"), separatorBefore: true, danger: true });
   }
   return punkte;
@@ -163,6 +176,12 @@ function raumMenueGewaehlt(id: string, wahl: string) {
       break;
     case "delete":
       dialog.value = "loeschen";
+      break;
+    case "verschluesseln":
+      void verschluesseln(id, true);
+      break;
+    case "klar":
+      void verschluesseln(id, false);
       break;
   }
 }
@@ -227,7 +246,14 @@ async function absenden() {
               @contextmenu="oeffneRaumMenue(raum.id, $event)"
             >
               <span class="raum__marke" aria-hidden="true" />
-              <span class="raum__name">{{ raum.name }}</span>
+              <span class="raum__name">
+                {{ raum.name }}
+                <IconLock
+                  v-if="raum.verschluesselt"
+                  class="raum__schloss"
+                  :title="t('room.encrypted')"
+                />
+              </span>
               <span class="raum__zahl">{{ anwesendeVon(raum.id).length || "" }}</span>
             </button>
             <UI.WpMenu
@@ -496,6 +522,16 @@ async function absenden() {
   bottom: 0;
   width: 2px;
   background: var(--wp-color-accent-default);
+}
+
+/* Schloss an verschlüsselten Räumen: klein, in der Textfarbe — ein Zustand,
+   kein Schmuck. */
+.raum__schloss {
+  width: 12px;
+  height: 12px;
+  margin-left: var(--wp-space-1);
+  vertical-align: -1px;
+  color: var(--wp-color-text-muted);
 }
 
 .raum__name {

@@ -76,6 +76,15 @@ pub struct Room {
     /// Sortierung unter Geschwistern.
     pub reihenfolge: i32,
     pub angelegt_am: i64,
+    /// Sprache in diesem Raum wird **Ende zu Ende** verschlüsselt. Text bleibt
+    /// lesbar (er wird gespeichert — SPEC §6).
+    #[serde(default)]
+    pub verschluesselt: bool,
+    /// Wann die Verschlüsselung eingeschaltet wurde (ms). Dient allen Clients
+    /// als **Epoche**: sie rechnen `seit / 1000` und bekommen damit ohne
+    /// Absprache dieselbe Zahl.
+    #[serde(default)]
+    pub verschluesselt_seit: i64,
 }
 
 /// Eine Nachricht. Löschen durch den Verfasser setzt `geloescht`, Löschen durch
@@ -166,6 +175,8 @@ impl State {
                 name: DEFAULT_ROOM_NAME.to_string(),
                 reihenfolge: 0,
                 angelegt_am: jetzt_ms,
+                verschluesselt: false,
+                verschluesselt_seit: 0,
             },
         );
         state
@@ -385,6 +396,8 @@ impl State {
                 name: name.clone(),
                 reihenfolge,
                 angelegt_am: jetzt_ms,
+                verschluesselt: false,
+                verschluesselt_seit: 0,
             },
         );
         self.protokolliere(
@@ -401,6 +414,48 @@ impl State {
     }
 
     /// Benennt einen Raum um.
+    /// Schaltet die Ende-zu-Ende-Verschlüsselung eines Raums ein oder aus.
+    ///
+    /// **Nur Sprache.** Text wird dauerhaft gespeichert und bleibt damit
+    /// serverseitig lesbar; ein „Ende-zu-Ende" für gespeicherten Text wäre ein
+    /// anderes Versprechen (siehe ADR 0006).
+    pub fn raum_verschluesseln(
+        &mut self,
+        wer: MemberId,
+        raum: RoomId,
+        an: bool,
+        jetzt_ms: i64,
+    ) -> Result<(), Error> {
+        let (handelnder_name, ergebnis) = self.vorpruefung_person(
+            wer,
+            Capability::RaumVerwalten,
+            jetzt_ms,
+            "raum_verschluesselt",
+            raum.text(),
+        );
+        ergebnis?;
+        let Some(r) = self.raeume.get_mut(&raum) else {
+            return Err(Error::RaumUnbekannt);
+        };
+        if r.verschluesselt == an {
+            return Ok(());
+        }
+        let vorher = Some(if r.verschluesselt { "an" } else { "aus" }.to_string());
+        r.verschluesselt = an;
+        r.verschluesselt_seit = if an { jetzt_ms } else { 0 };
+        self.protokolliere(
+            jetzt_ms,
+            Some(wer),
+            &handelnder_name,
+            "raum_verschluesselt",
+            raum.text(),
+            vorher,
+            Some(if an { "an" } else { "aus" }.to_string()),
+            String::new(),
+        );
+        Ok(())
+    }
+
     pub fn raum_umbenennen(
         &mut self,
         wer: MemberId,
@@ -1553,5 +1608,39 @@ mod tests {
         assert_eq!(zurueck.protokoll, s.protokoll);
         assert_eq!(zurueck.sperren, s.sperren);
         assert_eq!(zurueck.server_name, s.server_name);
+    }
+
+    #[test]
+    fn verschluesselung_ist_je_raum_und_wird_protokolliert() {
+        let mut st = zustand();
+        let admin = st.anmelden("k1", "Ada", 1_000).unwrap();
+        let raum = *st.raeume.keys().next().unwrap();
+        assert!(!st.raeume[&raum].verschluesselt, "Vorgabe: aus");
+
+        st.raum_verschluesseln(admin, raum, true, 1_000).unwrap();
+        assert!(st.raeume[&raum].verschluesselt);
+        // Der Eintrag steht im Prüfprotokoll, mit vorher/nachher.
+        let eintrag = st.protokoll.last().expect("Protokolleintrag");
+        assert_eq!(eintrag.aktion, "raum_verschluesselt");
+        assert_eq!(eintrag.vorher.as_deref(), Some("aus"));
+        assert_eq!(eintrag.nachher.as_deref(), Some("an"));
+
+        // Wiederholtes Einschalten ändert nichts und schreibt nichts.
+        let vorher_anzahl = st.protokoll.len();
+        st.raum_verschluesseln(admin, raum, true, 1_100).unwrap();
+        assert_eq!(st.protokoll.len(), vorher_anzahl);
+
+        st.raum_verschluesseln(admin, raum, false, 1_200).unwrap();
+        assert!(!st.raeume[&raum].verschluesselt);
+    }
+
+    #[test]
+    fn ohne_recht_keine_verschluesselung() {
+        let mut st = zustand();
+        let _admin = st.anmelden("k1", "Ada", 1_000).unwrap();
+        let mitglied = st.anmelden("k2", "Bosse", 1_001).unwrap();
+        let raum = *st.raeume.keys().next().unwrap();
+        assert!(st.raum_verschluesseln(mitglied, raum, true, 1_000).is_err());
+        assert!(!st.raeume[&raum].verschluesselt);
     }
 }

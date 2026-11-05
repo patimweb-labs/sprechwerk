@@ -225,6 +225,22 @@ pub async fn trennen_mitglied(
     }
 }
 
+/// Schaltet die Ende-zu-Ende-Verschlüsselung eines Raums um.
+#[tauri::command]
+pub async fn raum_verschluesseln(
+    anwendung: State<'_, Arc<Anwendung>>,
+    raum: sprechwerk_domain::RoomId,
+    an: bool,
+) -> Result<(), String> {
+    match anwendung
+        .befehl(sprechwerk_ipc::Befehl::RaumVerschluesseln { raum, an })
+        .await
+    {
+        Antwort::Fehler { text } => Err(text),
+        _ => Ok(()),
+    }
+}
+
 /// Sperrt ein Mitglied und trennt es.
 #[tauri::command]
 pub async fn sperren(
@@ -337,6 +353,7 @@ fn sende_einstellungen(einstellungen: &Einstellungen) -> Sendeeinstellungen {
         noisegate: einstellungen.noisegate,
         schwelle: einstellungen.schwelle,
         vorlauf_ms: einstellungen.vorlauf_ms as u32,
+        paritaet: true,
     }
 }
 

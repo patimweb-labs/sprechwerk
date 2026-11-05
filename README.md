@@ -25,6 +25,9 @@ Protokollebene).
 * **Dauerhafter Text** mit Verlauf, Löschen (Verfasser weich, Moderator hart).
 * **Prüfprotokoll**: wer, wann, was, vorher/nachher — auch abgelehnte
   Versuche.
+* **Ende-zu-Ende-Verschlüsselung je Raum** (ADR 0006): X25519-Umschläge,
+  ChaCha20-Poly1305, Gruppenschlüssel mit Epoche. Der Server verteilt nur
+  Geheimtext; Text bleibt lesbar, weil er gespeichert wird.
 * **Sprache, hörbar und gemessen**: Aufnahme (PipeWire/PulseAudio), Hochpass,
   Rauschunterdrückung, Noisegate, Opus 32 kbit/s, 60-ms-Vorlauf statt
   PTT-Wartezeit, Jitter-Puffer je Sprecher, Mischen im Client. Der Server

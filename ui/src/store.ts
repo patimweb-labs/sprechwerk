@@ -289,6 +289,11 @@ export async function verschieben(mitglied: string, raum: string) {
   await api.verschieben(mitglied, raum);
 }
 
+/** Ende-zu-Ende-Verschlüsselung eines Raums umschalten. */
+export async function verschluesseln(raum: string, an: boolean) {
+  await api.raumVerschluesseln(raum, an);
+}
+
 export async function ausRaumWerfen(mitglied: string) {
   await api.ausRaumWerfen(mitglied);
 }

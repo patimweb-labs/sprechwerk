@@ -4,5 +4,5 @@ pub mod nachricht;
 pub use frame::{lese_rahmen, schreibe_rahmen, MAX_RAHMEN, PROTOKOLL_VERSION};
 pub use nachricht::{
     ClientFrame, Fehlercode, Mitgliedsansicht, Raumansicht, ServerFrame, Sprachkopf, CODEC_OPUS,
-    MAX_SPRACHRAHMEN, SPRACHKOPF_LEN, SPRACHKOPF_VERSION,
+    MAX_SPRACHRAHMEN, SPRACHKOPF_LEN, SPRACHKOPF_VERSION, CODEC_VERSCHLUESSELT,
 };

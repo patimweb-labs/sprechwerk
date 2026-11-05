@@ -766,5 +766,29 @@
   "en": "Below the speech threshold nothing is sent at all — saves bandwidth and keeps the room quiet.",
   "es": "Por debajo del umbral no se envía nada — ahorra ancho de banda y mantiene la sala en calma.",
   "fr": "Sous le seuil, rien n'est envoyé — économise la bande passante et garde le salon calme."
+ },
+ "room.encrypt": {
+  "de": "Sprache verschlüsseln",
+  "en": "Encrypt voice",
+  "es": "Cifrar la voz",
+  "fr": "Chiffrer la voix"
+ },
+ "room.unencrypt": {
+  "de": "Verschlüsselung aus",
+  "en": "Turn encryption off",
+  "es": "Desactivar el cifrado",
+  "fr": "Désactiver le chiffrement"
+ },
+ "room.encrypt.hint": {
+  "de": "Nur Sprache, je Raum. Text bleibt lesbar, weil er gespeichert wird.",
+  "en": "Voice only, per room. Text stays readable because it is stored.",
+  "es": "Solo voz, por sala. El texto sigue legible porque se guarda.",
+  "fr": "Voix seulement, par salon. Le texte reste lisible car il est stocké."
+ },
+ "room.encrypted": {
+  "de": "Sprache Ende zu Ende verschlüsselt",
+  "en": "Voice end-to-end encrypted",
+  "es": "Voz cifrada de extremo a extremo",
+  "fr": "Voix chiffrée de bout en bout"
  }
 }

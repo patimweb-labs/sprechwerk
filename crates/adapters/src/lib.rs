@@ -10,6 +10,7 @@
 //! Mensch; das ist die bewusst gewählte Schwäche („Kennung ist mitnehmbar").
 
 pub mod klang;
+pub mod verschluesselt;
 pub mod sprechpfad;
 
 use anyhow::Context;
@@ -72,6 +73,14 @@ impl Schluessel {
     /// Signiert eine Zeichenkette (den Nonce des Servers).
     pub fn unterschreibe(&self, text: &str) -> String {
         hex::encode(self.signierer().sign(text.as_bytes()).to_bytes())
+    }
+
+    /// Der X25519-Anteil desselben Schlüssels (für den Schlüsselaustausch).
+    ///
+    /// Abgeleitet, nicht gespeichert: die Schlüsseldatei bleibt bei 32 Byte,
+    /// und es gibt keinen zweiten Schlüssel, den man beim Umzug vergisst.
+    pub fn austausch_geheimnis(&self) -> x25519_dalek::StaticSecret {
+        verschluesselt::geheimnis_aus_anmeldeschluessel(&self.geheim)
     }
 
     /// Export als Text (zum Mitnehmen auf ein neues Gerät).

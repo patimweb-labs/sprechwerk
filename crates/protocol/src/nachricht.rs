@@ -50,6 +50,12 @@ pub struct Raumansicht {
     pub reihenfolge: i32,
     /// Wie viele gerade drin sind.
     pub anwesend: usize,
+    /// Sprache wird in diesem Raum Ende zu Ende verschlüsselt.
+    #[serde(default)]
+    pub verschluesselt: bool,
+    /// Seit wann (ms). Alle Clients bilden daraus dieselbe **Epoche**.
+    #[serde(default)]
+    pub verschluesselt_seit: i64,
 }
 
 /// Ein Mitglied, wie es der Client sieht.
@@ -57,6 +63,11 @@ pub struct Raumansicht {
 pub struct Mitgliedsansicht {
     pub id: sprechwerk_domain::MemberId,
     pub name: String,
+    /// Öffentlicher Anmeldeschlüssel (Hex). Öffentlich — er ist die Identität
+    /// und wird für den Schlüsselaustausch der Ende-zu-Ende-Verschlüsselung
+    /// gebraucht, damit der Server keinen Schlüssel unterschieben kann.
+    #[serde(default)]
+    pub kennung: String,
     pub rolle: Role,
     pub raum: Option<RoomId>,
     /// Spricht gerade (Sprachrahmen in den letzten 400 ms).
@@ -105,6 +116,12 @@ pub const SPRACHKOPF_VERSION: u8 = 2;
 
 /// Codec Nummer für Opus.
 pub const CODEC_OPUS: u8 = 0;
+
+/// Nutzlast ist Ende-zu-Ende verschlüsselt (ADR 0006).
+///
+/// Der **Kopf bleibt lesbar**: der Server muss weiterhin verteilen und das
+/// Rederecht prüfen können. Nur der Opus-Rahmen dahinter ist Geheimtext.
+pub const CODEC_VERSCHLUESSELT: u8 = 3;
 
 /// Höchstgröße eines Sprach-Datagramms. QUIC-Datagramme müssen unter der
 /// Pfad-MTU bleiben (rund 1200 Byte); 60 ms Opus sind selbst bei 64 kbit/s
@@ -228,6 +245,29 @@ pub enum ClientFrame {
         adresse: Option<String>,
         grund: String,
     },
+    /// Ende-zu-Ende-Verschlüsselung eines Raums ein-/ausschalten.
+    RaumVerschluesseln {
+        raum: sprechwerk_domain::RoomId,
+        an: bool,
+    },
+    /// Ein Schlüsselpaket für **einen** anderen Anwesenden.
+    ///
+    /// Der Server leitet es unverändert weiter — er kann es nicht lesen (der
+    /// Raumschlüssel liegt darin verschlüsselt für genau diesen Empfänger).
+    /// `unterschrift` ist eine Ed25519-Signatur des Absenders über
+    /// `epoche || raum || daten`, damit der Server kein Paket unterschieben
+    /// kann.
+    Schluesselpaket {
+        raum: sprechwerk_domain::RoomId,
+        /// Zählt bei jedem Verlassen hoch.
+        epoche: u32,
+        /// Kennung des Empfängers.
+        fuer: sprechwerk_domain::MemberId,
+        /// Verschlüsselter Raumschlüssel (Hex).
+        daten: String,
+        /// Signatur des Absenders (Hex).
+        unterschrift: String,
+    },
     /// Prüfprotokoll lesen.
     Protokoll { ab: usize, anzahl: usize },
     /// Lebenszeichen.
@@ -281,6 +321,15 @@ pub enum ServerFrame {
     Raeume { raeume: Vec<Raumansicht> },
     /// Ein Mitglied hat sich geändert (Name, Rolle).
     MitgliedGeaendert { mitglied: Mitgliedsansicht },
+    /// Ein Schlüsselpaket, weitergeleitet vom Absender.
+    Schluesselpaket {
+        raum: sprechwerk_domain::RoomId,
+        epoche: u32,
+        /// Wer es geschickt hat (und damit, wessen Unterschrift zu prüfen ist).
+        von: sprechwerk_domain::MemberId,
+        daten: String,
+        unterschrift: String,
+    },
     /// Prüfprotokoll.
     Protokoll {
         eintraege: Vec<sprechwerk_domain::AuditEntry>,

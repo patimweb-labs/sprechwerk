@@ -12,6 +12,7 @@ pub mod audio;
 pub mod commands;
 pub mod einstellungen;
 pub mod sprech;
+pub mod verschluesselung;
 
 use anwendung::Anwendung;
 use std::sync::Arc;
@@ -31,11 +32,18 @@ pub fn run() {
             // Nach jeder Änderung geht der **ganze** Stand ans Fenster
             // (AGENTS.md §2.1: die Oberfläche ist `render(modell)`).
             let sprech = Arc::new(sprech::Sprechbetrieb::neu());
-            let anwendung = Anwendung::starten(schluessel_pfad, sprech.clone(), move |zustand| {
-                let _ = fenster.emit("zustand", &zustand);
-            });
+            let verschluesselung = Arc::new(verschluesselung::Schluesselverwaltung::neu());
+            let anwendung = Anwendung::starten(
+                schluessel_pfad,
+                sprech.clone(),
+                verschluesselung.clone(),
+                move |zustand| {
+                    let _ = fenster.emit("zustand", &zustand);
+                },
+            );
             app.manage(Arc::new(anwendung));
             app.manage(sprech.clone());
+            app.manage(verschluesselung);
 
             // Pegel für die Anzeige: eigener Zeitgeber, 10 × je Sekunde.
             // (Der Stand kommt sonst nur bei Änderungen — ein Pegel ändert sich
@@ -73,6 +81,7 @@ pub fn run() {
             commands::aus_raum_werfen,
             commands::trennen_mitglied,
             commands::sperren,
+            commands::raum_verschluesseln,
             commands::audio_starten,
             commands::audio_stoppen,
             commands::audio_stand,

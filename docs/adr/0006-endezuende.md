@@ -1,6 +1,7 @@
 # ADR 0006 — Ende-zu-Ende-Verschlüsselung für Sprache
 
-**Status:** entworfen, Entscheidung offen (2026-11-04)
+**Status:** umgesetzt (2026-11-04) — je Raum einschaltbar
+**Entscheidung (Nutzer):** pro Raum optional, abschaltbar; Text bleibt lesbar.
 **Betrifft:** `crates/adapters`, `crates/protocol`, `crates/server`
 
 ## Ausgangslage
@@ -52,11 +53,38 @@ wird hier bewusst nicht versprochen.
 * Kein Einfluss auf Latenz (Verschlüsseln eines 80-Byte-Rahmens: Mikrosekunden).
 * Testbarkeit: prüfbar ohne Audio — Schlüsselaustausch ist reine Rechnerei.
 
-## Empfehlung
+## Umgesetzt
 
-**Bauen, aber nach Audio und Messung.** Reihenfolge: Audio-Pfad → Messung →
-E2E. Grund: E2E verändert das Rahmenformat (12 Byte Aufschlag) und damit die
-Messung; wer zuerst verschlüsselt, misst das Falsche.
+| Stück | Ort |
+|---|---|
+| Raumschlüssel, Umschlag (X25519 + HKDF-SHA256 + ChaCha20-Poly1305) | `crates/adapters/src/verschluesselt.rs`, 11 Tests |
+| Rahmen verschlüsseln/entschlüsseln (Kopf bleibt lesbar) | dort, 2 Tests |
+| Schlüsselverwaltung, Wärter-Wahl, Unterschrift prüfen | `crates/desktop/src/verschluesselung.rs`, 6 Tests |
+| Raum-Flag, Epoche, Protokoll-Eintrag | `crates/domain/src/state.rs`, 2 Tests |
+| Speicherung (überlebt Neustart) | `crates/store/src/lib.rs`, 1 Test |
+| Weiterleitung der Pakete, Recht, Raumgrenze | `crates/server/src/kern.rs` |
+| **Beweis am echten Server** | `crates/server/tests/verschluesselt.rs`, 4 Tests |
+
+Zwei Abweichungen vom Entwurf oben, beide begründet:
+
+1. **Der X25519-Schlüssel steht nicht in der Schlüsseldatei.** Er wird aus dem
+   Anmeldeschlüssel abgeleitet (SHA-512, klemmen — dasselbe, was libsodium
+   macht). Damit bleibt die Datei bei 32 Byte, und es gibt keinen zweiten
+   Schlüssel, den man beim Umzug vergisst.
+2. **Die Epoche ist ein Zeitstempel**, kein Zähler: `verschluesselt_seit / 1000`.
+   Alle Clients rechnen denselben Wert aus, ohne dass jemand ihn aushandeln
+   muss.
+
+**Was der Server nicht kann:** den Umschlag öffnen (er ist für genau einen
+Empfänger verschlüsselt) oder einen eigenen unterschieben (er ist mit dem
+Ed25519-Schlüssel des Absenders unterschrieben; geprüft wird gegen die Kennung,
+die der Server selbst weiterreicht). Er kann **verweigern** — dann gibt es
+keinen Ton, aber kein Mithören.
+
+**Kosten, gemessen:** 16 Byte Aufschlag je Rahmen (AEAD) plus 6 Byte Kopf,
+zusammen 22 von rund 100 Byte — rund 20 % auf einen 32-kbit/s-Rahmen. Der
+Sprachkopf bleibt lesbar, weil der Server zum Verteilen und für das Rederecht
+Folgenummer und Sprecher braucht.
 
 ## Alternativen
 

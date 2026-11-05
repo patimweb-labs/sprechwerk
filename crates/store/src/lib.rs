@@ -48,7 +48,10 @@ CREATE TABLE IF NOT EXISTS raeume (
   eltern       TEXT,
   name         TEXT NOT NULL,
   reihenfolge  INTEGER NOT NULL,
-  angelegt_am  INTEGER NOT NULL
+  angelegt_am  INTEGER NOT NULL,
+  -- Sprache Ende zu Ende verschlüsselt (ADR 0006)
+  verschluesselt INTEGER NOT NULL DEFAULT 0,
+  verschluesselt_seit INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS mitglieder (
   id               TEXT PRIMARY KEY,
@@ -174,7 +177,10 @@ impl Store {
         // Räume
         let mut stmt = self
             .conn
-            .prepare("SELECT id, eltern, name, reihenfolge, angelegt_am FROM raeume")?;
+            .prepare(
+                "SELECT id, eltern, name, reihenfolge, angelegt_am, \
+                 COALESCE(verschluesselt, 0), COALESCE(verschluesselt_seit, 0) FROM raeume",
+            )?;
         let mut zeilen = stmt.query([])?;
         let mut raeume = std::collections::BTreeMap::new();
         while let Some(z) = zeilen.next()? {
@@ -187,6 +193,8 @@ impl Store {
                     name: z.get(2)?,
                     reihenfolge: z.get(3)?,
                     angelegt_am: z.get(4)?,
+                    verschluesselt: z.get::<_, i64>(5)? != 0,
+                    verschluesselt_seit: z.get::<_, i64>(6)?,
                 },
             );
         }
@@ -327,16 +335,20 @@ impl Store {
             for r in state.raeume.values() {
                 vorhanden.insert(r.id.text());
                 tx.execute(
-                    "INSERT INTO raeume (id, eltern, name, reihenfolge, angelegt_am) \
-                     VALUES (?1, ?2, ?3, ?4, ?5) \
+                    "INSERT INTO raeume (id, eltern, name, reihenfolge, angelegt_am, verschluesselt, \
+                     verschluesselt_seit) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
                      ON CONFLICT(id) DO UPDATE SET eltern = excluded.eltern, name = excluded.name, \
-                     reihenfolge = excluded.reihenfolge, angelegt_am = excluded.angelegt_am",
+                     reihenfolge = excluded.reihenfolge, angelegt_am = excluded.angelegt_am, \
+                     verschluesselt = excluded.verschluesselt, \
+                     verschluesselt_seit = excluded.verschluesselt_seit",
                     params![
                         r.id.text(),
                         Option::<String>::None,
                         r.name,
                         r.reihenfolge,
-                        r.angelegt_am
+                        r.angelegt_am,
+                        if r.verschluesselt { 1 } else { 0 },
+                        r.verschluesselt_seit
                     ],
                 )?;
             }
@@ -568,6 +580,26 @@ mod tests {
         assert_eq!(geladen.sperren, s.sperren);
         assert_eq!(geladen.naechste_laufnummer(), s.naechste_laufnummer());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn verschluesselung_ueberlebt_den_neustart() {
+        let mut s = zustand();
+        let raum = *s.raeume.keys().next().unwrap();
+        s.raeume.get_mut(&raum).unwrap().verschluesselt = true;
+        let datei = std::env::temp_dir().join("sprechwerk-ver-1.db");
+        let _ = std::fs::remove_file(&datei);
+        {
+            let mut st = Store::oeffnen(&datei).unwrap();
+            st.speichern(&s).unwrap();
+        }
+        let st = Store::oeffnen(&datei).unwrap();
+        let geladen = st.laden(|| State::neu("Testwerk", Role::Mitglied, 2_000)).unwrap();
+        assert!(
+            geladen.raeume[&raum].verschluesselt,
+            "das Flag muss den Neustart überleben"
+        );
+        let _ = std::fs::remove_file(datei);
     }
 
     #[test]
