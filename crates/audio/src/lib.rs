@@ -24,6 +24,7 @@
 pub static BLOECKE: AtomicU64 = AtomicU64::new(0);
 
 pub mod empfang;
+pub mod geraet;
 pub mod verlust;
 pub mod opus;
 pub mod pcm;
@@ -33,8 +34,7 @@ pub use empfang::Empfänger;
 pub use senden::{Sendeeinstellungen, Sender};
 
 use anyhow::{anyhow, Context, Result};
-use std::io::{BufReader, Read, Write};
-use std::process::{Child, Command, Stdio};
+use geraet::{Aufnahme, Wiedergabe};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::mpsc::{Receiver, Sender as Kanal};
 use std::sync::{mpsc, Arc};
@@ -125,7 +125,9 @@ pub struct Pfad {
     laeuft: Arc<AtomicBool>,
     /// Umstellen der Sendeseite.
     einstellungen: Kanal<Sendeeinstellungen>,
-    kinder: Vec<Child>,
+    /// Aufnahme und Wiedergabe (cpal oder PipeWire — siehe `geraet`).
+    eingang: Option<Box<dyn Aufnahme>>,
+    ausgang: Option<Box<dyn Wiedergabe>>,
     name_aufnahme: String,
     name_wiedergabe: String,
 }
@@ -152,35 +154,38 @@ impl Pfad {
                  sonst hört man die eigene Ausgabe"
             ));
         }
-        let mut aufnahme_kind = starte_parec(quelle)?;
-        let aufnahme_aus = aufnahme_kind
-            .stdout
-            .take()
-            .ok_or_else(|| anyhow!("parec liefert nichts"))?;
-
         let (sende_tx, zu_senden) = mpsc::channel::<Vec<u8>>();
         let (stell_tx, stell_rx) = mpsc::channel::<Sendeeinstellungen>();
+        // Das Gerät wird **im** Thread geöffnet: ein cpal-Strom gehört dem
+        // Thread, der ihn gebaut hat.
+        let (start_tx, start_rx) = mpsc::channel::<Result<String, String>>();
+        let quelle_geraet = quelle.to_string();
         {
             let steuerung = steuerung.clone();
             let pegel = pegel.clone();
             let laeuft = laeuft.clone();
             let mut sender = Sender::neu(einstellungen)?;
-            let name = quelle.to_string();
             std::thread::Builder::new()
                 .name("sprechwerk-aufnahme".into())
                 .spawn(move || {
-                    let mut leser = BufReader::new(aufnahme_aus);
+                    let mut quelle = match geraet::aufnahme_oeffnen(&quelle_geraet) {
+                        Ok(q) => q,
+                        Err(fehler) => {
+                            let _ = start_tx.send(Err(format!("Aufnahme: {fehler}")));
+                            return;
+                        }
+                    };
+                    let name = quelle.name();
+                    let _ = start_tx.send(Ok(name.clone()));
                     let mut roh = vec![0u8; pcm::RAHMEN_BYTES];
                     while laeuft.load(Ordering::Relaxed) {
-                        // Neue Einstellungen übernehmen, wenn welche da sind.
                         while let Ok(neu) = stell_rx.try_recv() {
                             sender.einstellen(neu);
                         }
-                        if let Err(fehler) = leser.read_exact(&mut roh) {
-                            eprintln!("Aufnahme ({name}): Lesen fehlgeschlagen: {fehler}");
-                            break; // parec beendet (Gerät weg)
+                        if let Err(fehler) = quelle.lies(&mut roh) {
+                            eprintln!("Aufnahme ({name}): {fehler}");
+                            break;
                         }
-                        BLOECKE.fetch_add(1, Ordering::Relaxed);
                         let werte = pcm::bytes_nach_i16(&roh);
                         let mut block = pcm::nach_f32(&werte);
                         let erlaubt = steuerung.senden_erlaubt();
@@ -199,25 +204,34 @@ impl Pfad {
                             }
                         }
                     }
-                    tracing_stumm(&name);
+                    eprintln!("Aufnahme beendet ({name})");
                 })
                 .context("Aufnahmethread")?;
         }
+        let name_aufnahme = start_rx
+            .recv()
+            .map_err(|_| anyhow!("Aufnahmethread ist nicht gestartet"))?
+            .map_err(|text| anyhow!("{text}"))?;
 
         // ---- Wiedergabe ----------------------------------------------
         let ziel = lautsprecher.unwrap_or("");
-        let mut wiedergabe_kind = starte_pacat(ziel)?;
-        let mut wiedergabe_ein = wiedergabe_kind
-            .stdin
-            .take()
-            .ok_or_else(|| anyhow!("pacat nimmt nichts an"))?;
         let (hoer_tx, zu_hoeren_channel) = mpsc::channel::<Vec<u8>>();
+        let (start_wtx, start_wrx) = mpsc::channel::<Result<String, String>>();
+        let ziel_geraet = ziel.to_string();
         {
             let laeuft = laeuft.clone();
             let steuerung = steuerung.clone();
             std::thread::Builder::new()
                 .name("sprechwerk-wiedergabe".into())
                 .spawn(move || {
+                    let mut senke = match geraet::wiedergabe_oeffnen(&ziel_geraet) {
+                        Ok(w) => w,
+                        Err(fehler) => {
+                            let _ = start_wtx.send(Err(format!("Wiedergabe: {fehler}")));
+                            return;
+                        }
+                    };
+                    let _ = start_wtx.send(Ok(senke.name()));
                     let mut empfaenger = Empfänger::neu();
                     let mut takt = Instant::now();
                     while laeuft.load(Ordering::Relaxed) {
@@ -233,11 +247,8 @@ impl Pfad {
                         } else {
                             empfaenger.naechster_block()
                         };
-                        if wiedergabe_ein
-                            .write_all(&pcm::i16_nach_bytes(&block))
-                            .is_err()
-                        {
-                            break; // pacat beendet
+                        if senke.schreibe(&pcm::i16_nach_bytes(&block)).is_err() {
+                            break;
                         }
                         // Fester Takt: 20 ms je Block, Drift wird ausgeglichen.
                         takt += TAKT;
@@ -251,9 +262,10 @@ impl Pfad {
                 })
                 .context("Wiedergabethread")?;
         }
-
-        // Der Aufnahmeprozess läuft im Hintergrund; `try_wait` räumt Zombies.
-        let _ = aufnahme_kind.try_wait();
+        let name_wiedergabe = start_wrx
+            .recv()
+            .map_err(|_| anyhow!("Wiedergabethread ist nicht gestartet"))?
+            .map_err(|text| anyhow!("{text}"))?;
 
         Ok(Self {
             steuerung,
@@ -262,9 +274,10 @@ impl Pfad {
             pegel,
             laeuft,
             einstellungen: stell_tx,
-            kinder: vec![aufnahme_kind, wiedergabe_kind],
-            name_aufnahme: quelle.to_string(),
-            name_wiedergabe: ziel.to_string(),
+            eingang: None,
+            ausgang: None,
+            name_aufnahme,
+            name_wiedergabe,
         })
     }
 
@@ -313,68 +326,20 @@ impl Pfad {
     /// Beendet beide Richtungen.
     pub fn stoppen(mut self) {
         self.laeuft.store(false, Ordering::Relaxed);
-        for kind in self.kinder.iter_mut() {
-            let _ = kind.kill();
-            let _ = kind.wait();
-        }
+        // Die Threads beenden sich über `laeuft`; die Geräte werden mit dem
+        // `Drop` des Pfads geschlossen.
+        self.eingang = None;
+        self.ausgang = None;
     }
 }
 
 impl Drop for Pfad {
     fn drop(&mut self) {
         self.laeuft.store(false, Ordering::Relaxed);
-        for kind in self.kinder.iter_mut() {
-            let _ = kind.kill();
-            let _ = kind.wait();
-        }
+        // Geräte schließen (Kindprozesse bzw. Ströme).
+        self.eingang = None;
+        self.ausgang = None;
     }
-}
-
-fn tracing_stumm(name: &str) {
-    eprintln!("Aufnahme beendet ({name})");
-}
-
-/// Startet `parec` und liefert den Prozess mit offener Ausgabe.
-fn starte_parec(quelle: &str) -> Result<Child> {
-    let mut befehl = Command::new("parec");
-    befehl.args([
-        "--format=s16le",
-        "--rate=48000",
-        "--channels=1",
-        "--raw",
-        "--latency-msec=20",
-    ]);
-    if !quelle.is_empty() {
-        befehl.arg(format!("--device={quelle}"));
-    }
-    befehl
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .stdin(Stdio::null())
-        .spawn()
-        .with_context(|| "parec startet nicht (ist PipeWire/PulseAudio installiert?)")
-}
-
-/// Startet `pacat` und liefert den Prozess mit offener Eingabe.
-fn starte_pacat(ziel: &str) -> Result<Child> {
-    let mut befehl = Command::new("pacat");
-    befehl.args([
-        "--playback",
-        "--format=s16le",
-        "--rate=48000",
-        "--channels=1",
-        "--raw",
-        "--latency-msec=40",
-    ]);
-    if !ziel.is_empty() {
-        befehl.arg(format!("--device={ziel}"));
-    }
-    befehl
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .with_context(|| "pacat startet nicht (ist PipeWire/PulseAudio installiert?)")
 }
 
 #[cfg(test)]

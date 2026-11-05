@@ -16,6 +16,7 @@ description = "sprechwerk: Aufnahme, Wiedergabe, Opus, Vorlauf"
 # läuft) und `libopus` (auf jeder Distribution mit PipeWire vorhanden).
 
 [dependencies]
+cpal = { version = "0.15", optional = true }
 sprechwerk-adapters = { path = "../adapters" }
 sprechwerk-protocol = { path = "../protocol" }
 anyhow = "1"
@@ -24,9 +25,24 @@ bytes = "1"
 # Windows (opus.dll), macOS (libopus.dylib) und Linux (libopus.so.0), und die
 # Bibliothek darf neben der Anwendung liegen.
 libloading = "0.9"
+
 # Rauschunterdrückung: RNNoise als reines Rust (kein C, kein cmake).
 nnnoiseless = "0.5"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+
+# **Geräte je Plattform.** Auf Windows und macOS gibt es nur cpal (WASAPI bzw.
+# CoreAudio) — es ist dort fest eingebunden, weil es keine Alternative gibt.
+# Auf Linux hängt ALSA an `alsa-lib-devel`; deshalb ist cpal dort **wählbar**
+# (`--features cpal`) und sonst nicht im Bau. Der Rückfallweg über
+# PipeWire/PulseAudio (`parec`/`pacat`) braucht kein Entwicklungspaket.
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+cpal = "0.15"
+
+[features]
+# cpal auch unter Linux benutzen (braucht `alsa-lib-devel` + `pkg-config`).
+default = []
+cpal = ["dep:cpal"]
+pipewire = []
 
 [lib]
 name = "sprechwerk_audio"

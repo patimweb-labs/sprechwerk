@@ -106,7 +106,8 @@ Der Pfad ist **gebaut und läuft** — im Fenster und als Messwerkzeug.
 | Verlustausgleich (Paritätsrahmen, Verlusttest) | `audio/src/verlust.rs` | 5 Einzeltests (1 Verlust exakt ersetzt, 5 % Verlust vollständig) |
 | Sendekette (Block → Datagramm) | `audio/src/senden.rs` | 5 Einzeltests (Vorlauf beim Öffnen, Folgenummern lückenlos, Gate) |
 | Empfang (je Sprecher Dekodierer + Jitter, Mischen) | `audio/src/empfang.rs` | 5 Einzeltests (zwei Sprecher gemischt, Doppelte verworfen) |
-| Gerät (Aufnahme/Wiedergabe über `parec`/`pacat`) | `audio/src/lib.rs` | 3 Einzeltests + Messung |
+| Geräte: cpal (WASAPI/CoreAudio/ALSA) mit Rückfall auf `parec`/`pacat` | `audio/src/geraet.rs` | 2 Einzeltests, Rückfall im Betrieb geprüft |
+| Pfad (Takt, Threads, Stumm/Taub) | `audio/src/lib.rs` | 3 Einzeltests + Messung |
 | Fensteranbindung | `desktop/src/sprech.rs` | 5 Einzeltests |
 
 ### Messung, 4. November 2026

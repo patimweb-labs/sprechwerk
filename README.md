@@ -38,6 +38,20 @@ Protokollebene).
 Noch nicht umgesetzt (bewusst später): Dateien, Status, Video,
 Bildschirmfreigabe, Emojis, Suche, Sperrliste im Fenster.
 
+## Bauen
+
+```bash
+# Linux: für cpal (ALSA) — ohne diese Pakete nimmt der Pfad den
+# PipeWire-Rückfallweg (parec/pacat), der ebenfalls funktioniert.
+sudo dnf install alsa-lib-devel pkgconf-pkg-config
+
+# Windows/macOS: nichts zu installieren, cpal ist fest eingebunden.
+cargo build --release
+```
+
+Opus wird **zur Laufzeit** geladen (`libopus.so.0` / `libopus.dylib` /
+`opus.dll`) und darf neben der Anwendung liegen.
+
 ## Ton prüfen (ohne Mikrofon)
 
 ```bash
