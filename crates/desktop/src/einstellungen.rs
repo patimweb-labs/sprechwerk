@@ -51,8 +51,14 @@ pub struct Einstellungen {
     pub vorlauf_ms: u16,
     /// Gemerkte Server (Favoriten) — die Startseite, wenn keine Verbindung steht.
     pub favoriten: Vec<Favorit>,
-    /// Kompaktes Design: dichtere Zeilen im Verlauf und in den Raumlisten.
-    pub kompakt: bool,
+    /// Chat eingeklappt (schmale Schiene rechts). **Kein Schalter in den
+    /// Einstellungen** — der Zustand wird nur gemerkt.
+    ///
+    /// `alias = "kompakt"`: ältere Einstellungsdateien hatten dort ein
+    /// Feld für ein dichteres Layout; es bedeutet dasselbe („enger") und wird
+    /// übernommen, statt die Datei zu verwerfen.
+    #[serde(alias = "kompakt")]
+    pub chat_eingeklappt: bool,
     /// Rauschunterdrückung im Aufnahmepfad (Störgeräusche, Lüfter, Tastatur).
     pub rauschunterdrueckung: bool,
     /// Noisegate: unterhalb der Sprechschwelle wird **nichts** gesendet.
@@ -77,7 +83,7 @@ impl Default for Einstellungen {
             schwelle: 30,
             vorlauf_ms: 60,
             favoriten: Vec::new(),
-            kompakt: false,
+            chat_eingeklappt: false,
             rauschunterdrueckung: true,
             noisegate: true,
             echounterdrueckung: true,
@@ -117,7 +123,10 @@ mod tests {
         assert_eq!(e.vorlauf_ms, 60, "Vorlauf gegen abgeschnittenes erstes Wort");
         assert!(!e.push_to_talk);
         assert!(e.favoriten.is_empty());
-        assert!(!e.kompakt, "dichtes Design ist eine Wahl, nicht die Vorgabe");
+        assert!(
+            !e.chat_eingeklappt,
+            "der Chat ist offen, bis jemand ihn zuklappt"
+        );
     }
 
     #[test]

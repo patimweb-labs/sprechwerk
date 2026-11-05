@@ -29,7 +29,7 @@ export const einstellungen = reactive<Einstellungen>({
   schwelle: 30,
   vorlauf_ms: 60,
   favoriten: [],
-  kompakt: false,
+  chat_eingeklappt: false,
   rauschunterdrueckung: true,
   noisegate: true,
   echounterdrueckung: true,
@@ -46,7 +46,7 @@ export const laeuft = ref(false);
 export const pegel = ref(0);
 
 /** Läuft der Sprechpfad (Mikrofon und Wiedergabe offen)? */
-export const hoerbar = ref(false);
+const hoerbar = ref(false);
 
 /** Eigenes Mikrofon lokal stumm (wirkt sofort, ohne Serverrunde). */
 export const lokalStumm = ref(false);
@@ -98,7 +98,7 @@ export async function ladeEinstellungen() {
 }
 
 /** Holt den aktuellen Stand vom Rust-Teil. */
-export async function ladeZustand() {
+async function ladeZustand() {
   try {
     Object.assign(modell, await api.zustand());
   } catch (fehler) {
@@ -147,12 +147,6 @@ export function geheZu(bereich: "server" | "raeume" | "einstellungen") {
   ansicht.value = bereich;
 }
 
-/** Eigenes Mikrofon stumm? (Der Server führt den Zustand.) */
-export const eigeneStumm = computed(() => {
-  const id = modell.verbindung?.art === "verbunden" ? modell.verbindung.ich : null;
-  return modell.mitglieder.find((m) => m.id === id)?.stumm ?? false;
-});
-
 /** Eigener Ton stumm? */
 export const eigeneTaub = computed(() => {
   const id = modell.verbindung?.art === "verbunden" ? modell.verbindung.ich : null;
@@ -187,7 +181,7 @@ export async function sprechtaste(an: boolean) {
 }
 
 /** Stand des Sprechpfads holen (nach dem Verbinden, nach Gerätewechsel). */
-export async function holeAudioStand() {
+async function holeAudioStand() {
   if (istDummy) {
     hoerbar.value = verbunden.value;
     pegel.value = 0;
@@ -204,7 +198,7 @@ export async function holeAudioStand() {
 }
 
 /** Wendet geänderte Audioeinstellungen an (Schwelle, Gate, Geräte). */
-export async function wendeAudioEinstellungen() {
+async function wendeAudioEinstellungen() {
   if (istDummy) return;
   try {
     await api.audioEinstellen({ ...einstellungen });
@@ -307,26 +301,8 @@ export async function sperreMitglied(mitglied: string, grund: string) {
   await api.sperreMitglied(mitglied, grund);
 }
 
-/** Merkt sich das Mitglied, dessen Rolle geändert werden soll (Dialog im Fenster). */
-let rollenZiel: string | null = null;
-export function eingreifen(mitglied: string) {
-  rollenZiel = mitglied;
-  ansicht.value = "einstellungen";
-}
-export function rollenZielLesen() {
-  return rollenZiel;
-}
-
 export async function raumUmbenennen(raum: string, name: string) {
   await api.raumUmbenennen(raum, name);
-}
-
-/** „3 anwesend · 12 Nachrichten" für die Kopfzeile des Raums. */
-export function anwesenheitText(): string {
-  const raum = modell.raeume.find((r) => r.hier);
-  if (!raum) return "";
-  const n = modell.mitglieder.filter((m) => m.raum === raum.id).length;
-  return `${n} anwesend · ${modell.nachrichten.length} Nachrichten`;
 }
 
 export async function loesche(nachricht: string) {

@@ -286,8 +286,6 @@ async function thema(wert: string) {
             :label="t('set.scheme')"
             @update:model-value="thema"
           />
-          <UI.WpSwitch v-model="einstellungen.kompakt" :label="t('set.compact')" />
-          <p class="hinweis">{{ t("set.compact.hint") }}</p>
           <UI.WpFormField :label="t('set.language')">
             <template #default="{ id }">
               <UI.WpSelect

@@ -41,3 +41,15 @@ Dokumentation in `docs/` mit ADRs.
   die Oberfläche dünn hält.
 * WebView-Größe je Plattform (WebKitGTK, WKWebView, WebView2).
 * Ein zusätzliches Cargo-Workspace, das eigene Befehle braucht (AGENTS.md §4).
+
+## Nachtrag: der Chat lässt sich einklappen
+
+Der Verlauf nimmt den größten Teil der Breite ein — beim Durchsehen der Räume
+und Leute stört er. Deshalb lässt er sich **nach rechts einklappen**: ein Knopf
+in der Kopfzeile schiebt ihn weg, rechts bleibt eine schmale Schiene mit
+Chat-Zeichen, Name des Raums (senkrecht) und der Zahl ungelesener Nachrichten.
+Die Schiene ist der einzige Weg zurück — niemand soll den Chat „verlieren".
+
+Das ist bewusst **keine Einstellung**: man klappt zu, wenn man die Liste sehen
+will, und wieder auf, wenn man schreiben will. Der Zustand wird gemerkt (damit
+der nächste Start nicht überrascht), steht aber nicht in den Einstellungen.

@@ -16,11 +16,14 @@ Legende: **✔ gebaut und geprüft** · **◐ entworfen, nicht gebaut** · **○
 | Eingriffe: stumm, taub, verschieben, rauswerfen, trennen, sperren | ✔ | `docs/adr/0008-eingriffe-und-kontextmenues.md` |
 | Sprache (verteilen, Recht, Kopf) | ✔ | `docs/adr/0003`, `crates/server` |
 | Vorlauf, Jitter-Puffer, Sprechtaste | ✔ | `crates/adapters/src/sprechpfad.rs` |
-| Geräte und Opus | ◐ | `docs/adr/0004-audiopfad.md`, `crates/audio` |
-| Fenster (Tauri + Vue) | ✔ | `docs/adr/0001-aufbau-des-clients.md` |
+| Geräte (cpal, Rückfall PipeWire) und Opus | ✔ | `docs/AUDIO.md`, `crates/audio` |
+| Rauschunterdrückung (RNNoise), Noisegate | ✔ | `docs/AUDIO.md`, `crates/adapters/src/klang.rs` |
+| Echounterdrückung (AEC3) | ✔ | `docs/AUDIO.md`, `crates/adapters/src/echo.rs` |
+| Verlustausgleich (FEC + Paritätsrahmen) | ✔ | `crates/audio/src/verlust.rs` |
+| Sprache Ende zu Ende, je Raum | ✔ | `docs/adr/0006-endezuende.md` |
+| Fenster (Tauri + Vue), Chat einklappbar | ✔ | `docs/adr/0001-aufbau-des-clients.md` |
 | Betrieb (Docker, Sicherung, Export) | ✔ | `SPEC.md` §2, `README.md` |
 | Pakete je System | ◐ | `docs/adr/0007-paketierung-und-betrieb.md` |
-| Ende-zu-Ende-Verschlüsselung | ◐ | `docs/adr/0006-endezuende.md` |
 | Video, Bildschirm, Effekte | ◐ (bewusst später) | `docs/adr/0005-video-und-bildschirm.md` |
 | Dateien, Status, Emojis, Suche | ○ (Version 1 nicht) | `SPEC.md` §3 |
 | Skalierung über einen Prozess hinaus | ✗ | Abschnitt 9 |

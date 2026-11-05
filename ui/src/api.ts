@@ -74,8 +74,11 @@ export interface Einstellungen {
   schwelle: number;
   vorlauf_ms: number;
   favoriten: Favorit[];
-  /** Kompaktes Design: dichtere Zeilen. */
-  kompakt: boolean;
+  /**
+   * Chat eingeklappt (Schiene rechts). Ein Zustand, keine Vorliebe — deshalb
+   * nicht in den Einstellungen sichtbar, aber gemerkt.
+   */
+  chat_eingeklappt: boolean;
   /** Rauschunterdrückung im Aufnahmepfad. */
   rauschunterdrueckung: boolean;
   /** Noisegate: unterhalb der Schwelle wird nichts gesendet. */

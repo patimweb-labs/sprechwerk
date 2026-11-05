@@ -138,7 +138,7 @@ export const einstellungenVorgabe: Einstellungen = {
   ptt_taste: "Leertaste",
   schwelle: 30,
   vorlauf_ms: 60,
-  kompakt: false,
+  chat_eingeklappt: false,
   rauschunterdrueckung: true,
   noisegate: true,
   echounterdrueckung: true,
@@ -308,6 +308,24 @@ export const mockApi = {
         { id: "alsa_output.hdmi-stereo", name: "HDMI", vorgabe: false },
       ],
     };
+  },
+
+  // --- Ton und Verschlüsselung: im Dummy ohne Wirkung, aber vorhanden, damit
+  // die Oberfläche nicht in Fehler läuft.
+  async audioStarten(): Promise<void> {},
+  async audioStoppen(): Promise<void> {},
+  async audioStand() {
+    return { laeuft: verbunden, pegel: 0, stumm: false, taub: false };
+  },
+  async audioEinstellen(): Promise<void> {},
+  async sprechtaste(): Promise<void> {},
+  async mikrofonStumm(): Promise<void> {},
+  async hoerenAus(): Promise<void> {},
+
+  async raumVerschluesseln(raum: string, an: boolean): Promise<void> {
+    const r = stand.raeume.find((x) => x.id === raum);
+    if (r) r.verschluesselt = an;
+    melden();
   },
 
   async audioPegel(): Promise<number> {

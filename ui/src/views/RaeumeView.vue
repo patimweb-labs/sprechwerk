@@ -9,14 +9,16 @@
 // • Eingriffe liegen im Kontextmenü (Rechtsklick oder „…"), nie im Hauptweg.
 import { computed, nextTick, ref, watch } from "vue";
 import * as UI from "@weppelmann/components";
-import { IconLock, IconMore, IconPlus } from "@weppelmann/icons";
+import { IconChat, IconLock, IconMore, IconPanelRight, IconPlus } from "@weppelmann/icons";
 import {
   ausRaumWerfen,
   betreten,
   darfEingreifen,
   darfRaeumeVerwalten,
-  eingreifen,
   verschluesseln,
+  speichere,
+  setzeRolle,
+  darfRollenVergeben,
   einstellungen,
   legeRaumAn,
   loesche,
@@ -40,6 +42,50 @@ const verlauf = ref<HTMLElement | null>(null);
 
 // ---- Menüs --------------------------------------------------------------
 const offenesMitglied = ref<string | null>(null);
+/**
+ * Ist der Chat eingeklappt? Das ist **keine Einstellung**, sondern eine
+ * Handbewegung: man klappt zu, um die Raumliste breit zu sehen, und wieder auf,
+ * wenn man schreiben will. Der Zustand wird gemerkt, damit er beim nächsten
+ * Start nicht überrascht — er steht aber nicht in den Einstellungen.
+ */
+const chatEingeklappt = ref(einstellungen.chat_eingeklappt);
+
+/** Wie viele Nachrichten seit dem Einklappen kamen. */
+const ungelesen = ref(0);
+const letzteGesehen = ref(0);
+
+// Die Einstellungen kommen erst nach dem ersten Zeichnen an (sie werden
+// geladen, nicht abgewartet). Also nachziehen, wenn sie da sind.
+watch(
+  () => einstellungen.chat_eingeklappt,
+  (zu) => {
+    if (zu !== chatEingeklappt.value) chatEingeklappt.value = zu;
+  },
+);
+
+function chatUmschalten() {
+  chatEingeklappt.value = !chatEingeklappt.value;
+  einstellungen.chat_eingeklappt = chatEingeklappt.value;
+  if (!chatEingeklappt.value) {
+    // Aufgeklappt: alles ist gelesen.
+    ungelesen.value = 0;
+    letzteGesehen.value = modell.nachrichten.length;
+  }
+  void speichere();
+}
+
+watch(
+  () => modell.nachrichten.length,
+  (anzahl) => {
+    if (!chatEingeklappt.value) {
+      letzteGesehen.value = anzahl;
+      return;
+    }
+    // Nur zählen, was neu ist — nicht alles seit dem Start.
+    ungelesen.value = Math.max(0, anzahl - letzteGesehen.value);
+  },
+);
+
 const offenerRaum = ref<string | null>(null);
 
 function oeffneMitgliedMenue(id: string, ereignis?: MouseEvent) {
@@ -58,7 +104,17 @@ function oeffneRaumMenue(id: string, ereignis?: MouseEvent) {
 }
 
 // ---- Dialoge ------------------------------------------------------------
-const dialog = ref<null | "raum" | "umbenennen" | "verschieben" | "kicken" | "sperren" | "loeschen">(null);
+const dialog = ref<
+  null | "raum" | "umbenennen" | "verschieben" | "kicken" | "sperren" | "loeschen" | "rolle"
+>(null);
+/** Gewählte Rolle im Rollen-Dialog. */
+const rollenWahl = ref<string>("mitglied");
+const rollen = computed(() => [
+  { value: "administrator", label: t("rolle.administrator") },
+  { value: "moderator", label: t("rolle.moderator") },
+  { value: "mitglied", label: t("rolle.mitglied") },
+  { value: "gast", label: t("rolle.gast") },
+]);
 const zielMitglied = ref<string | null>(null);
 const zielRaum = ref<string | null>(null);
 const eingabeName = ref("");
@@ -101,7 +157,11 @@ function mitgliedMenue(id: string): UI.MenuItem[] {
   ];
   const erster = modell.raeume[0]?.id;
   if (m.raum !== erster) punkte.push({ id: "kick-room", label: t("member.kick_room") });
-  punkte.push({ id: "role", label: t("member.role"), separatorBefore: true });
+  // Rollen nur, wer sie vergeben darf — und dann im Dialog, nicht über einen
+  // Umweg durch die Einstellungen.
+  if (darfRollenVergeben.value) {
+    punkte.push({ id: "role", label: t("member.role"), separatorBefore: true });
+  }
   punkte.push({ id: "kick", label: t("member.kick"), separatorBefore: true, danger: true });
   punkte.push({ id: "ban", label: t("member.ban"), danger: true });
   return punkte;
@@ -126,7 +186,8 @@ function mitgliedMenueGewaehlt(id: string, wahl: string) {
       void ausRaumWerfen(id);
       break;
     case "role":
-      eingreifen(id);
+      rollenWahl.value = m?.rolle ?? "mitglied";
+      dialog.value = "rolle";
       break;
     case "kick":
       eingabeGrund.value = "";
@@ -201,6 +262,8 @@ async function bestaetigen() {
     await trenneMitglied(zielMitglied.value, eingabeGrund.value);
   } else if (art === "sperren" && zielMitglied.value) {
     await sperreMitglied(zielMitglied.value, eingabeGrund.value);
+  } else if (art === "rolle" && zielMitglied.value) {
+    await setzeRolle(zielMitglied.value, rollenWahl.value);
   }
 }
 
@@ -220,7 +283,7 @@ async function absenden() {
 </script>
 
 <template>
-  <div class="ansicht" :class="{ 'ist-kompakt': einstellungen.kompakt }">
+  <div class="ansicht" :class="{ 'chat-zu': chatEingeklappt }">
     <!-- Spalte 1: Räume mit ihren Leuten — eine Liste, kein Springen -->
     <aside class="seite">
       <header class="seite__kopf">
@@ -315,6 +378,18 @@ async function absenden() {
         <div class="kopf__text">
           <h1>{{ meinRaum ? meinRaum.name : t("room.none") }}</h1>
         </div>
+        <!-- Chat nach rechts einklappen: der Verlauf verschwindet, die
+             Raumliste bekommt die Breite. Kein Schalter in den Einstellungen —
+             das ist eine Handbewegung, keine Vorliebe. -->
+        <div class="kopf__rechts">
+          <UI.WpIconButton
+            :icon="IconPanelRight"
+            :label="t('chat.collapse')"
+            size="sm"
+            variant="ghost"
+            @press="chatUmschalten"
+          />
+        </div>
       </header>
 
       <div ref="verlauf" class="verlauf">
@@ -360,12 +435,39 @@ async function absenden() {
       </div>
     </section>
 
+    <!-- Eingeklappt: eine schmale Schiene rechts. Ein Klick holt den Chat
+         zurück; die Zahl zeigt ungelesene Nachrichten seit dem Einklappen. -->
+    <button
+      v-if="chatEingeklappt"
+      class="schiene"
+      type="button"
+      :title="t('chat.expand')"
+      @click="chatUmschalten"
+    >
+      <IconChat class="schiene__zeichen" />
+      <span v-if="ungelesen > 0" class="schiene__zahl">{{ ungelesen }}</span>
+      <span class="schiene__text">{{ meinRaum ? meinRaum.name : t("chat.title") }}</span>
+    </button>
+
+    <!-- Rollen vergeben: an Ort und Stelle, mit dem Namen im Titel. -->
+    <UI.WpDialog
+      :open="dialog === 'rolle'"
+      :title="t('member.role') + ': ' + zielName"
+      :description="t('member.role.desc')"
+      :confirm-label="t('member.role.apply')"
+      :state="rollenWahl === 'administrator' && !darfRollenVergeben ? 'disabled' : 'default'"
+      @confirm="bestaetigen"
+      @cancel="dialog = null"
+    >
+      <UI.WpSelect v-model="rollenWahl" :options="rollen" :label="t('member.role')" />
+    </UI.WpDialog>
+
     <!-- Dialoge -->
     <UI.WpDialog
       :open="dialog === 'raum'"
-      title="Raum anlegen"
-      description="Der Raum erscheint in der Wechselliste."
-      confirm-label="Anlegen"
+      :title="t('room.add.title')"
+      :description="t('room.add.desc')"
+      :confirm-label="t('room.add.confirm')"
       @confirm="bestaetigen"
       @cancel="dialog = null"
     >
@@ -649,27 +751,66 @@ async function absenden() {
   padding: var(--wp-space-4) var(--wp-space-4) var(--wp-space-3);
 }
 
-/* Kompakt: weniger Luft, kleinere Schrift — mehr Zeilen im Blick. */
-.ist-kompakt .beitrag {
-  padding: 0 0 var(--wp-space-1);
+/* ---- Eingeklappter Chat ---- */
+/*
+ * Zugeklappt verschwindet der Verlauf, und die Raumliste bekommt die Breite.
+ * Rechts bleibt eine schmale Schiene stehen — sie ist der einzige Weg zurück,
+ * damit niemand den Chat „verliert".
+ */
+.ansicht.chat-zu .haupt {
+  display: none;
 }
 
-.ist-kompakt .beitrag__inhalt {
-  margin-top: 0;
-  line-height: var(--wp-font-line-tight);
-  font-size: var(--wp-font-size-sm);
+.ansicht.chat-zu .seite {
+  width: auto;
+  flex: 1;
 }
 
-.ist-kompakt .mensch {
-  padding: 0 var(--wp-space-2) 0 calc(var(--wp-space-4) + var(--wp-space-1));
+.schiene {
+  flex: none;
+  width: var(--wp-size-control-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--wp-space-2);
+  padding: var(--wp-space-3) 0;
+  background: var(--wp-color-bg-panel);
+  border: 0;
+  border-left: var(--wp-size-border) solid var(--wp-color-border-subtle);
+  color: var(--wp-color-text-muted);
+  cursor: pointer;
 }
 
-.ist-kompakt .raum {
-  min-height: var(--wp-size-control-sm);
+.schiene:hover {
+  color: var(--wp-color-text);
+  background: var(--wp-color-bg-raised);
 }
 
-.ist-kompakt .schreiben {
-  padding: var(--wp-space-2) var(--wp-space-4);
+.schiene__zeichen {
+  width: 16px;
+  height: 16px;
+}
+
+.schiene__zahl {
+  min-width: 18px;
+  padding: 0 4px;
+  font-size: var(--wp-font-size-xs);
+  line-height: 18px;
+  text-align: center;
+  color: var(--wp-color-bg-panel);
+  background: var(--wp-color-accent);
+  border-radius: var(--wp-radius-sm);
+}
+
+/* Der Raumname läuft senkrecht — die Schiene bleibt schmal. */
+.schiene__text {
+  writing-mode: vertical-rl;
+  font-size: var(--wp-font-size-xs);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 60%;
 }
 
 .beitrag {

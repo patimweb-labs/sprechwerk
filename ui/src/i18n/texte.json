@@ -1,16 +1,4 @@
 {
- "app.server": {
-  "de": "Server",
-  "en": "Server",
-  "es": "Servidor",
-  "fr": "Serveur"
- },
- "app.servers": {
-  "de": "Server",
-  "en": "Servers",
-  "es": "Servidores",
-  "fr": "Serveurs"
- },
  "app.settings": {
   "de": "Einstellungen",
   "en": "Settings",
@@ -40,18 +28,6 @@
   "en": "Account menu",
   "es": "Menú de cuenta",
   "fr": "Menu du compte"
- },
- "app.connected": {
-  "de": "verbunden",
-  "en": "connected",
-  "es": "conectado",
-  "fr": "connecté"
- },
- "app.disconnected": {
-  "de": "getrennt",
-  "en": "disconnected",
-  "es": "desconectado",
-  "fr": "déconnecté"
  },
  "app.connecting": {
   "de": "verbinde zu {} …",
@@ -90,22 +66,16 @@
   "fr": "Activer le son"
  },
  "app.counts": {
-  "de": "{} anwesend · {} im Raum",
-  "en": "{} online · {} in room",
-  "es": "{} presentes · {} en la sala",
-  "fr": "{} en ligne · {} dans le salon"
+  "de": "{} anwesend · {} Nachrichten",
+  "en": "{} online · {} messages",
+  "es": "{} presentes · {} mensajes",
+  "fr": "{} en ligne · {} messages"
  },
  "app.saved_servers": {
   "de": "{} gemerkte Server",
   "en": "{} saved servers",
   "es": "{} servidores guardados",
   "fr": "{} serveurs enregistrés"
- },
- "app.menu_room": {
-  "de": "Räume",
-  "en": "Rooms",
-  "es": "Salas",
-  "fr": "Salons"
  },
  "app.menu_servers": {
   "de": "Serverliste",
@@ -294,10 +264,10 @@
   "fr": "Créer un salon"
  },
  "room.add.desc": {
-  "de": "Der Raum erscheint in der Raumliste.",
+  "de": "Der Raum erscheint in der Wechselliste.",
   "en": "The room appears in the room list.",
-  "es": "La sala aparece en la lista.",
-  "fr": "Le salon apparaît dans la liste."
+  "es": "La sala aparece en la lista de salas.",
+  "fr": "Le salon apparaît dans la liste des salons."
  },
  "room.add.placeholder": {
   "de": "Name des Raums",
@@ -683,18 +653,6 @@
   "es": "Guardar",
   "fr": "Enregistrer"
  },
- "set.in_room": {
-  "de": "Im Raum: {}",
-  "en": "In room: {}",
-  "es": "En la sala: {}",
-  "fr": "Dans le salon : {}"
- },
- "set.audio_note": {
-  "de": "Der Sprachpfad (Opus) folgt; Gerätewahl und Tests laufen schon über das System.",
-  "en": "The voice path (Opus) comes next; device choice and tests already run via the system.",
-  "es": "El camino de voz (Opus) llega después; la selección y las pruebas ya usan el sistema.",
-  "fr": "La voie audio (Opus) arrive ensuite ; choix et tests passent déjà par le système."
- },
  "rolle.administrator": {
   "de": "Administrator",
   "en": "Administrator",
@@ -730,18 +688,6 @@
   "en": "deaf",
   "es": "sordo",
   "fr": "sourd"
- },
- "set.compact": {
-  "de": "Kompaktes Design",
-  "en": "Compact layout",
-  "es": "Diseño compacto",
-  "fr": "Mise en page compacte"
- },
- "set.compact.hint": {
-  "de": "Dichtere Zeilen im Verlauf und in den Raumlisten — mehr Inhalt auf einen Blick, weniger Luft.",
-  "en": "Denser rows in chat and room lists — more content at a glance, less whitespace.",
-  "es": "Filas más densas en el chat y las salas — más contenido de un vistazo, menos aire.",
-  "fr": "Lignes plus denses dans le chat et les salons — plus de contenu d'un coup d'œil, moins d'air."
  },
  "set.denoise": {
   "de": "Rauschunterdrückung",
@@ -802,5 +748,47 @@
   "en": "Removes your own playback from the capture — otherwise others hear themselves when you use speakers. Costs some CPU.",
   "es": "Elimina tu propia reproducción de la captura — si no, los demás se oyen a sí mismos por altavoces. Cuesta algo de CPU.",
   "fr": "Retire votre propre lecture de la capture — sinon les autres s'entendent via les haut-parleurs. Coûte un peu de CPU."
+ },
+ "chat.collapse": {
+  "de": "Chat einklappen",
+  "en": "Collapse chat",
+  "es": "Contraer el chat",
+  "fr": "Replier le chat"
+ },
+ "chat.expand": {
+  "de": "Chat ausklappen",
+  "en": "Expand chat",
+  "es": "Expandir el chat",
+  "fr": "Déplier le chat"
+ },
+ "chat.title": {
+  "de": "Chat",
+  "en": "Chat",
+  "es": "Chat",
+  "fr": "Chat"
+ },
+ "app.level": {
+  "de": "Mikrofonpegel",
+  "en": "Microphone level",
+  "es": "Nivel del micrófono",
+  "fr": "Niveau du micro"
+ },
+ "room.add.confirm": {
+  "de": "Anlegen",
+  "en": "Create",
+  "es": "Crear",
+  "fr": "Créer"
+ },
+ "member.role.desc": {
+  "de": "Die Rolle gilt sofort und steht im Prüfprotokoll.",
+  "en": "The role applies immediately and is written to the audit log.",
+  "es": "El rol se aplica de inmediato y queda en el registro.",
+  "fr": "Le rôle s'applique immédiatement et figure dans le journal."
+ },
+ "member.role.apply": {
+  "de": "Rolle setzen",
+  "en": "Set role",
+  "es": "Asignar rol",
+  "fr": "Définir le rôle"
  }
 }

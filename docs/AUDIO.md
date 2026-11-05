@@ -34,7 +34,7 @@ Mikrofon ──► Vorlauf (60 ms Ring) ──► Opus 20 ms/32 kbit/s ──►
                 ▲
         Push-to-Talk: beim Drücken geht der Vorlauf **vor** dem Live-Ton raus
 
-QUIC-Datagramm ──► Jitter-Puffer (60 ms) ──► Opus-Decoder ──► Lautsprecher
+QUIC-Datagramm ──► Ordnung + Verlustausgleich (80 ms) ──► Opus-Decoder ──► Lautsprecher
 ```
 
 ## Zahlen
@@ -44,7 +44,7 @@ QUIC-Datagramm ──► Jitter-Puffer (60 ms) ──► Opus-Decoder ──► 
 | Rahmen | 20 ms | Protokoll (Sprachkopf, Folge je Sprecher) |
 | Bitrate | 32 kbit/s mono | Vorgabe; TeamSpeak nutzt je Kanalqualität 6–32 kbit/s |
 | Vorlauf | 60 ms (einstellbar 0–200) | ersetzt TeamSpecks `delay_ptt_msecs=300` |
-| Jitter-Puffer | 3 Rahmen = 60 ms | Startwert; bei 5 % Verlust messen und anpassen |
+| Jitter-Puffer | 4 Rahmen = 80 ms (eine Paritätsgruppe) | ersetzt den 60-ms-Puffer: Verlustausgleich braucht eine Gruppe Aufschub |
 | Kopfaufschlag | 4 von 84 Byte = 4,8 % | Sprachkopf Version/Codec/Folge |
 
 ## Rauschunterdrückung und Noisegate
@@ -140,6 +140,7 @@ Der Pfad ist **gebaut und läuft** — im Fenster und als Messwerkzeug.
 | Hochpass, Rauschunterdrückung (RNNoise), Noisegate | `adapters/src/klang.rs` | 8 Einzeltests (Rauschen −98 %, Sprache bleibt, VAD trennt, Gate mit Hysterese) |
 | Echounterdrückung (AEC3) | `adapters/src/echo.rs` | 4 Einzeltests (39 dB, Rechenzeit, Doppelsprechen, Rate) |
 | Vorlauf (60 ms), Jitter-Puffer, Sprechsteuerung | `adapters/src/sprechpfad.rs` | 13 Einzeltests |
+| Empfangsordnung + Verlustausgleich (80 ms) | `audio/src/verlust.rs`, `audio/src/empfang.rs` | 9 Einzeltests |
 | Opus, **zur Laufzeit geladen** (`libopus.so.0` / `libopus.dylib` / `opus.dll`) | `audio/src/opus.rs` | 6 Einzeltests (Ton kommt zurück, FEC liefert Ton statt Stille) |
 | Verlustausgleich (Paritätsrahmen, Verlusttest) | `audio/src/verlust.rs` | 5 Einzeltests (1 Verlust exakt ersetzt, 5 % Verlust vollständig) |
 | Sendekette (Block → Datagramm) | `audio/src/senden.rs` | 5 Einzeltests (Vorlauf beim Öffnen, Folgenummern lückenlos, Gate) |
@@ -164,9 +165,12 @@ Laufzeit durch den Server: p50 1,1 ms · p95 1,7 ms · p99 1,8 ms (n = 150)
 Die Laufzeit ist der Weg **Client → Server → Client** auf demselben Rechner
 (Ankunftszeit minus Sendezeitpunkt, gemeinsame Uhr). Sie enthält QUIC, die
 Verteilung im Server und die Entschlüsselung, aber **nicht** die Puffer der
-Soundkarte: die kommen im Betrieb dazu (20 ms Aufnahmeblock, 60 ms
-Jitter-Puffer, 40 ms `pacat`-Latenz) — zusammen rund 120 ms bis zum Ohr, davon
-gehen 60 ms auf das Konto des Jitter-Puffers.
+Soundkarte: die kommen im Betrieb dazu — 20 ms Aufnahmeblock, 80 ms
+Empfangspuffer (eine Paritätsgruppe) und die Gerätelatenz (40 ms bei `pacat`,
+bei cpal je nach Gerät 10–40 ms). Zusammen rund **140 ms** bis zum Ohr, davon
+gehen 80 ms auf das Konto des Verlustausgleichs. Wer diese 80 ms nicht will,
+schaltet die Paritätsrahmen ab — dann sind es 60 ms, aber ein Einzelverlust
+ist hörbar.
 
 Was der Pfad ausdrücklich **nicht** kann (bewusst, nicht vergessen):
 

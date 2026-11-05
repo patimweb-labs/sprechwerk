@@ -15,7 +15,7 @@ statt aus einem Gefühl.
 | Ende-zu-Ende über WAN, p99 | < 120 ms | offen |
 | Verlust 5 %, hörbare Aussetzer | keine | **vollständig ausgeglichen** (Paritätsrahmen, Test im Code); nicht im echten WAN gemessen |
 | Echo-Dämpfung (Lautsprecher) | > 20 dB | **39 dB** (AEC3, Release 0,7 % Kern) |
-| Bandbreite je Sprecher | ≤ 34 kbit/s | **32 kbit/s** eingestellt (Opus VBR, Kopf 6 Byte je 20 ms) |
+| Bandbreite je Sprecher | ≤ 45 kbit/s | **32 kbit/s** Opus + 25 % Paritätsrahmen + 6 Byte Kopf je 20 ms ≈ **41 kbit/s** |
 
 Der Client ist gebaut; die Tonmessung steht in [`AUDIO.md`](AUDIO.md).
 Was noch fehlt: ein **Verlusttest über ein echtes Netz** (`tc netem loss 5%`)
