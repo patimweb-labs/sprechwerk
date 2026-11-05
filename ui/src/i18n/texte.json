@@ -790,5 +790,17 @@
   "en": "Voice end-to-end encrypted",
   "es": "Voz cifrada de extremo a extremo",
   "fr": "Voix chiffrée de bout en bout"
+ },
+ "set.aec": {
+  "de": "Echounterdrückung",
+  "en": "Echo cancellation",
+  "es": "Cancelación de eco",
+  "fr": "Annulation d'écho"
+ },
+ "set.aec.hint": {
+  "de": "Rechnet die eigene Wiedergabe aus der Aufnahme — sonst hören die anderen sich selbst, wenn du über Lautsprecher sprichst. Kostet etwas Rechenzeit.",
+  "en": "Removes your own playback from the capture — otherwise others hear themselves when you use speakers. Costs some CPU.",
+  "es": "Elimina tu propia reproducción de la captura — si no, los demás se oyen a sí mismos por altavoces. Cuesta algo de CPU.",
+  "fr": "Retire votre propre lecture de la capture — sinon les autres s'entendent via les haut-parleurs. Coûte un peu de CPU."
  }
 }

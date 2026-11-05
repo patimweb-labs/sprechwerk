@@ -17,6 +17,7 @@
 use crate::opus::{Kodierer, RAHMEN_SAMPLES};
 use crate::verlust::{paritaets_datagramm, Paritaet, GRUPPE};
 use anyhow::Result;
+use sprechwerk_adapters::echo::Echounterdrueckung;
 use sprechwerk_adapters::klang::{pegel_aus_rms, Entrauscher, Noisegate};
 use sprechwerk_adapters::sprechpfad::Vorlauf;
 use sprechwerk_protocol::Sprachkopf;
@@ -34,6 +35,8 @@ pub struct Sendeeinstellungen {
     pub vorlauf_ms: u32,
     /// Paritätsrahmen senden (Verlustausgleich, +25 % Last).
     pub paritaet: bool,
+    /// Echounterdrückung: die eigene Wiedergabe aus der Aufnahme rechnen.
+    pub echounterdrueckung: bool,
 }
 
 impl Default for Sendeeinstellungen {
@@ -44,12 +47,15 @@ impl Default for Sendeeinstellungen {
             schwelle: 30,
             vorlauf_ms: 60,
             paritaet: true,
+            echounterdrueckung: true,
         }
     }
 }
 
 /// Verarbeitet Aufnahmeblöcke zu Sprach-Datagrammen.
 pub struct Sender {
+    /// Rechnet die eigene Wiedergabe heraus (nur bei 48 kHz).
+    echo: Option<Echounterdrueckung>,
     entrauscher: Entrauscher,
     gate: Noisegate,
     kodierer: Kodierer,
@@ -69,7 +75,13 @@ pub struct Sender {
 
 impl Sender {
     pub fn neu(einstellungen: Sendeeinstellungen) -> Result<Self> {
+        let echo = if einstellungen.echounterdrueckung {
+            Echounterdrueckung::neu(crate::pcm::ABTASTRATE, 40)
+        } else {
+            None
+        };
         Ok(Self {
+            echo,
             entrauscher: Entrauscher::neu(crate::pcm::ABTASTRATE),
             gate: Noisegate::neu(einstellungen.schwelle),
             kodierer: Kodierer::neu()?,
@@ -91,12 +103,26 @@ impl Sender {
         if einstellungen.vorlauf_ms != self.einstellungen.vorlauf_ms {
             self.vorlauf = Vorlauf::neu(einstellungen.vorlauf_ms);
         }
+        if einstellungen.echounterdrueckung != self.einstellungen.echounterdrueckung {
+            self.echo = if einstellungen.echounterdrueckung {
+                Echounterdrueckung::neu(crate::pcm::ABTASTRATE, 40)
+            } else {
+                None
+            };
+        }
         self.einstellungen = einstellungen;
     }
 
     /// Letzter Pegel 0–100 (für die Anzeige im Fenster).
     pub fn pegel(&self) -> u8 {
         self.pegel
+    }
+
+    /// Meldet der Echounterdrückung, was gerade abgespielt wird.
+    pub fn referenz(&mut self, block: &[f32]) {
+        if let Some(echo) = self.echo.as_mut() {
+            echo.referenz(block);
+        }
     }
 
     /// Verarbeitet genau einen 20-ms-Block (960 Werte, -1.0 … 1.0).
@@ -112,6 +138,13 @@ impl Sender {
             "Block muss genau einen 20-ms-Rahmen fassen"
         );
 
+        // Reihenfolge ist wesentlich: **erst** das bekannte Echo herausrechnen
+        // (es braucht das unverfälschte Signal), dann entrauschen.
+        if self.einstellungen.echounterdrueckung {
+            if let Some(echo) = self.echo.as_mut() {
+                echo.verarbeite(block);
+            }
+        }
         if self.einstellungen.entrauschen {
             self.entrauscher.verarbeite(block);
         }

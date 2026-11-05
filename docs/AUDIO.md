@@ -55,6 +55,7 @@ Zwei verschiedene Dinge, die oft verwechselt werden:
 |---|---|---|---|
 | **Rauschunterdrückung** | **RNNoise** (neuronales Netz) filtert Störgeräusche im Signal und liefert eine Sprachwahrscheinlichkeit | Aufnahmepfad, vor der Kodierung | `rauschunterdrueckung` (Vorgabe: **an**) |
 | **Noisegate** | unterhalb der Sprechschwelle wird **gar nichts** gesendet | Aufnahmepfad, vor der Kodierung | `noisegate` (Vorgabe: **an**), Schwelle über `schwelle` |
+| **Echounterdrückung** | rechnet die eigene Wiedergabe aus der Aufnahme (AEC3, reines Rust) | Aufnahmepfad, **vor** dem Entrauschen | `echounterdrueckung` (Vorgabe: **an**) |
 
 Umsetzung im Sprachpfad (noch zu bauen, Einstellungen liegen schon):
 
@@ -70,6 +71,42 @@ Gemessen an weißem Rauschen (Tests in `crates/adapters/src/klang.rs`):
 **98 % des Rauschens verschwinden**, Sprache bleibt zu ~66 % erhalten, die
 Sprachwahrscheinlichkeit trennt beides (0,02 gegen 0,75). Der frühere
 Pegel-Expander ist ersetzt — er war ein Notbehelf.
+
+## Echounterdrückung (AEC)
+
+Wer über **Lautsprecher** spricht, nimmt die anderen mit auf — das Mikrofon
+hört die Boxen. Erst klingt es hohl, dann pfeift es. Kopfhörer lösen das, aber
+ein Verein kann das nicht voraussetzen.
+
+Deshalb wird der bekannte Anteil **herausgerechnet**: was wir selbst abspielen,
+liegt in diesem Prozess als Zahlen vor. Ein adaptiver Filter (AEC3 aus WebRTC,
+als reines Rust im `aec3`-Crate) schätzt den Weg „Wiedergabe → Raum → Mikrofon"
+und zieht ihn ab.
+
+```
+Wiedergabe ──┬──► Lautsprecher ──► Raum ──► Mikrofon ──┐
+             │                                          ├─► AEC3 ──► RNNoise ──► Gate ──► Opus
+             └────────────── Referenz ─────────────────┘
+```
+
+**Reihenfolge:** AEC **zuerst** (es braucht das unverfälschte Signal), dann
+RNNoise, dann das Gate. Die Kette aus dem Crate wird ausdrücklich **nur** als
+AEC betrieben (`enable_noise_suppression(false)`, `enable_gain_controller2(false)`)
+— zweimal entrauschen klingt dumpf, und eine automatische Verstärkung würde die
+Sprechschwelle unbrauchbar machen.
+
+### Gemessen (`cargo test --release -p sprechwerk-adapters echo`)
+
+| Größe | Wert |
+|---|---|
+| Echo wird gesenkt um | **39,4 dB** (Echo 40 ms verzögert, 30 % Pegel) |
+| Rechenzeit | **0,7 %** eines Kerns in Release (20 % im Debug-Bau) |
+| Doppelsprechen | eigene Stimme wird **nicht** lauter und nicht mitgelöscht |
+
+Grenzen, ehrlich: bei gleichzeitigem Sprechen (Doppelsprechen) wird das Echo
+schlechter unterdrückt — das ist bei jedem AEC so; und ändert sich der Raum
+(jemand läuft herum), braucht der Filter einen Moment. Kopfhörer bleiben die
+bessere Wahl, wenn man sie hat.
 
 ## Niemals die eigene Wiedergabe aufnehmen
 
@@ -100,7 +137,8 @@ Der Pfad ist **gebaut und läuft** — im Fenster und als Messwerkzeug.
 
 | Stück | Wo | Geprüft durch |
 |---|---|---|
-| Hochpass, Rauschunterdrückung, Noisegate | `adapters/src/klang.rs` | 7 Einzeltests (Rauschen sinkt, Sprache bleibt, Gate mit Hysterese) |
+| Hochpass, Rauschunterdrückung (RNNoise), Noisegate | `adapters/src/klang.rs` | 8 Einzeltests (Rauschen −98 %, Sprache bleibt, VAD trennt, Gate mit Hysterese) |
+| Echounterdrückung (AEC3) | `adapters/src/echo.rs` | 4 Einzeltests (39 dB, Rechenzeit, Doppelsprechen, Rate) |
 | Vorlauf (60 ms), Jitter-Puffer, Sprechsteuerung | `adapters/src/sprechpfad.rs` | 13 Einzeltests |
 | Opus, **zur Laufzeit geladen** (`libopus.so.0` / `libopus.dylib` / `opus.dll`) | `audio/src/opus.rs` | 6 Einzeltests (Ton kommt zurück, FEC liefert Ton statt Stille) |
 | Verlustausgleich (Paritätsrahmen, Verlusttest) | `audio/src/verlust.rs` | 5 Einzeltests (1 Verlust exakt ersetzt, 5 % Verlust vollständig) |

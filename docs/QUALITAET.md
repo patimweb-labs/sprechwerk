@@ -13,7 +13,8 @@ statt aus einem Gefühl.
 | Aufschlag durch den Sprachkopf | < 8 % eines 20-ms-Rahmens | **7 %** (6 von 86 Byte) |
 | Ende-zu-Ende im LAN, p99 | < 60 ms | **p95 1,7 ms** durch den Server; Puffer der Soundkarte (20 + 60 + 40 ms) kommen im Betrieb dazu |
 | Ende-zu-Ende über WAN, p99 | < 120 ms | offen |
-| Verlust 5 %, hörbare Aussetzer | keine | FEC an, Verdeckung eingebaut — **nicht im Netz gemessen** |
+| Verlust 5 %, hörbare Aussetzer | keine | **vollständig ausgeglichen** (Paritätsrahmen, Test im Code); nicht im echten WAN gemessen |
+| Echo-Dämpfung (Lautsprecher) | > 20 dB | **39 dB** (AEC3, Release 0,7 % Kern) |
 | Bandbreite je Sprecher | ≤ 34 kbit/s | **32 kbit/s** eingestellt (Opus VBR, Kopf 6 Byte je 20 ms) |
 
 Der Client ist gebaut; die Tonmessung steht in [`AUDIO.md`](AUDIO.md).

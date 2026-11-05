@@ -33,6 +33,9 @@ Protokollebene).
   PTT-Wartezeit, Jitter-Puffer je Sprecher, Mischen im Client. Der Server
   verteilt nur und prüft das Rederecht — er mischt nichts. Laufzeit durch den
   Server: **p95 1,7 ms** (`scripts/sprechprobe.sh`).
+* **Echounterdrückung** (AEC3 als reines Rust): über Lautsprecher sprechen,
+  ohne dass die anderen sich selbst hören — 39 dB Echo-Dämpfung bei 0,7 %
+  Rechenlast in Release.
 * **Fenster**: Tauri 2 mit Vue, drei Farbschemata, vier Sprachen, Pegelanzeige,
   Push-to-Talk, Gerätewahl, Klickdummy für die Oberfläche ohne Server.
 * **Betrieb**: Konfiguration über Datei und Umgebung, Sicherung nach Plan im

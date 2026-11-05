@@ -256,6 +256,8 @@ async function thema(wert: string) {
           <p class="hinweis">{{ t("set.denoise.hint") }}</p>
           <UI.WpSwitch v-model="einstellungen.noisegate" :label="t('set.noisegate')" />
           <p class="hinweis">{{ t("set.noisegate.hint") }}</p>
+          <UI.WpSwitch v-model="einstellungen.echounterdrueckung" :label="t('set.aec')" />
+          <p class="hinweis">{{ t("set.aec.hint") }}</p>
 
           <UI.WpSlider
             v-model="einstellungen.schwelle"

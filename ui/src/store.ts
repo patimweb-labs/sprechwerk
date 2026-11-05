@@ -32,6 +32,7 @@ export const einstellungen = reactive<Einstellungen>({
   kompakt: false,
   rauschunterdrueckung: true,
   noisegate: true,
+  echounterdrueckung: true,
 });
 
 /** Welche Ansicht ist offen? (Die Leiste links schreibt hier hinein.) */

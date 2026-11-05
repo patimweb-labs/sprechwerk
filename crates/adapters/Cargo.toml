@@ -22,3 +22,4 @@ chacha20poly1305.workspace = true
 hkdf.workspace = true
 sha2.workspace = true
 nnnoiseless.workspace = true
+aec3.workspace = true

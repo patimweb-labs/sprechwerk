@@ -80,6 +80,8 @@ export interface Einstellungen {
   rauschunterdrueckung: boolean;
   /** Noisegate: unterhalb der Schwelle wird nichts gesendet. */
   noisegate: boolean;
+  /** Echounterdrückung: eigene Wiedergabe aus der Aufnahme rechnen. */
+  echounterdrueckung: boolean;
 }
 
 /** Läuft die Oberfläche in der Fensteranwendung (echter Rust-Teil)? */

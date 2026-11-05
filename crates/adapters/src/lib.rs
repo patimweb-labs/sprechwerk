@@ -9,6 +9,7 @@
 //! Kennung ein Besitznachweis. Wer die Schlüsseldatei kopiert, ist derselbe
 //! Mensch; das ist die bewusst gewählte Schwäche („Kennung ist mitnehmbar").
 
+pub mod echo;
 pub mod klang;
 pub mod verschluesselt;
 pub mod sprechpfad;

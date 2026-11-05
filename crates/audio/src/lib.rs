@@ -36,6 +36,7 @@ pub use senden::{Sendeeinstellungen, Sender};
 use anyhow::{anyhow, Context, Result};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::mpsc::{Receiver, Sender as Kanal};
+use std::sync::Mutex;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
@@ -122,6 +123,8 @@ pub struct Pfad {
     pegel: Arc<AtomicU8>,
     /// Läuft der Pfad noch?
     laeuft: Arc<AtomicBool>,
+    /// Was gerade abgespielt wurde — Referenz für die Echounterdrückung.
+    gehoert: Arc<Mutex<std::collections::VecDeque<Vec<f32>>>>,
     /// Umstellen der Sendeseite.
     einstellungen: Kanal<Sendeeinstellungen>,
     /// Wie die Geräte heißen (für die Oberfläche). Die Geräte selbst gehören
@@ -144,6 +147,11 @@ impl Pfad {
         let steuerung = Arc::new(Steuerung::neu());
         let pegel = Arc::new(AtomicU8::new(0));
         let laeuft = Arc::new(AtomicBool::new(true));
+        // Höchstens zwei Sekunden: mehr braucht AEC3 nicht, und der Speicher
+        // soll nicht wachsen, wenn die Wiedergabe stockt.
+        let gehoert: Arc<Mutex<std::collections::VecDeque<Vec<f32>>>> =
+            Arc::new(Mutex::new(std::collections::VecDeque::new()));
+        let gehoert_aufnahme = gehoert.clone();
 
         // ---- Aufnahme ------------------------------------------------
         let quelle = mikrofon.unwrap_or("");
@@ -163,10 +171,20 @@ impl Pfad {
             let steuerung = steuerung.clone();
             let pegel = pegel.clone();
             let laeuft = laeuft.clone();
-            let mut sender = Sender::neu(einstellungen)?;
+            let einstellungen_start = einstellungen.clone();
             std::thread::Builder::new()
                 .name("sprechwerk-aufnahme".into())
                 .spawn(move || {
+                    // Der Sender lebt ganz in diesem Thread: die
+                    // Echounterdrückung (aec3) ist nicht `Send`, und ein Gerät
+                    // gehört ohnehin dem Thread, der es geöffnet hat.
+                    let mut sender = match Sender::neu(einstellungen_start) {
+                        Ok(s) => s,
+                        Err(fehler) => {
+                            let _ = start_tx.send(Err(format!("Sendezweig: {fehler}")));
+                            return;
+                        }
+                    };
                     let mut quelle = match geraet::aufnahme_oeffnen(&quelle_geraet) {
                         Ok(q) => q,
                         Err(fehler) => {
@@ -187,6 +205,14 @@ impl Pfad {
                         }
                         let werte = pcm::bytes_nach_i16(&roh);
                         let mut block = pcm::nach_f32(&werte);
+                        // Referenz nachreichen: was in der Zwischenzeit
+                        // abgespielt wurde, ist genau das, was das Mikrofon
+                        // als Echo hört.
+                        if let Ok(mut puffer) = gehoert.lock() {
+                            while let Some(gespielt) = puffer.pop_front() {
+                                sender.referenz(&gespielt);
+                            }
+                        }
                         let erlaubt = steuerung.senden_erlaubt();
                         match sender.block(&mut block, erlaubt) {
                             Ok(datagramme) => {
@@ -220,6 +246,7 @@ impl Pfad {
         {
             let laeuft = laeuft.clone();
             let steuerung = steuerung.clone();
+            let gehoert_ausgabe = gehoert_aufnahme.clone();
             std::thread::Builder::new()
                 .name("sprechwerk-wiedergabe".into())
                 .spawn(move || {
@@ -249,6 +276,14 @@ impl Pfad {
                         if senke.schreibe(&pcm::i16_nach_bytes(&block)).is_err() {
                             break;
                         }
+                        // Für die Echounterdrückung merken, was gerade
+                        // hinausging (als Gleitkomma, wie AEC3 es braucht).
+                        if let Ok(mut puffer) = gehoert_ausgabe.lock() {
+                            puffer.push_back(pcm::nach_f32(&block));
+                            while puffer.len() > 100 {
+                                puffer.pop_front();
+                            }
+                        }
                         // Fester Takt: 20 ms je Block, Drift wird ausgeglichen.
                         takt += TAKT;
                         let jetzt = Instant::now();
@@ -273,6 +308,7 @@ impl Pfad {
             pegel,
             laeuft,
             einstellungen: stell_tx,
+            gehoert: gehoert_aufnahme,
             name_aufnahme,
             name_wiedergabe,
         })

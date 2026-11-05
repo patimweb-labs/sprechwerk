@@ -57,6 +57,9 @@ pub struct Einstellungen {
     pub rauschunterdrueckung: bool,
     /// Noisegate: unterhalb der Sprechschwelle wird **nichts** gesendet.
     pub noisegate: bool,
+    /// Echounterdrückung: die eigene Wiedergabe aus der Aufnahme rechnen.
+    /// Nötig, wenn über Lautsprecher gesprochen wird (sonst pfeift es).
+    pub echounterdrueckung: bool,
 }
 
 impl Default for Einstellungen {
@@ -77,6 +80,7 @@ impl Default for Einstellungen {
             kompakt: false,
             rauschunterdrueckung: true,
             noisegate: true,
+            echounterdrueckung: true,
         }
     }
 }

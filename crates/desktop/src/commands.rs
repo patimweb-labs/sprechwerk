@@ -354,6 +354,7 @@ fn sende_einstellungen(einstellungen: &Einstellungen) -> Sendeeinstellungen {
         schwelle: einstellungen.schwelle,
         vorlauf_ms: einstellungen.vorlauf_ms as u32,
         paritaet: true,
+        echounterdrueckung: einstellungen.echounterdrueckung,
     }
 }
 

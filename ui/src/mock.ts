@@ -141,6 +141,7 @@ export const einstellungenVorgabe: Einstellungen = {
   kompakt: false,
   rauschunterdrueckung: true,
   noisegate: true,
+  echounterdrueckung: true,
   favoriten: [
     { name: "Trainingsabend", server: "sprechwerk.verein.example:7443" },
     { name: "Vorstand (Test)", server: "192.0.2.11:7443" },
