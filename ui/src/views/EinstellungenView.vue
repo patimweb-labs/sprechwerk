@@ -29,22 +29,31 @@ const tonGesendet = ref(false);
 const tasteAufnahme = ref(false);
 const tastenFehler = ref<string | null>(null);
 
-/** Gerätelisten als Auswahl; „Vorgabe des Systems" ist immer der erste Eintrag. */
-const mikrofonWahl = computed(() => [
-  { value: "", label: t("set.default_device") },
-  ...mikrofonGeraete.value.map((g) => ({
-    value: g.id,
-    label: g.vorgabe ? t("set.default_device_marked", g.name) : g.name,
-  })),
-]);
+/**
+ * Auswahlliste bauen: „Vorgabe des Systems" zuerst, dann die Geräte.
+ *
+ * Ist das **gespeicherte** Gerät nicht (mehr) in der Liste — abgezogen,
+ * umbenannt, anderer Rechner —, wird es trotzdem als Eintrag gezeigt. Sonst
+ * stünde dort „Auswählen …", und niemand wüsste, welches Gerät gemeint ist.
+ */
+function auswahl(geraete: Geraet[], gespeichert: string) {
+  const liste = [
+    { value: "", label: t("set.default_device") },
+    ...geraete.map((g) => ({
+      value: g.id,
+      label: g.vorgabe ? t("set.default_device_marked", g.name) : g.name,
+    })),
+  ];
+  if (gespeichert && !liste.some((e) => e.value === gespeichert)) {
+    liste.push({ value: gespeichert, label: t("set.device_missing", gespeichert) });
+  }
+  return liste;
+}
 
-const lautsprecherWahl = computed(() => [
-  { value: "", label: t("set.default_device") },
-  ...lautsprecherGeraete.value.map((g) => ({
-    value: g.id,
-    label: g.vorgabe ? t("set.default_device_marked", g.name) : g.name,
-  })),
-]);
+const mikrofonWahl = computed(() => auswahl(mikrofonGeraete.value, einstellungen.mikrofon));
+const lautsprecherWahl = computed(() =>
+  auswahl(lautsprecherGeraete.value, einstellungen.lautsprecher),
+);
 
 onMounted(async () => {
   try {
@@ -57,12 +66,22 @@ onMounted(async () => {
 });
 
 /** Sprechtest: Pegel für 1,5 s messen. */
+/**
+ * Sprechtest: den Pegel ~1,2 s lang mitlesen.
+ *
+ * Bewusst **viele kleine Abfragen** statt einer langen: der Balken soll leben,
+ * und keine einzelne Abfrage darf die Oberfläche anhalten. Läuft der
+ * Sprechpfad, kostet eine Abfrage nichts (der Wert liegt schon vor).
+ */
 async function sprechtest() {
+  if (messend.value) return;
   messend.value = true;
+  geraeteFehler.value = null;
+  const ende = Date.now() + 1200;
   try {
-    for (let i = 0; i < 6; i++) {
-      pegel.value = await api.audioPegel(einstellungen.mikrofon, 250);
-      await new Promise((f) => setTimeout(f, 60));
+    while (Date.now() < ende) {
+      pegel.value = await api.audioPegel(einstellungen.mikrofon, 100);
+      await new Promise((f) => setTimeout(f, 100));
     }
   } catch (fehler) {
     geraeteFehler.value = String(fehler);

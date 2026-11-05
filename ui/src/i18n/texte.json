@@ -790,5 +790,11 @@
   "en": "Set role",
   "es": "Asignar rol",
   "fr": "Définir le rôle"
+ },
+ "set.device_missing": {
+  "de": "{} (nicht gefunden)",
+  "en": "{} (not found)",
+  "es": "{} (no encontrado)",
+  "fr": "{} (introuvable)"
  }
 }

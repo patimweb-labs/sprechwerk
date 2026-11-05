@@ -358,25 +358,69 @@ fn sende_einstellungen(einstellungen: &Einstellungen) -> Sendeeinstellungen {
     }
 }
 
+/// Nur **eine** Messung gleichzeitig: `parec` ist ein Prozess, und zwei
+/// gleichzeitige Aufnahmen auf demselben Gerät bremsen den Audiopfad aus.
+static MESSUNG: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Verfügbare Aufnahme- und Wiedergabegeräte.
+///
+/// `async`: die Geräteliste kommt aus zwei Prozessaufrufen (`pactl`). Ein
+/// **synchroner** Befehl läuft in Tauri auf dem Hauptthread und würde die
+/// Oberfläche so lange anhalten.
 #[tauri::command]
-pub fn audio_geraete() -> Result<crate::audio::Geraeteliste, String> {
-    Ok(crate::audio::Geraeteliste {
-        mikrofon: crate::audio::mikrofon_geraete().map_err(|e| e.to_string())?,
-        lautsprecher: crate::audio::lautsprecher_geraete().map_err(|e| e.to_string())?,
+pub async fn audio_geraete() -> Result<crate::audio::Geraeteliste, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        Ok(crate::audio::Geraeteliste {
+            mikrofon: crate::audio::mikrofon_geraete().map_err(|e| e.to_string())?,
+            lautsprecher: crate::audio::lautsprecher_geraete().map_err(|e| e.to_string())?,
+        })
     })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
-/// Misst den Eingangspegel für kurze Zeit (Sprechtest).
+/// Misst den Eingangspegel (Sprechtest).
+///
+/// **Zwei Wege, je nach Lage:**
+/// 1. Läuft der Sprechpfad, wird dessen Pegel gelesen — der Wert steht schon
+///    bereit (Mikrosekunden), und es entsteht **kein** zweiter Aufnahmeprozess.
+///    Zwei Aufnahmen am selben Gerät sind der Grund, warum der Test vorher
+///    den ganzen Audiopfad ins Stocken brachte.
+/// 2. Sonst wird kurz gemessen — aber **nicht auf dem Hauptthread**, sondern
+///    über `spawn_blocking`. Ein synchroner Befehl hält sonst die Oberfläche
+///    an, und zwar für die ganze Messdauer.
 #[tauri::command]
-pub fn audio_pegel(geraet: String, millisekunden: u64) -> Result<u8, String> {
-    crate::audio::pegel(&geraet, millisekunden).map_err(|e| e.to_string())
+pub async fn audio_pegel(
+    sprech: State<'_, Arc<Sprechbetrieb>>,
+    geraet: String,
+    millisekunden: u64,
+) -> Result<u8, String> {
+    if sprech.laeuft() {
+        return Ok(sprech.pegel());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        // Nur eine Messung gleichzeitig; eine zweite bekommt den letzten Wert
+        // nicht, sondern eine klare Meldung.
+        let Ok(_frei) = MESSUNG.try_lock() else {
+            return Err("Es läuft schon eine Messung".to_string());
+        };
+        crate::audio::pegel(&geraet, millisekunden).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Spielt einen Prüfton auf dem gewählten Gerät (Hörtest).
+///
+/// `async` + `spawn_blocking`: `paplay` läuft bis zu einem Drittel einer Sekunde,
+/// und so lange darf die Oberfläche nicht stehen.
 #[tauri::command]
-pub fn audio_testton(geraet: String) -> Result<(), String> {
-    crate::audio::testton(&geraet).map_err(|e| e.to_string())
+pub async fn audio_testton(geraet: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::audio::testton(&geraet).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Liest die gespeicherten Einstellungen.

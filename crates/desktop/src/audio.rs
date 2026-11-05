@@ -214,8 +214,12 @@ pub fn testton(geraet: &str) -> Result<(), Fehler> {
 
 /// Misst den Eingangspegel für `millisekunden` und liefert 0–100.
 ///
-/// Aufgenommen wird rohes PCM (16 Bit, mono, 16 kHz) über `parec`; gerechnet
-/// wird der Effektivwert. Das ist genau das, was eine Sprechschwelle braucht.
+/// **Die Frist muss halten.** Ein `read()` auf der Pipe blockiert, bis Daten
+/// kommen oder der Prozess endet — die Frist im Schleifenkopf wird dann nie
+/// erreicht. Genau das hat die Oberfläche aufgehängt: der Sprechtest wartete
+/// auf ein Mikrofon, das nichts lieferte. Deshalb liest ein eigener Thread und
+/// der Aufrufer wartet mit `recv_timeout`; danach wird der Prozess beendet,
+/// komme was wolle.
 pub fn pegel(geraet: &str, millisekunden: u64) -> Result<u8, Fehler> {
     if !werkzeug("parec") {
         return Err(Fehler::Werkzeug);
@@ -242,27 +246,55 @@ pub fn pegel(geraet: &str, millisekunden: u64) -> Result<u8, Fehler> {
         .spawn()
         .map_err(|_| Fehler::Werkzeug)?;
 
-    let mut puffer = [0u8; 4096];
-    let mut summe: f64 = 0.0;
-    let mut anzahl: u64 = 0;
-    let frist = Instant::now() + Duration::from_millis(millisekunden);
-    if let Some(mut aus) = kind.stdout.take() {
-        while Instant::now() < frist {
-            match aus.read(&mut puffer) {
-                Ok(0) => break,
-                Ok(n) => {
-                    for paar in puffer[..n].chunks_exact(2) {
-                        let wert = i16::from_le_bytes([paar[0], paar[1]]) as f64 / i16::MAX as f64;
-                        summe += wert * wert;
-                        anzahl += 1;
+    // Der Lesethread endet mit dem Prozess (EOF) — oder wird mit ihm beendet.
+    let (senden, empfangen) = std::sync::mpsc::channel::<Vec<u8>>();
+    let mut aus = match kind.stdout.take() {
+        Some(aus) => aus,
+        None => {
+            let _ = kind.kill();
+            return Err(Fehler::Werkzeug);
+        }
+    };
+    std::thread::Builder::new()
+        .name("sprechwerk-pegelmessung".into())
+        .spawn(move || {
+            let mut puffer = [0u8; 4096];
+            loop {
+                match aus.read(&mut puffer) {
+                    Ok(0) | Err(_) => return,
+                    Ok(n) => {
+                        if senden.send(puffer[..n].to_vec()).is_err() {
+                            return;
+                        }
                     }
                 }
-                Err(_) => break,
             }
+        })
+        .map_err(|_| Fehler::Messung("Lesethread".into()))?;
+
+    let frist = Instant::now() + Duration::from_millis(millisekunden);
+    let mut summe: f64 = 0.0;
+    let mut anzahl: u64 = 0;
+    loop {
+        let jetzt = Instant::now();
+        if jetzt >= frist {
+            break;
+        }
+        match empfangen.recv_timeout(frist - jetzt) {
+            Ok(block) => {
+                for paar in block.chunks_exact(2) {
+                    let wert = i16::from_le_bytes([paar[0], paar[1]]) as f64 / i16::MAX as f64;
+                    summe += wert * wert;
+                    anzahl += 1;
+                }
+            }
+            Err(_) => break,
         }
     }
+
     let _ = kind.kill();
     let _ = kind.wait();
+
     if anzahl == 0 {
         return Err(Fehler::Messung("keine Daten vom Mikrofon".into()));
     }
@@ -291,6 +323,21 @@ mod tests {
     fn monitore_werden_erkannt() {
         assert!(ist_monitor("alsa_output.usb-Kopfhoerer.monitor"));
         assert!(!ist_monitor("alsa_input.usb-Kopfhoerer.mono-fallback"));
+    }
+
+    /// **Die Frist muss halten** — auch wenn das Gerät nichts liefert.
+    ///
+    /// Vorher blockierte `read()` unbegrenzt: der Sprechtest hängte die ganze
+    /// Oberfläche auf, weil ein synchroner Befehl auf dem Hauptthread wartete.
+    #[test]
+    fn messung_haelt_die_frist_auch_ohne_daten() {
+        let start = std::time::Instant::now();
+        let _ = pegel("gibt-es-nicht", 150);
+        let gedauert = start.elapsed();
+        assert!(
+            gedauert < std::time::Duration::from_secs(3),
+            "Messung lief {gedauert:?} — die Frist greift nicht"
+        );
     }
 
     #[test]
