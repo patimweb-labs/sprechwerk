@@ -10,6 +10,11 @@
 #      ohne dass es jemandem auffiel.
 #
 # Dieselben Schritte laufen lokal mit `scripts/pruefen.sh`.
+#
+# Die Läufer-Version ist **festgelegt** (`ubuntu-24.04`), nicht `ubuntu-latest`:
+# GitHub verschiebt `latest` seit Oktober 2026 auf Ubuntu 26 — Paketnamen und
+# Bibliotheksstände ändern sich damit unter der Hand. Ein Wechsel soll ein
+# bewusster Schritt sein (diese Zeile ändern, Lauf ansehen).
 
 name: prüfen
 
@@ -34,7 +39,7 @@ env:
 jobs:
   arbeitsbereich:
     name: Arbeitsbereich — Form, Werkzeuge, Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -63,7 +68,7 @@ jobs:
 
   fenster:
     name: Fenster — eigenes Crate, eigene Sperrdatei
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -103,7 +108,7 @@ jobs:
 
   oberflaeche:
     name: Oberfläche — Typen und Ansichten
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -150,7 +155,7 @@ jobs:
 
   sprache:
     name: Sprache — Messungen am laufenden Server
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
