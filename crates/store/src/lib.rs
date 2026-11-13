@@ -98,27 +98,126 @@ CREATE TABLE IF NOT EXISTS sperren (
 );
 "#;
 
-/// Ergänzt Spalten, die in einer älteren Datenbank fehlen (idempotent).
-fn nachruesten(conn: &Connection) -> Ergebnis<()> {
-    let fehlend = |tabelle: &str, spalte: &str| -> Ergebnis<bool> {
-        let mut stmt = conn.prepare(&format!("PRAGMA table_info({tabelle})"))?;
-        let mut zeilen = stmt.query([])?;
-        while let Some(z) = zeilen.next()? {
-            let name: String = z.get(1)?;
-            if name == spalte {
-                return Ok(false);
+/// Bringt eine vorhandene Datenbank auf den aktuellen Stand.
+///
+/// **Vorher wird kopiert** (SPEC §2): eine Migration, die schiefgeht, darf keine
+/// Daten kosten. Die Kopie liegt neben der Datenbank und wird nie automatisch
+/// gelöscht — sie ist die Rückfahrt.
+///
+/// Ein **neueres** Format wird abgelehnt: ein älteres Programm kann eine
+/// jüngere Struktur nicht verstehen, und ein halbes Schreiben wäre schlimmer als
+/// eine klare Absage.
+fn migrieren(conn: &Connection, pfad: &Path) -> Ergebnis<()> {
+    // Ganz frische Datei: es gibt noch keine `meta`-Tabelle.
+    let hat_meta: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'meta'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .map(|n| n > 0)
+        .unwrap_or(false);
+    if !hat_meta {
+        return Ok(());
+    }
+
+    let vorhanden: u32 = conn
+        .query_row(
+            "SELECT wert FROM meta WHERE schluessel = 'schema_version'",
+            [],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?
+        .and_then(|w| w.parse().ok())
+        .unwrap_or(0);
+
+    if vorhanden == 0 {
+        // Frische Datenbank: noch keine Version. Das Schema wird gleich
+        // angelegt, die Version danach gesetzt.
+        return Ok(());
+    }
+    if vorhanden > SCHEMA_VERSION {
+        return Err(Error::Format(vorhanden, SCHEMA_VERSION));
+    }
+    if vorhanden == SCHEMA_VERSION {
+        return Ok(());
+    }
+
+    // Kopie vor der Migration. WAL zuerst leeren, sonst fehlt der letzte Stand
+    // in der Datei.
+    let _: Option<(i64, i64, i64)> = conn
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })
+        .optional()?;
+    let kopie = pfad.with_extension(format!("vor-v{vorhanden}.sqlite"));
+    if !kopie.exists() {
+        std::fs::copy(pfad, &kopie)?;
+    }
+
+    // Schritt für Schritt. Jeder Schritt muss idempotent sein (er kann durch
+    // einen Absturz zweimal laufen).
+    let mut version = vorhanden;
+    while version < SCHEMA_VERSION {
+        match version {
+            // v1 → v2: Grund im Prüfprotokoll.
+            1 => {
+                if spalte_fehlt(conn, "protokoll", "grund")? {
+                    conn.execute("ALTER TABLE protokoll ADD COLUMN grund TEXT", [])?;
+                }
+                version = 2;
+            }
+            anderes => {
+                return Err(Error::Format(anderes, SCHEMA_VERSION));
             }
         }
-        Ok(true)
-    };
-    if fehlend("protokoll", "grund")? {
+        conn.execute(
+            "UPDATE meta SET wert = ?1 WHERE schluessel = 'schema_version'",
+            params![version.to_string()],
+        )?;
+    }
+
+    // Nach der Migration prüfen, dass die Version wirklich steht.
+    let danach: u32 = conn
+        .query_row(
+            "SELECT wert FROM meta WHERE schluessel = 'schema_version'",
+            [],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?
+        .and_then(|w| w.parse().ok())
+        .unwrap_or(0);
+    if danach != SCHEMA_VERSION {
+        return Err(Error::Format(danach, SCHEMA_VERSION));
+    }
+    Ok(())
+}
+
+/// Fehlt diese Spalte in der Tabelle?
+fn spalte_fehlt(conn: &Connection, tabelle: &str, spalte: &str) -> Ergebnis<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({tabelle})"))?;
+    let mut zeilen = stmt.query([])?;
+    while let Some(z) = zeilen.next()? {
+        let name: String = z.get(1)?;
+        if name == spalte {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// Ergänzt Spalten, die in einer älteren Datenbank fehlen (idempotent).
+fn nachruesten(conn: &Connection) -> Ergebnis<()> {
+    if spalte_fehlt(conn, "protokoll", "grund")? {
         conn.execute("ALTER TABLE protokoll ADD COLUMN grund TEXT", [])?;
     }
     Ok(())
 }
 
 /// Kennung der aktuellen Datenbankstruktur.
-pub const SCHEMA_VERSION: u32 = 1;
+///
+/// 1 → 2: Spalte `grund` im Prüfprotokoll.
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Ein Store auf einer SQLite-Datei.
 pub struct Store {
@@ -138,10 +237,14 @@ impl Store {
         // laufenden Betrieb ist dadurch konsistent.
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
+        // **Erst die Struktur prüfen, dann anlegen.** `CREATE TABLE IF NOT
+        // EXISTS` ändert eine vorhandene Tabelle nicht — eine bestehende
+        // Installation bekäme neue Spalten sonst nie und würde beim Lesen
+        // scheitern.
+        migrieren(&conn, &pfad)?;
         conn.execute_batch(SCHEMA)?;
-        // Spalten nachrüsten, die erst später dazukamen. `CREATE TABLE IF NOT
-        // EXISTS` ändert eine **vorhandene** Tabelle nicht — ohne diesen Schritt
-        // hätte eine bestehende Datenbank die Spalte nie bekommen.
+        // Sicherheitsnetz: einzelne Spalten nachrüsten, falls eine Migration
+        // fehlte. Idempotent und billig.
         nachruesten(&conn)?;
         conn.execute(
             "INSERT OR IGNORE INTO meta (schluessel, wert) VALUES ('schema_version', ?1)",
@@ -804,6 +907,67 @@ mod tests {
         assert_eq!(
             zeile.ziel, gesperrt,
             "im Ziel muss stehen, wen es trifft — nicht der Grund"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    /// Migration: eine Datenbank im Stand 1 bekommt die Spalte `grund`, eine
+    /// **Kopie** liegt daneben, und ein neueres Format wird abgelehnt.
+    #[test]
+    fn migration_von_stand_eins() {
+        let dir = std::env::temp_dir().join(format!("sprechwerk-mig-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let datei = dir.join("alt.sqlitedb");
+
+        // Stand 1: protokoll ohne `grund`, kein `grund` in der Struktur.
+        {
+            let conn = rusqlite::Connection::open(&datei).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE protokoll (
+                   laufnummer INTEGER PRIMARY KEY, zeit INTEGER NOT NULL, handelnder TEXT,
+                   handelnder_name TEXT NOT NULL, aktion TEXT NOT NULL, ziel TEXT NOT NULL,
+                   vorher TEXT, nachher TEXT, ergebnis TEXT NOT NULL);
+                 CREATE TABLE meta (schluessel TEXT PRIMARY KEY, wert TEXT NOT NULL);
+                 INSERT INTO meta VALUES ('schema_version', '1');
+                 INSERT INTO meta VALUES ('server_name', 'Altwerk');
+                 INSERT INTO protokoll VALUES (1, 1000, NULL, 'Ada', 'anmeldung', 'ab12', NULL, NULL, 'erlaubt');",
+            )
+            .unwrap();
+        }
+
+        let store = Store::oeffnen(&datei).unwrap();
+        assert_eq!(
+            store.schema_version().unwrap(),
+            SCHEMA_VERSION,
+            "die Version muss nach der Migration stimmen"
+        );
+        // Daten sind noch da.
+        let geladen = store
+            .laden(|| State::neu("egal", Role::Mitglied, 0))
+            .unwrap();
+        assert_eq!(geladen.server_name, "Altwerk");
+        assert_eq!(geladen.protokoll.len(), 1);
+
+        // Kopie liegt daneben (die Rückfahrt).
+        let kopie = datei.with_extension("vor-v1.sqlite");
+        assert!(
+            kopie.exists(),
+            "vor der Migration muss eine Kopie entstehen"
+        );
+
+        // Ein **neueres** Format wird abgelehnt, nicht halb geschrieben.
+        let neuer = dir.join("neu.sqlitedb");
+        {
+            let conn = rusqlite::Connection::open(&neuer).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE meta (schluessel TEXT PRIMARY KEY, wert TEXT NOT NULL);
+                 INSERT INTO meta VALUES ('schema_version', '99');",
+            )
+            .unwrap();
+        }
+        assert!(
+            Store::oeffnen(&neuer).is_err(),
+            "ein neueres Format darf nicht geöffnet werden"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
