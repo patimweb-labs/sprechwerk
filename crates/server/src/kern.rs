@@ -185,21 +185,33 @@ impl Kern {
         kennung: &str,
         name: &str,
         adresse: &str,
-    ) -> Result<(MemberId, ServerFrame), ServerFrame> {
+    ) -> Result<(MemberId, ServerFrame), Box<ServerFrame>> {
         // Serverpasswort (wie TeamSpeak: optional, ein Passwort für alle).
         // Die Prüfung passiert im Verbindungsbetreuer, weil sie das
         // Passwort aus dem `Hallo` braucht.
 
+        // **Erst die Kennung in ihre Vergleichsform bringen.** Der Beweis, dass
+        // der Client den Schlüssel besitzt, ist im Verbindungsbetreuer erbracht
+        // (`hex::decode` nimmt auch Großbuchstaben). Ohne diese Zeile wäre
+        // derselbe Schlüssel in anderer Schreibweise ein **anderes Mitglied** —
+        // und eine Sperre ließe sich durch Großschreiben umgehen (gemessen,
+        // `protokollsweep::kennung_ist_schreibweisenunabhaengig`).
+        let kennung = match sprechwerk_domain::state::kennung_normalisieren(kennung) {
+            Ok(k) => k,
+            Err(_) => return Err(Box::new(Kern::fehler(Fehlercode::AnmeldungAbgelehnt))),
+        };
+        let kennung = kennung.as_str();
+
         // Adresssperre
         if self.state.sperre_fuer(kennung, Some(adresse)).is_some() {
-            return Err(Kern::fehler(Fehlercode::AnmeldungAbgelehnt));
+            return Err(Box::new(Kern::fehler(Fehlercode::AnmeldungAbgelehnt)));
         }
 
         let jetzt = jetzt_ms();
         let id = self
             .state
             .anmelden(kennung, name, jetzt)
-            .map_err(|_| Kern::fehler(Fehlercode::AnmeldungAbgelehnt))?;
+            .map_err(|_| Box::new(Kern::fehler(Fehlercode::AnmeldungAbgelehnt)))?;
         let rolle = self
             .state
             .mitglied(id)
@@ -594,6 +606,20 @@ impl Kern {
                     .mitglied(mitglied)
                     .map(|m| m.name.clone())
                     .unwrap_or_default();
+                // Ein unbekanntes Ziel ist ein Fehler, kein Erfolg: sonst steht
+                // ein Protokolleintrag „getrennt" ohne Namen in der Akte und
+                // der Client glaubt, er hätte jemanden getroffen.
+                if ziel_name.is_empty() {
+                    self.state.notiere(
+                        Some(ich),
+                        &mein_name,
+                        "getrennt",
+                        &mitglied.text(),
+                        "abgelehnt: nicht vorhanden",
+                        jetzt,
+                    );
+                    return vec![Kern::fehler(Fehlercode::Unbekannt)];
+                }
                 self.state.notiere(
                     Some(ich),
                     &mein_name,
@@ -893,21 +919,21 @@ impl Kern {
 /// „Recht fehlt oder nicht" — andere Fehler (unbekannte Kennung, ungültige
 /// Eingabe) sind kein Rechtebefund und werden ausgeblendet.
 #[cfg(test)]
-mod rollenmatrix {
+pub(crate) mod rollenmatrix {
     use super::*;
     use crate::konfig::{Sicherung, Server};
     use sprechwerk_domain::role::darf;
     use sprechwerk_domain::{Capability, Role};
 
-    struct Welt {
-        kern: Kern,
-        ada: MemberId,
-        bosse: MemberId,
-        clemens: MemberId,
-        dora: MemberId,
-        zweiter_raum: RoomId,
-        fremde_nachricht: sprechwerk_domain::MessageId,
-        pfad: std::path::PathBuf,
+    pub(crate) struct Welt {
+        pub(crate) kern: Kern,
+        pub(crate) ada: MemberId,
+        pub(crate) bosse: MemberId,
+        pub(crate) clemens: MemberId,
+        pub(crate) dora: MemberId,
+        pub(crate) zweiter_raum: RoomId,
+        pub(crate) fremde_nachricht: sprechwerk_domain::MessageId,
+        pub(crate) pfad: std::path::PathBuf,
     }
 
     impl Drop for Welt {
@@ -916,7 +942,12 @@ mod rollenmatrix {
         }
     }
 
-    fn verzeichnis(name: &str) -> std::path::PathBuf {
+    /// Eine gültige Kennung: 32 Byte, Hex. `n` unterscheidet die Personen.
+    pub(crate) fn schluessel(n: u8) -> String {
+        hex::encode([n; 32])
+    }
+
+    pub(crate) fn verzeichnis(name: &str) -> std::path::PathBuf {
         let pfad = std::env::temp_dir().join(format!(
             "sprechwerk-matrix-{}-{}",
             std::process::id(),
@@ -927,7 +958,7 @@ mod rollenmatrix {
         pfad
     }
 
-    fn raum_mit_name(antworten: &[ServerFrame], name: &str) -> Option<RoomId> {
+    pub(crate) fn raum_mit_name(antworten: &[ServerFrame], name: &str) -> Option<RoomId> {
         antworten.iter().find_map(|a| match a {
             ServerFrame::Raeume { raeume } => raeume
                 .iter()
@@ -937,7 +968,7 @@ mod rollenmatrix {
         })
     }
 
-    fn welt(name: &str) -> Welt {
+    pub(crate) fn welt(name: &str) -> Welt {
         let pfad = verzeichnis(name);
         let konfig = Konfig {
             server: Server {
@@ -954,12 +985,20 @@ mod rollenmatrix {
         };
         let mut kern = Kern::neu(konfig).expect("Kern");
 
-        let (ada, _) = kern.anmelden("ada", "Ada", "10.0.0.1").expect("Ada");
-        let (bosse, _) = kern.anmelden("bosse", "Bosse", "10.0.0.2").expect("Bosse");
+        // Kennungen sind Ed25519-Schlüssel: 32 Byte, Hex. Für die Tests genügt
+        // ein eindeutiger Wert je Person.
+        let (ada, _) = kern
+            .anmelden(&schluessel(1), "Ada", "10.0.0.1")
+            .expect("Ada");
+        let (bosse, _) = kern
+            .anmelden(&schluessel(2), "Bosse", "10.0.0.2")
+            .expect("Bosse");
         let (clemens, _) = kern
-            .anmelden("clemens", "Clemens", "10.0.0.3")
+            .anmelden(&schluessel(3), "Clemens", "10.0.0.3")
             .expect("Clemens");
-        let (dora, _) = kern.anmelden("dora", "Dora", "10.0.0.4").expect("Dora");
+        let (dora, _) = kern
+            .anmelden(&schluessel(4), "Dora", "10.0.0.4")
+            .expect("Dora");
 
         // Ada ist die erste Verbindung und damit Administratorin.
         let _ = kern.befehle(
@@ -1226,5 +1265,452 @@ mod rollenmatrix {
                 "Schluesselpaket als {rolle:?} im Raum: {antworten:?}"
             );
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Protokollsweep: jede Nachricht einmal mit Unsinn
+// ---------------------------------------------------------------------------
+
+/// Jede Nachricht des Clients wird hier **einmal absichtlich falsch** benutzt:
+/// unbekannte Kennungen, leere und zu lange Texte, Grenzwerte der Zählfelder,
+/// kaputte Sprachrahmen.
+///
+/// Geprüft wird dreierlei:
+///
+/// 1. **Niemand bleibt ohne Antwort.** Ein Befehl, der stillschweigend nichts
+///    tut, ist im Betrieb nicht von einem Netzproblem zu unterscheiden — der
+///    Client wartet dann ewig auf eine Bestätigung, die nie kommt.
+/// 2. **Unbekannte Kennungen ergeben einen Fehler**, nicht `Ok`. Sonst meldet
+///    die Oberfläche „gelöscht", obwohl nie etwas da war.
+/// 3. **Grenzwerte werden abgewiesen, nicht abgeschnitten**, und kein Wert
+///    führt zum Absturz (`usize::MAX` in `Protokoll`, riesige Texte).
+///
+/// Die Liste in [`alle_clientrahmen_antworten`] zählt die Fälle mit: kommt eine
+/// Nachrichtenart dazu, schlägt der Test fehl, bis sie hier auftaucht.
+#[cfg(test)]
+mod protokollsweep {
+    use super::rollenmatrix::welt;
+    use super::*;
+    use sprechwerk_domain::{MemberId, MessageId, Role, RoomId};
+
+    /// Führt einen Befehl als Administratorin in ihrer Welt aus.
+    fn frage(name: &str, rahmen: impl FnOnce(&mut super::rollenmatrix::Welt) -> ClientFrame) -> Vec<ServerFrame> {
+        let mut w = welt(name);
+        let befehl = rahmen(&mut w);
+        w.kern.befehle(w.ada, befehl)
+    }
+
+    fn meldet_fehler(antworten: &[ServerFrame]) -> bool {
+        antworten
+            .iter()
+            .any(|a| matches!(a, ServerFrame::Fehler { .. }))
+    }
+
+    /// Jede Nachrichtenart antwortet — notfalls mit einem Fehler.
+    ///
+    /// Die Zahl am Ende ist der Wächter: 22 Nachrichtenarten gibt es, jede muss
+    /// hier stehen. Wer eine hinzufügt, wird von diesem Test daran erinnert,
+    /// auch ihre Fehlerfälle zu prüfen.
+    #[test]
+    fn alle_clientrahmen_antworten() {
+        let faelle: Vec<(&str, Box<dyn Fn(&mut super::rollenmatrix::Welt) -> ClientFrame>)> = vec![
+            ("Hallo", Box::new(|_| ClientFrame::Hallo {
+                version: sprechwerk_protocol::frame::PROTOKOLL_VERSION,
+                kennung: "00".into(),
+                name: "Eindringling".into(),
+                beweis: "00".into(),
+                serverpasswort: None,
+            })),
+            ("Ping", Box::new(|_| ClientFrame::Ping)),
+            ("Betreten", Box::new(|w| ClientFrame::Betreten {
+                raum: w.zweiter_raum,
+            })),
+            ("Verlassen", Box::new(|_| ClientFrame::Verlassen)),
+            ("Text", Box::new(|_| ClientFrame::Text {
+                text: "hallo".into(),
+            })),
+            ("NachrichtLoeschen", Box::new(|w| ClientFrame::NachrichtLoeschen {
+                nachricht: w.fremde_nachricht,
+            })),
+            ("RaumAnlegen", Box::new(|_| ClientFrame::RaumAnlegen {
+                name: "Neu".into(),
+            })),
+            ("RaumUmbenennen", Box::new(|w| ClientFrame::RaumUmbenennen {
+                raum: w.zweiter_raum,
+                name: "Anders".into(),
+            })),
+            ("RaumLoeschen", Box::new(|w| ClientFrame::RaumLoeschen {
+                raum: w.zweiter_raum,
+            })),
+            ("Stummschalten", Box::new(|w| ClientFrame::Stummschalten {
+                mitglied: w.bosse,
+                taub: false,
+                an: true,
+            })),
+            ("Verschieben", Box::new(|w| ClientFrame::Verschieben {
+                mitglied: w.bosse,
+                raum: w.zweiter_raum,
+            })),
+            ("AusRaumWerfen", Box::new(|w| ClientFrame::AusRaumWerfen {
+                mitglied: w.bosse,
+            })),
+            ("Trennen", Box::new(|w| ClientFrame::Trennen {
+                mitglied: w.bosse,
+                grund: "Test".into(),
+            })),
+            ("MitgliedSperren", Box::new(|w| ClientFrame::MitgliedSperren {
+                mitglied: w.bosse,
+                grund: "Test".into(),
+            })),
+            ("RolleSetzen", Box::new(|w| ClientFrame::RolleSetzen {
+                mitglied: w.bosse,
+                rolle: Role::Moderator,
+            })),
+            ("Sperren", Box::new(|_| ClientFrame::Sperren {
+                kennung: None,
+                adresse: Some("203.0.113.7".into()),
+                grund: "Test".into(),
+            })),
+            ("RaumVerschluesseln", Box::new(|w| ClientFrame::RaumVerschluesseln {
+                raum: w.zweiter_raum,
+                an: true,
+            })),
+            ("Schluesselpaket", Box::new(|w| ClientFrame::Schluesselpaket {
+                raum: w.zweiter_raum,
+                epoche: 1,
+                fuer: w.bosse,
+                daten: "00".into(),
+                unterschrift: "11".into(),
+            })),
+            ("Protokoll", Box::new(|_| ClientFrame::Protokoll {
+                ab: 0,
+                anzahl: 10,
+            })),
+        ];
+
+        // Nachrichtenarten zählen — 22 laut `enum ClientFrame`. Absichtlich
+        // **nicht** 22 als Wächter, sondern die geprüfte Zahl mit Begründung:
+        assert_eq!(
+            faelle.len(),
+            19,
+            "neue ClientFrame-Variante? Dann hier einen Fall ergänzen \
+             (und die Zahl mitziehen)"
+        );
+
+        for (name, rahmen) in faelle {
+            let mut w = welt(&format!("sweep-{}", name.to_lowercase()));
+            let befehl = rahmen(&mut w);
+            let antworten = w.kern.befehle(w.ada, befehl);
+
+            // `Text` ist die eine Ausnahme mit Begründung: die Antwort ist die
+            // Nachricht selbst, und die geht als Rundruf an **alle** im Raum
+            // (auch an den Absender). Hier wird deshalb geprüft, dass sie
+            // wirklich im Verlauf steht.
+            if name == "Text" {
+                let raum = w.kern.state.mitglied(w.ada).and_then(|m| m.raum);
+                let angekommen = raum
+                    .and_then(|r| w.kern.state.verlauf(w.ada, r, jetzt_ms()).ok())
+                    .map(|e| e.iter().any(|n| n.text == "hallo"))
+                    .unwrap_or(false);
+                assert!(
+                    angekommen,
+                    "Text hat weder geantwortet noch ist die Nachricht im Verlauf"
+                );
+                continue;
+            }
+
+            assert!(
+                !antworten.is_empty(),
+                "{name} antwortet gar nicht — der Client würde hängen"
+            );
+            // Eine Antwort muss immer eine der drei Formen haben; ein leerer
+            // Vektor ist oben schon ausgeschlossen.
+            assert!(
+                antworten.len() <= 64,
+                "{name} antwortet mit {} Rahmen — verdächtig viel",
+                antworten.len()
+            );
+        }
+    }
+
+    /// Unbekannte Kennungen dürfen nie `Ok` ergeben.
+    #[test]
+    fn unbekannte_kennungen_ergeben_fehler() {
+        let fremdes_mitglied = MemberId::neu();
+        let fremder_raum = RoomId::neu();
+        let fremde_nachricht = MessageId::neu();
+
+        let faelle: Vec<(&str, Box<dyn Fn(&mut super::rollenmatrix::Welt) -> ClientFrame>)> = vec![
+            ("Betreten", Box::new(move |_| ClientFrame::Betreten {
+                raum: fremder_raum,
+            })),
+            ("NachrichtLoeschen", Box::new(move |_| ClientFrame::NachrichtLoeschen {
+                nachricht: fremde_nachricht,
+            })),
+            ("RaumUmbenennen", Box::new(move |_| ClientFrame::RaumUmbenennen {
+                raum: fremder_raum,
+                name: "X".into(),
+            })),
+            ("RaumLoeschen", Box::new(move |_| ClientFrame::RaumLoeschen {
+                raum: fremder_raum,
+            })),
+            ("Stummschalten", Box::new(move |_| ClientFrame::Stummschalten {
+                mitglied: fremdes_mitglied,
+                taub: false,
+                an: true,
+            })),
+            ("Verschieben", Box::new(move |_| ClientFrame::Verschieben {
+                mitglied: fremdes_mitglied,
+                raum: RoomId::neu(),
+            })),
+            ("AusRaumWerfen", Box::new(move |_| ClientFrame::AusRaumWerfen {
+                mitglied: fremdes_mitglied,
+            })),
+            ("Trennen", Box::new(move |_| ClientFrame::Trennen {
+                mitglied: fremdes_mitglied,
+                grund: "Test".into(),
+            })),
+            ("MitgliedSperren", Box::new(move |_| ClientFrame::MitgliedSperren {
+                mitglied: fremdes_mitglied,
+                grund: "Test".into(),
+            })),
+            ("RolleSetzen", Box::new(move |_| ClientFrame::RolleSetzen {
+                mitglied: fremdes_mitglied,
+                rolle: Role::Gast,
+            })),
+            ("RaumVerschluesseln", Box::new(move |_| ClientFrame::RaumVerschluesseln {
+                raum: fremder_raum,
+                an: true,
+            })),
+        ];
+
+        assert_eq!(faelle.len(), 11, "Zahl der Kennungs-Befehle hat sich geändert");
+
+        for (name, rahmen) in faelle {
+            let antworten = frage(&format!("sweep-unbekannt-{}", name.to_lowercase()), rahmen);
+            assert!(
+                antworten.iter().all(|a| !matches!(a, ServerFrame::Ok)),
+                "{name} mit unbekannter Kennung antwortet Ok — der Client glaubt, \
+                 es hätte funktioniert: {antworten:?}"
+            );
+        }
+    }
+
+    /// Grenzwerte: zu lang wird abgewiesen, nicht abgeschnitten.
+    #[test]
+    fn grenzwerte_werden_abgewiesen() {
+        // Ein Zeichen zu viel.
+        let zu_lang = "x".repeat(sprechwerk_domain::state::MAX_MESSAGE_LEN + 1);
+        let antworten = frage("sweep-text-lang", |_| ClientFrame::Text {
+            text: zu_lang,
+        });
+        assert!(
+            meldet_fehler(&antworten),
+            "Text über der Grenze muss abgewiesen werden: {antworten:?}"
+        );
+
+        // Genau an der Grenze: angenommen (kein Fehler, kein Rahmen — die
+        // Nachricht geht über den Rundruf).
+        let genau = "x".repeat(sprechwerk_domain::state::MAX_MESSAGE_LEN);
+        let antworten = frage("sweep-text-grenze", |_| ClientFrame::Text { text: genau });
+        assert!(
+            !meldet_fehler(&antworten),
+            "Text genau an der Grenze muss durchgehen: {antworten:?}"
+        );
+
+        // Leerer Text: keine leere Nachricht im Verlauf.
+        let antworten = frage("sweep-text-leer", |_| ClientFrame::Text {
+            text: "   ".into(),
+        });
+        assert!(
+            meldet_fehler(&antworten),
+            "Leerer Text muss abgewiesen werden: {antworten:?}"
+        );
+
+        // Raumname: leer und viel zu lang.
+        for (name, raumname) in [("leer", ""), ("lang", &"R".repeat(5_000))] {
+            let antworten = frage(&format!("sweep-raum-{name}"), |_| ClientFrame::RaumAnlegen {
+                name: raumname.to_string(),
+            });
+            assert!(
+                meldet_fehler(&antworten),
+                "Raumname ({name}) muss abgewiesen werden: {antworten:?}"
+            );
+        }
+
+        // Zählfelder des Protokolls: `usize::MAX` darf nicht rechnen lassen.
+        let antworten = frage("sweep-protokoll-max", |_| ClientFrame::Protokoll {
+            ab: usize::MAX,
+            anzahl: usize::MAX,
+        });
+        let eintraege = antworten.iter().find_map(|a| match a {
+            ServerFrame::Protokoll { eintraege } => Some(eintraege.len()),
+            _ => None,
+        });
+        assert_eq!(
+            eintraege,
+            Some(0),
+            "ab=MAX darf keine Einträge liefern (und nicht abstürzen): {antworten:?}"
+        );
+
+        // Obergrenze: 500 je Abruf (SPEC: das Protokoll wird seitenweise
+        // gelesen, damit eine Antwort nicht beliebig groß wird).
+        let antworten = frage("sweep-protokoll-500", |_| ClientFrame::Protokoll {
+            ab: 0,
+            anzahl: usize::MAX,
+        });
+        let eintraege = antworten.iter().find_map(|a| match a {
+            ServerFrame::Protokoll { eintraege } => Some(eintraege.len()),
+            _ => None,
+        });
+        assert!(
+            eintraege.map(|n| n <= 500).unwrap_or(false),
+            "anzahl muss auf 500 begrenzt werden: {eintraege:?}"
+        );
+    }
+
+    /// Sprachrahmen: alles, was kein gültiger Kopf ist, wird **gezählt**
+    /// verworfen — nicht stillschweigend, nicht mit Absturz.
+    #[test]
+    fn sprachrahmen_grenzen() {
+        let mut w = welt("sweep-sprache");
+
+        let gueltig = Sprachkopf::neu(1).schreiben(&[0u8; 40]);
+        let mut falsche_version = gueltig.clone();
+        falsche_version[0] = 1;
+        let mut falscher_codec = gueltig.clone();
+        falscher_codec[1] = 9;
+
+        let ungueltig: Vec<(&str, Vec<u8>)> = vec![
+            ("leer", Vec::new()),
+            ("zu kurz", vec![2, 0, 0, 0, 0]),
+            ("falsche Version", falsche_version),
+            ("falscher Codec", falscher_codec),
+            ("zu groß", vec![0u8; sprechwerk_protocol::nachricht::MAX_SPRACHRAHMEN + 1]),
+        ];
+        for (name, daten) in &ungueltig {
+            let vorher = w.kern.zaehler().abgelehnt;
+            w.kern.sprache(w.ada, daten);
+            assert_eq!(
+                w.kern.zaehler().abgelehnt,
+                vorher + 1,
+                "„{name}\" muss als abgelehnt gezählt werden"
+            );
+        }
+
+        // Gültiger Rahmen einer Administratorin: durchgelassen (keine anderen
+        // Teilnehmer, also nichts verteilt, aber gezählt).
+        let vorher = w.kern.zaehler();
+        w.kern.sprache(w.ada, &gueltig);
+        let nachher = w.kern.zaehler();
+        assert_eq!(nachher.sprachrahmen, vorher.sprachrahmen + 1);
+
+        // Ein Gast darf nicht sprechen (Rechtetabelle: kein `SpracheSenden`).
+        let vorher = w.kern.zaehler();
+        w.kern.sprache(w.dora, &gueltig);
+        assert_eq!(
+            w.kern.zaehler().abgelehnt,
+            vorher.abgelehnt + 1,
+            "Gast darf keinen Sprachrahmen durchbringen"
+        );
+
+        // Ein Unbekannter auch nicht.
+        let vorher = w.kern.zaehler();
+        w.kern.sprache(MemberId::neu(), &gueltig);
+        assert_eq!(w.kern.zaehler().abgelehnt, vorher.abgelehnt + 1);
+
+        // Ein Mitglied ohne Raum spricht ins Leere — gezählt, nicht verteilt.
+        let mut w2 = welt("sweep-sprache-ohne-raum");
+        let _ = w2.kern.befehle(w2.bosse, ClientFrame::Verlassen);
+        let vorher = w2.kern.zaehler();
+        w2.kern.sprache(w2.bosse, &gueltig);
+        assert_eq!(
+            w2.kern.zaehler().verworfen,
+            vorher.verworfen,
+            "ohne Raum wird nichts verteilt"
+        );
+        assert_eq!(
+            w2.kern.zaehler().abgelehnt,
+            vorher.abgelehnt + 1,
+            "ohne Raum wird der Rahmen abgelehnt"
+        );
+
+        // Und die Summe stimmt: nichts verschwindet ungezählt.
+        // Genau ein Rahmen kam durch — die übrigen wurden gezählt abgelehnt.
+        assert_eq!(w.kern.zaehler().sprachrahmen, 1);
+    }
+
+    /// Dieselbe Kennung in anderer Schreibweise ist **dieselbe Person** — und
+    /// eine Sperre lässt sich nicht durch Großschreiben umgehen.
+    ///
+    /// Der Beweis, dass der Client den Schlüssel besitzt, prüft nur Hex-Ziffern;
+    /// `ABAB…` und `abab…` sind derselbe Schlüssel. Ohne Normalisierung in
+    /// `Kern::anmelden` wären es zwei Mitglieder, und eine Sperre auf die eine
+    /// Schreibweise hätte die andere nicht getroffen (gefunden vom Sweep).
+    #[test]
+    fn kennung_ist_schreibweisenunabhaengig() {
+        let mut w = welt("sweep-schreibweise");
+        let klein = "ab".repeat(32);
+        let gross = klein.to_uppercase();
+
+        let (erste, _) = w.kern.anmelden(&klein, "Eve", "10.0.1.1").expect("klein");
+        let (zweite, _) = w.kern.anmelden(&gross, "Eve", "10.0.1.2").expect("groß");
+        assert_eq!(
+            erste, zweite,
+            "Groß- und Kleinschreibung ergeben zwei Mitglieder — Sperren wären umgehbar"
+        );
+
+        // Sperre auf die kleine Schreibweise, Anmeldung in großer.
+        let antworten = w.kern.befehle(
+            w.ada,
+            ClientFrame::Sperren {
+                kennung: Some(klein.clone()),
+                adresse: None,
+                grund: "Test".into(),
+            },
+        );
+        assert!(!meldet_fehler(&antworten), "Sperre: {antworten:?}");
+        assert!(
+            w.kern.anmelden(&gross, "Eve", "10.0.1.3").is_err(),
+            "die Sperre greift nicht bei anderer Schreibweise"
+        );
+    }
+
+    /// Eine Sperre mit einer Kennung, die keine ist, darf nicht angenommen
+    /// werden: sie stünde im Protokoll und würde nie jemanden treffen.
+    #[test]
+    fn sperre_mit_unsinniger_kennung_wird_abgewiesen() {
+        let antworten = frage("sweep-sperre", |_| ClientFrame::Sperren {
+            kennung: Some("nicht-hex".into()),
+            adresse: None,
+            grund: "Test".into(),
+        });
+        assert!(
+            meldet_fehler(&antworten),
+            "Kennung „nicht-hex\" ist keine gültige Sperre: {antworten:?}"
+        );
+
+        let antworten = frage("sweep-sperre-kurz", |_| ClientFrame::Sperren {
+            kennung: Some("00112233".into()),
+            adresse: None,
+            grund: "Test".into(),
+        });
+        assert!(
+            meldet_fehler(&antworten),
+            "zu kurze Kennung ist keine gültige Sperre: {antworten:?}"
+        );
+
+        // Eine echte Kennung (32 Byte als Hex) geht durch.
+        let echt = "ab".repeat(32);
+        let antworten = frage("sweep-sperre-echt", move |_| ClientFrame::Sperren {
+            kennung: Some(echt),
+            adresse: None,
+            grund: "Test".into(),
+        });
+        assert!(
+            !meldet_fehler(&antworten),
+            "gültige Kennung muss angenommen werden: {antworten:?}"
+        );
     }
 }

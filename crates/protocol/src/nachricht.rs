@@ -393,4 +393,166 @@ mod tests {
     fn zu_kurzer_sprachkopf_ergibt_none() {
         assert!(Sprachkopf::lesen(&[1, 0, 0]).is_none());
     }
+    /// Jeder Rahmen, den der Server schicken kann, muss beim Client
+    /// ankommen — und umgekehrt.
+    ///
+    /// Diese Liste ist absichtlich vollständig und gezählt: kommt eine
+    /// Nachrichtenart dazu und wird hier nicht ergänzt, schlägt der Test fehl.
+    /// Damit gibt es keinen „toten" Rahmen, den der Server sendet und den kein
+    /// Client kennt (die Fehlerklasse „weißer Bildschirm bei unbekannter
+    /// Nachricht").
+    #[test]
+    fn alle_serverrahmen_sind_umkehrbar() {
+        let ich = sprechwerk_domain::MemberId::neu();
+        let raum = sprechwerk_domain::RoomId::neu();
+        let nachricht = sprechwerk_domain::MessageId::neu();
+        let mitglied = Mitgliedsansicht {
+            id: ich,
+            name: "Ada".into(),
+            kennung: "ab".repeat(32),
+            rolle: Role::Administrator,
+            raum: Some(raum),
+            spricht: false,
+            stumm: false,
+            taub: false,
+        };
+        let rahmen = vec![
+            ServerFrame::Anforderung {
+                version: 1,
+                nonce: "00".into(),
+            },
+            ServerFrame::Willkommen {
+                version: 1,
+                server_name: "Testwerk".into(),
+                ich,
+                rolle: Role::Mitglied,
+                raeume: Vec::new(),
+                mitglieder: Vec::new(),
+                raum: None,
+                verlauf: Vec::new(),
+            },
+            ServerFrame::Betreten {
+                raum,
+                verlauf: Vec::new(),
+                anwesend: Vec::new(),
+            },
+            ServerFrame::Anwesenheit {
+                raum,
+                mitglied: mitglied.clone(),
+                anwesend: true,
+            },
+            ServerFrame::Text {
+                nachricht: Message {
+                    id: nachricht,
+                    raum,
+                    verfasser: ich,
+                    verfasser_name: "Ada".into(),
+                    text: "hallo".into(),
+                    zeit: 1,
+                    geloescht: false,
+                },
+            },
+            ServerFrame::NachrichtGeloescht {
+                nachricht,
+                hart: true,
+            },
+            ServerFrame::Raeume {
+                raeume: Vec::new(),
+            },
+            ServerFrame::MitgliedGeaendert {
+                mitglied: mitglied.clone(),
+            },
+            ServerFrame::Schluesselpaket {
+                raum,
+                epoche: 3,
+                von: ich,
+                daten: "00".into(),
+                unterschrift: "11".into(),
+            },
+            ServerFrame::Protokoll {
+                eintraege: Vec::new(),
+            },
+            ServerFrame::Ok,
+            ServerFrame::Fehler {
+                code: Fehlercode::KeinRecht,
+                text: "dafür fehlt das Recht".into(),
+            },
+            ServerFrame::Pong,
+            // Raumansicht und Anwesenheit sind die einzigen Rahmen mit
+            // `verschluesselt`/`verschluesselt_seit` — einmal mit Werten.
+            ServerFrame::Raeume {
+                raeume: vec![Raumansicht {
+                    id: raum,
+                    name: "Vorstand".into(),
+                    reihenfolge: 3,
+                    anwesend: 2,
+                    verschluesselt: true,
+                    verschluesselt_seit: 1_765_000_000_000,
+                }],
+            },
+        ];
+        assert_eq!(rahmen.len(), 14, "ServerFrame-Arten: Liste ergänzen");
+
+        for f in &rahmen {
+            let json = serde_json::to_string(f).expect("serialisieren");
+            let zurueck: ServerFrame = serde_json::from_str(&json).expect(&format!("{json}"));
+            assert_eq!(&zurueck, f, "Rahmen verliert beim Umweg Informationen");
+        }
+    }
+
+    /// Fremdes und kaputtes JSON ist ein Fehler, kein Absturz.
+    ///
+    /// Die Eingabe kommt vom Netz: hier darf nichts panisch werden, und ein
+    /// unbekannter `typ` darf nicht als „irgendein Rahmen" durchgehen.
+    ///
+    /// **Unbekannte Felder** werden dagegen bewusst hingenommen (Serde-Vorgabe):
+    /// ein neuerer Client darf ein Feld mitschicken, das dieser Server noch
+    /// nicht kennt, ohne dass die Verbindung scheitert. Fehlende **pflicht**-
+    /// felder sind dagegen ein Fehler — sonst würde ein Tippfehler still ein
+    /// anderes Ziel treffen.
+    #[test]
+    fn fremdes_json_wird_abgelehnt() {
+        let kaputt = [
+            "",
+            "null",
+            "{}",
+            r#"{"typ":"gibtesnicht"}"#,
+            r#"{"typ":"text"}"#,
+            r#"{"typ":"text","text":42}"#,
+            r#"{"typ":"betreten","raum":"keine-kennung"}"#,
+            r#"[1,2,3]"#,
+        ];
+        for text in kaputt {
+            assert!(
+                serde_json::from_str::<ClientFrame>(text).is_err(),
+                "kaputtes JSON wurde angenommen: {text}"
+            );
+        }
+
+        // Zusatzfelder sind erlaubt (Vorwärtsverträglichkeit).
+        let mit_extra: ClientFrame =
+            serde_json::from_str(r#"{"typ":"ping","unerwartet":1}"#).expect("Zusatzfeld");
+        assert_eq!(mit_extra, ClientFrame::Ping);
+    }
+
+    /// Ein Rahmen über der Grenze wird abgewiesen, bevor er Speicher kostet.
+    #[test]
+    fn zu_grosse_nutzlast_wird_abgelehnt() {
+        let zu_gross = ClientFrame::Text {
+            text: "x".repeat(crate::frame::MAX_RAHMEN + 1),
+        };
+        assert!(crate::frame::schreibe_rahmen(&zu_gross).is_err());
+    }
+
+    /// Eine unbekannte Kennung ist ein Fehler, kein Zufallswert: sonst könnte
+    /// ein Client mit einer erfundenen Kennung ein fremdes Mitglied treffen.
+    #[test]
+    fn kennungen_sind_streng() {
+        assert!(serde_json::from_str::<sprechwerk_domain::MemberId>(
+            r#""mitglied_zzzz""#
+        )
+        .is_err());
+        assert!(serde_json::from_str::<sprechwerk_domain::MemberId>(r#""""#).is_err());
+    }
+
 }

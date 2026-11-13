@@ -546,6 +546,16 @@ mod tests {
     use super::*;
     use sprechwerk_domain::State;
 
+    /// Gültige Kennung (32 Byte, Hex) — Sperren verlangen eine echte Kennung.
+    fn kennung(name: &str) -> String {
+        let mut roh = [0u8; 32];
+        for (i, b) in name.as_bytes().iter().enumerate() {
+            roh[i % 32] ^= b;
+        }
+        // Ohne `hex`-Abhängigkeit: 32 Byte als 64 Hex-Zeichen.
+        roh.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
     fn zustand() -> State {
         let mut s = State::neu("Testwerk", Role::Mitglied, 1_000);
         let a = s.anmelden("k-admin", "Ada", 1_000).unwrap();
@@ -554,7 +564,7 @@ mod tests {
         s.text_senden(a, "Protokoll", 1_012).unwrap();
         s.sperren(
             a,
-            Some("k-boese".into()),
+            Some(kennung("k-boese")),
             Some("192.0.2.7".into()),
             "Spam",
             1_013,

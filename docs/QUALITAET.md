@@ -13,7 +13,7 @@ statt aus einem Gefühl.
 | Aufschlag durch den Sprachkopf | < 8 % eines 20-ms-Rahmens | **7 %** (6 von 86 Byte) |
 | Ende-zu-Ende im LAN, p99 | < 60 ms | **p95 1,7 ms** durch den Server; Puffer der Soundkarte (20 + 60 + 40 ms) kommen im Betrieb dazu |
 | Ende-zu-Ende über WAN, p99 | < 120 ms | offen |
-| Verlust 5 %, hörbare Aussetzer | keine | **vollständig ausgeglichen** (Paritätsrahmen, Test im Code); nicht im echten WAN gemessen |
+| Verlust 5 %, hörbare Aussetzer | keine | **vollständig ausgeglichen** (Paritätsrahmen, Test im Code); mit 5 % Verlust auf einer Störstrecke auf **einem** Rechner nachgemessen (`scripts/verlustprobe.sh`, siehe §2b) — im echten WAN weiter offen |
 | Echo-Dämpfung (Lautsprecher) | > 20 dB | **39 dB** (AEC3, Release 0,7 % Kern) |
 | Bandbreite je Sprecher | ≤ 45 kbit/s | **32 kbit/s** Opus + 25 % Paritätsrahmen + 6 Byte Kopf je 20 ms ≈ **41 kbit/s** |
 
@@ -41,7 +41,61 @@ Rahmen" — also inklusive beider Aufgabenplanungen in Tokio, nicht nur der
 Serverarbeit. Die Zahl ist damit eher zu hoch als zu niedrig.
 
 Nachprüfen: `scripts/latenz.sh` (Serverdurchlauf), `scripts/sprechprobe.sh`
-(ganzer Sprachpfad: Ton, Raumtreue, Rückkanal, Laufzeit).
+(ganzer Sprachpfad: Ton, Raumtreue, Rückkanal, Laufzeit),
+`scripts/audio-ende-zu-ende.sh` (derselbe Weg mit Geräten: Aufnahme,
+Entrauschung, Gate, Opus, Jitter-Puffer, Wiedergabe).
+
+## 2b. Verlust und Jitter auf einem Rechner (2026-11-13)
+
+`tc netem` braucht Root-Rechte und einen zweiten Rechner. Es geht auch ohne:
+`scripts/verlustproxy.py` ist eine UDP-Störstrecke — Verlust, Jitter,
+Verzögerung — zwischen Client und Server. Der Client merkt keinen Unterschied,
+weil QUIC nur eine Gegenstelle sieht.
+
+`scripts/verlustprobe.sh` misst damit zwei Sprecher gleichzeitig:
+
+```
+Sprecher direkt        440 Hz
+Sprecher mit 5 % Verlust  660 Hz
+Hörer hinter 20 ms Verzögerung + 25 ms Jitter
+```
+
+Ergebnis (Loopback, Release):
+
+```
+Störstrecke: 22 Pakete verworfen (5 %)
+Ton direkt  440 Hz: hörbar in ~3 920 ms von 4 000 ms
+Ton Verlust 660 Hz: hörbar in ~3 880 ms von 4 000 ms
+BESTANDEN
+```
+
+Beide Sprecher kommen durch; die 22 verworfenen Pakete erzeugen **keine**
+hörbare Lücke. Das ist der Beleg für den Paritätsrahmen im Client — bis jetzt
+stand dazu nur „Test im Code".
+
+**Was diese Messung nicht zeigt:** ein echtes WAN (Umlaufzeit, Reordering,
+Wechsel der Bandbreite) und den Vergleich gegen einen TeamSpeak-Client. Beides
+bleibt offen; die Störstrecke ist die Vorarbeit dafür, weil sie ohne zweiten
+Rechner und ohne Root-Rechte läuft.
+
+## 2c. Protokollsweep: jede Nachricht einmal mit Unsinn
+
+`cargo test -p sprechwerk-server --bin sprechwerk protokollsweep` prüft jede
+Client-Nachricht mit unbrauchbarer Eingabe: unbekannte Kennungen, leerer und zu
+langer Text, `usize::MAX` in den Zählfeldern, kaputte Sprachrahmen.
+
+Drei Regeln, an denen sich das Protokoll messen lassen muss:
+
+1. **Keine Nachricht bleibt unbeantwortet.** Ein Befehl, der stillschweigend
+   nichts tut, ist im Betrieb nicht von einem Netzproblem zu unterscheiden.
+2. **Unbekannte Kennungen ergeben einen Fehler**, nicht `Ok` — sonst meldet die
+   Oberfläche „gelöscht", obwohl nie etwas da war.
+3. **Grenzwerte werden abgewiesen, nicht abgeschnitten.**
+
+Der Sweep hat drei Fehler gefunden (alle behoben): `Trennen` und `Sperren`
+meldeten `Ok` für Ziele, die es nicht gab bzw. für Kennungen, die keine waren;
+und derselbe Schlüssel in **anderer Groß-/Kleinschreibung** galt als anderes
+Mitglied — eine Sperre ließ sich durch Großschreiben umgehen.
 
 ## 3. Was die Sprachqualität bestimmt — und wo wir im Vergleich stehen
 

@@ -225,7 +225,7 @@ async fn bediene(verbindung: quinn::Connection, kern: Arc<Mutex<Kern>>) -> anyho
                     tracing::info!(mitglied = %ich, name, %adresse, "angemeldet");
                     Anmeldung::Ok(ich, antwort)
                 }
-                Err(fehler) => Anmeldung::Abgelehnt(fehler),
+                Err(fehler) => Anmeldung::Abgelehnt(*fehler),
             }
         }
     };

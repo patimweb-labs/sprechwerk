@@ -150,8 +150,57 @@ pub struct State {
     naechste_laufnummer: u64,
 }
 
+/// Bringt eine Kennung in die Form, in der sie verglichen wird.
+///
+/// Eine Kennung ist ein Ed25519-Schlüssel: 32 Byte, auf der Leitung Hex. Diese
+/// Funktion prüft **Länge und Zeichen** und vereinheitlicht Groß-/Kleinschreibung.
+///
+/// Warum das nötig ist (gemessen, siehe `protokollsweep`): `hex::decode`
+/// akzeptiert auch Großbuchstaben. Ohne Normalisierung wäre derselbe Schlüssel
+/// in zwei Schreibweisen **zwei verschiedene Mitglieder** — und eine Sperre auf
+/// `abab…` würde ein Client mit `ABAB…` umgehen.
+///
+/// Gerufen wird sie an **einer** Stelle: `Kern::anmelden`. Die Domain führt
+/// Kennungen nur noch als Identitätswerte.
+pub fn kennung_normalisieren(text: &str) -> Result<String, Error> {
+    let text = text.trim();
+    let roh = hex::decode(text).map_err(|_| Error::Kennung(text.to_string()))?;
+    if roh.len() != 32 {
+        return Err(Error::Kennung(text.to_string()));
+    }
+    Ok(hex::encode(roh))
+}
+
+/// Adresse in vergleichbarer Form: eine IP, sonst nichts.
+///
+/// Eine Sperre, die nie greifen kann, ist schlimmer als keine: sie steht im
+/// Protokoll und im Export und sieht aus, als wäre die Person gesperrt.
+fn adresse_normalisieren(text: &str) -> Result<String, Error> {
+    let text = text.trim();
+    text.parse::<std::net::IpAddr>()
+        .map(|ip| ip.to_string())
+        .map_err(|_| Error::Kennung(text.to_string()))
+}
+
 /// Aktuelles Format des Exports.
 pub const FORMAT_VERSION: u32 = 1;
+
+/// Eine Zeile des Prüfprotokolls, bevor sie geschrieben wird.
+///
+/// Benannte Felder statt acht Stellungen: an den meisten Stellen stehen drei
+/// `None` in Folge, und das Protokoll ist der Nachweis — ein vertauschtes
+/// Argument wäre dort ein Fehler, den niemand sieht.
+#[derive(Default)]
+struct Protokollzeile<'a> {
+    zeit: i64,
+    handelnder: Option<MemberId>,
+    handelnder_name: &'a str,
+    aktion: &'a str,
+    ziel: String,
+    vorher: Option<String>,
+    nachher: Option<String>,
+    ergebnis: String,
+}
 
 impl State {
     /// Neuer Zustand mit einem Empfangsraum.
@@ -1120,6 +1169,12 @@ impl State {
         if schluessel.is_none() && adresse.is_none() {
             return Err(Error::NameUngueltig);
         }
+        // Eine Sperre muss wirken können — unsinnige Kennungen und Adressen
+        // werden abgewiesen statt still als wirkungslose Zeile gespeichert.
+        let schluessel = schluessel
+            .map(|k| kennung_normalisieren(&k))
+            .transpose()?;
+        let adresse = adresse.map(|a| adresse_normalisieren(&a)).transpose()?;
         self.sperren.push(Ban {
             schluessel,
             adresse,
@@ -1226,6 +1281,18 @@ mod tests {
 
     fn zustand() -> State {
         State::neu("Testwerk", Role::Mitglied, 1_000)
+    }
+
+    /// Aus einem Kurznamen eine **gültige** Kennung (32 Byte, Hex) machen —
+    ///
+    /// Sperren verlangen eine echte Kennung; mit „k2" wäre die Sperre
+    /// wirkungslos und der Test würde die Lücke nicht bemerken.
+    fn kennung(name: &str) -> String {
+        let mut roh = [0u8; 32];
+        for (i, b) in name.as_bytes().iter().enumerate() {
+            roh[i % 32] ^= b;
+        }
+        hex::encode(roh)
     }
 
     fn admin(state: &mut State) -> MemberId {
@@ -1418,21 +1485,53 @@ mod tests {
         assert_eq!(s.text_senden(a, &lang, 1_001), Err(Error::NachrichtZuLang));
     }
 
+    /// Eine Sperre greift beim Anmelden — und nur bei **derselben**
+    /// Schreibweise der Kennung. Wer die Kennung in anderer Schreibweise
+    /// schickt, umgeht die Sperre; deshalb normalisiert `Kern::anmelden`
+    /// (Test: `kern::protokollsweep`), bevor die Domain sie sieht.
     #[test]
     fn sperre_verhindert_anmeldung() {
         let mut s = zustand();
         let a = admin(&mut s);
-        let b = s.anmelden("k2", "Bosse", 1_001).unwrap();
-        s.sperren(a, Some("k2".into()), None, "Hausfriedensbruch", 1_002)
+        let k2 = kennung("k2");
+        let b = s.anmelden(&k2, "Bosse", 1_001).unwrap();
+        s.sperren(a, Some(k2.clone()), None, "Hausfriedensbruch", 1_002)
             .unwrap();
         assert!(matches!(
-            s.anmelden("k2", "Bosse", 1_003),
+            s.anmelden(&k2, "Bosse", 1_003),
             Err(Error::Gesperrt(_))
         ));
         // Entsperren wirkt.
-        s.entsperren(a, Some("k2"), None, 1_004).unwrap();
-        let wieder = s.anmelden("k2", "Bosse", 1_005).unwrap();
+        s.entsperren(a, Some(&k2), None, 1_004).unwrap();
+        let wieder = s.anmelden(&k2, "Bosse", 1_005).unwrap();
         assert_eq!(wieder, b);
+    }
+
+    /// Eine Sperre mit unsinniger Kennung oder Adresse wird abgewiesen: sie
+    /// stünde sonst im Protokoll und würde nie jemanden treffen.
+    #[test]
+    fn unsinnige_sperre_wird_abgewiesen() {
+        let mut s = zustand();
+        let a = admin(&mut s);
+        assert_eq!(
+            s.sperren(a, Some("nicht-hex".into()), None, "Test", 1_002),
+            Err(Error::Kennung("nicht-hex".into()))
+        );
+        assert_eq!(
+            s.sperren(a, Some("00112233".into()), None, "Test", 1_003),
+            Err(Error::Kennung("00112233".into()))
+        );
+        assert_eq!(
+            s.sperren(a, None, Some("keine-adresse".into()), "Test", 1_004),
+            Err(Error::Kennung("keine-adresse".into()))
+        );
+        // Schreibweise wird vereinheitlicht: Großbuchstaben sind dieselbe Sperre.
+        s.sperren(a, Some(kennung("k9").to_uppercase()), None, "Test", 1_005)
+            .unwrap();
+        assert!(matches!(
+            s.anmelden(&kennung("k9"), "Eve", 1_006),
+            Err(Error::Gesperrt(_))
+        ));
     }
 
     #[test]
@@ -1442,7 +1541,7 @@ mod tests {
         let m = s.anmelden("k2", "Mira", 1_001).unwrap();
         s.rolle_setzen(a, m, Role::Moderator, 1_002).unwrap();
         assert_eq!(
-            s.sperren(m, Some("k3".into()), None, "test", 1_003),
+            s.sperren(m, Some(kennung("k3")), None, "test", 1_003),
             Err(Error::RechtFehlt(Capability::Sperren))
         );
     }
@@ -1594,7 +1693,7 @@ mod tests {
         s.text_senden(a, "Protokoll", 1_012).unwrap();
         s.sperren(
             a,
-            Some("k-boese".into()),
+            Some(kennung("k-boese")),
             Some("192.0.2.7".into()),
             "Spam",
             1_013,

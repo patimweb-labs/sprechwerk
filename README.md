@@ -58,14 +58,25 @@ cargo build --release
 Opus wird **zur Laufzeit** geladen (`libopus.so.0` / `libopus.dylib` /
 `opus.dll`) und darf neben der Anwendung liegen.
 
-## Ton prüfen (ohne Mikrofon)
+## Ton prüfen (ohne Mikrofon, ohne zweite Person)
 
 ```bash
-scripts/sprechprobe.sh
+scripts/sprechprobe.sh          # Netz und Codec: Ton durch den Server
+scripts/lastprobe.sh            # vier Sprecher gleichzeitig, drei Hörer
+scripts/verlustprobe.sh         # 5 % Verlust und Jitter auf einer Störstrecke
+scripts/audio-ende-zu-ende.sh   # der echte Pfad: Geräte, RNNoise, Gate, Opus
 ```
 
-Startet einen eigenen Server, schickt einen 440-Hz-Ton durch den Sprachpfad,
-schneidet ihn mit, prüft Frequenz, Raumtreue, Rückkanal und Laufzeit.
+`sprechprobe.sh` startet einen eigenen Server, schickt einen 440-Hz-Ton durch
+den Sprachpfad, schneidet ihn mit und prüft Frequenz, Raumtreue, Rückkanal und
+Laufzeit.
+
+`audio-ende-zu-ende.sh` legt vier virtuelle PipeWire-Geräte an und verbindet
+zwei **echte** Endpunkte über den echten Server. Damit läuft die ganze Kette
+wie im Fenster — Aufnahme, Rauschunterdrückung, Noisegate, Opus, Vorlauf,
+Server, Jitter-Puffer, Wiedergabe —, und der Mitschnitt wird ausgewertet:
+kommt der Ton in der richtigen Frequenz an, und kommt auch ein stimmähnliches
+Signal durch die Entrauschung? Alles auf einem Rechner.
 
 ## Schnellstart
 
