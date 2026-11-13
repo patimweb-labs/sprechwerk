@@ -106,7 +106,11 @@ mod tests {
         dazu_mischen(&mut summe, &neu);
         // 0.92 + 0.92 = 1.84 → weich begrenzt auf rund 0.95 (Faktor 1.04),
         // nicht hart auf 1.0 abgeschnitten (das wäre 32767).
-        assert!(summe[0] > 30_000, "lauter als eine Stimme allein: {}", summe[0]);
+        assert!(
+            summe[0] > 30_000,
+            "lauter als eine Stimme allein: {}",
+            summe[0]
+        );
         assert!(
             summe[0] < 32_000,
             "weiche Begrenzung statt Anschlag: {}",
@@ -122,7 +126,10 @@ mod tests {
         assert_eq!(&inhalt[0..4], b"RIFF");
         assert_eq!(&inhalt[8..12], b"WAVE");
         assert_eq!(inhalt.len(), 44 + 960);
-        assert_eq!(u32::from_le_bytes(inhalt[24..28].try_into().unwrap()), 48_000);
+        assert_eq!(
+            u32::from_le_bytes(inhalt[24..28].try_into().unwrap()),
+            48_000
+        );
         let _ = std::fs::remove_file(pfad);
     }
 }

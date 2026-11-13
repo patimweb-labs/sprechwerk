@@ -48,8 +48,7 @@ type Encode = unsafe extern "C" fn(*mut c_void, *const i16, c_int, *mut u8, i32)
 type EncoderCtl = unsafe extern "C" fn(*mut c_void, c_int, ...) -> c_int;
 type DecoderCreate = unsafe extern "C" fn(i32, c_int, *mut c_int) -> *mut c_void;
 type DecoderDestroy = unsafe extern "C" fn(*mut c_void);
-type Decode =
-    unsafe extern "C" fn(*mut c_void, *const u8, i32, *mut i16, c_int, c_int) -> c_int;
+type Decode = unsafe extern "C" fn(*mut c_void, *const u8, i32, *mut i16, c_int, c_int) -> c_int;
 
 /// Die geladene Bibliothek samt Funktionszeigern.
 struct Bibliothek {
@@ -148,7 +147,8 @@ impl Kodierer {
     pub fn neu() -> Result<Self> {
         let b = bibliothek()?;
         let mut fehler: c_int = 0;
-        let st = unsafe { (b.encoder_create)(ABTASTRATE as i32, 1, OPUS_APPLICATION_VOIP, &mut fehler) };
+        let st =
+            unsafe { (b.encoder_create)(ABTASTRATE as i32, 1, OPUS_APPLICATION_VOIP, &mut fehler) };
         if st.is_null() || fehler != 0 {
             return Err(anyhow!("opus_encoder_create: Fehler {fehler}"));
         }
@@ -294,8 +294,8 @@ mod tests {
     fn sinus(anzahl: usize, hz: f32, amplitude: f32) -> Vec<i16> {
         (0..anzahl)
             .map(|i| {
-                let wert =
-                    amplitude * (2.0 * std::f32::consts::PI * hz * i as f32 / ABTASTRATE as f32).sin();
+                let wert = amplitude
+                    * (2.0 * std::f32::consts::PI * hz * i as f32 / ABTASTRATE as f32).sin();
                 (wert * i16::MAX as f32) as i16
             })
             .collect()
@@ -321,7 +321,9 @@ mod tests {
             let len = k.kodiere(&pcm, &mut puffer).expect("kodieren");
             assert!(len > 0 && len < 1200, "Rahmenlänge {len}");
             let mut zurueck = vec![0i16; RAHMEN_SAMPLES];
-            let geholt = d.dekodiere(&puffer[..len], &mut zurueck).expect("dekodieren");
+            let geholt = d
+                .dekodiere(&puffer[..len], &mut zurueck)
+                .expect("dekodieren");
             assert_eq!(geholt, RAHMEN_SAMPLES);
         }
 
@@ -330,7 +332,10 @@ mod tests {
         d.dekodiere(&puffer[..len], &mut zurueck).unwrap();
         let energie: f32 =
             zurueck.iter().map(|s| (*s as f32).powi(2)).sum::<f32>() / RAHMEN_SAMPLES as f32;
-        assert!(energie.sqrt() > 1000.0, "Signal kommt zu leise an: {energie}");
+        assert!(
+            energie.sqrt() > 1000.0,
+            "Signal kommt zu leise an: {energie}"
+        );
     }
 
     #[test]
@@ -341,8 +346,7 @@ mod tests {
         for _ in 0..5 {
             let len = k.kodiere(&pcm, &mut puffer).unwrap();
             assert!(
-                len + sprechwerk_protocol::SPRACHKOPF_LEN
-                    <= sprechwerk_protocol::MAX_SPRACHRAHMEN,
+                len + sprechwerk_protocol::SPRACHKOPF_LEN <= sprechwerk_protocol::MAX_SPRACHRAHMEN,
                 "Rahmen {len} Byte passt nicht ins Datagramm"
             );
         }

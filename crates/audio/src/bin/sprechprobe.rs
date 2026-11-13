@@ -116,9 +116,7 @@ fn main() -> Result<()> {
 
         if let Some(name) = neuer_raum {
             verbindung
-                .sende(sprechwerk_protocol::ClientFrame::RaumAnlegen {
-                    name: name.clone(),
-                })
+                .sende(sprechwerk_protocol::ClientFrame::RaumAnlegen { name: name.clone() })
                 .await?;
             // Antwort mit der neuen Raumliste abwarten.
             let mut neu = None;
@@ -200,8 +198,7 @@ fn main() -> Result<()> {
                     .map(|i| {
                         let t = (folge as f32 * RAHMEN_SAMPLES as f32 + i as f32)
                             / sprechwerk_audio::pcm::ABTASTRATE as f32;
-                        let wert =
-                            0.5 * (2.0 * std::f32::consts::PI * hz as f32 * t).sin();
+                        let wert = 0.5 * (2.0 * std::f32::consts::PI * hz as f32 * t).sin();
                         (wert * i16::MAX as f32) as i16
                     })
                     .collect();

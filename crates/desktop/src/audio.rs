@@ -39,7 +39,9 @@ pub struct Geraeteliste {
 /// Fehler, die der Oberfläche als Meldung angezeigt werden.
 #[derive(Debug, thiserror::Error)]
 pub enum Fehler {
-    #[error("Audio-Werkzeuge fehlen (pactl/parec/paplay) — ist PipeWire oder PulseAudio installiert?")]
+    #[error(
+        "Audio-Werkzeuge fehlen (pactl/parec/paplay) — ist PipeWire oder PulseAudio installiert?"
+    )]
     Werkzeug,
     #[error("Gerät nicht gefunden: {0}")]
     Geraet(String),
@@ -129,7 +131,10 @@ fn lesbar(id: &str) -> String {
 
 /// Vorgabegerät laut `pactl get-default-…`.
 fn vorgabe(art: &str) -> Option<String> {
-    let ausgabe = Command::new("pactl").args(["get-default", art]).output().ok()?;
+    let ausgabe = Command::new("pactl")
+        .args(["get-default", art])
+        .output()
+        .ok()?;
     if !ausgabe.status.success() {
         return None;
     }
@@ -231,12 +236,7 @@ pub fn pegel(geraet: &str, millisekunden: u64) -> Result<u8, Fehler> {
         )));
     }
     let mut befehl = Command::new("parec");
-    befehl.args([
-        "--format=s16le",
-        "--rate=16000",
-        "--channels=1",
-        "--raw",
-    ]);
+    befehl.args(["--format=s16le", "--rate=16000", "--channels=1", "--raw"]);
     if !geraet.is_empty() {
         befehl.arg(format!("--device={geraet}"));
     }
@@ -354,7 +354,11 @@ mod tests {
         assert_eq!(&daten[8..12], b"WAVE");
         assert!(daten.len() > 44, "Kopfdaten plus Ton");
         // 48 kHz, 0,7 s, 16 Bit mono ≈ 67 200 Byte Nutzlast.
-        assert!(daten.len() > 60_000 && daten.len() < 70_000, "{}", daten.len());
+        assert!(
+            daten.len() > 60_000 && daten.len() < 70_000,
+            "{}",
+            daten.len()
+        );
         let _ = std::fs::remove_file(pfad);
     }
 }

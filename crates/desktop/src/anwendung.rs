@@ -320,7 +320,10 @@ async fn lauf<F>(
                             None => {
                                 let _ = antwort.send(Err(format!("{server} nicht auflösbar")));
                                 if let Ok(mut z) = zustand.lock() {
-                                    abbilden::getrennt(&mut z, Some(format!("{server} nicht auflösbar")));
+                                    abbilden::getrennt(
+                                        &mut z,
+                                        Some(format!("{server} nicht auflösbar")),
+                                    );
                                 }
                                 melden(&zustand, &melde);
                                 continue;
@@ -383,11 +386,7 @@ async fn lauf<F>(
                         tokio::spawn(async move {
                             loop {
                                 while let Some(d) = sprech_senden.naechstes_datagramm() {
-                                    let d = verschluessle(
-                                        &sende_verwaltung,
-                                        &sende_raum,
-                                        d,
-                                    );
+                                    let d = verschluessle(&sende_verwaltung, &sende_raum, d);
                                     if sendequelle.send_datagram(bytes::Bytes::from(d)).is_err() {
                                         return;
                                     }

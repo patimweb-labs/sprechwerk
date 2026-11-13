@@ -151,7 +151,9 @@ impl Raumschluessel {
                     aad: &aad,
                 },
             )
-            .map_err(|_| anyhow!("Entschlüsseln fehlgeschlagen (falscher Schlüssel oder verändert)"))
+            .map_err(|_| {
+                anyhow!("Entschlüsseln fehlgeschlagen (falscher Schlüssel oder verändert)")
+            })
     }
 
     /// Nonce: Folgenummer (2) + Zähler aus dem Schlüssel (10), damit dieselbe
@@ -249,12 +251,7 @@ impl Umschlag {
         let eph = PublicKey::from(<[u8; 32]>::try_from(eph_bytes)?);
         let gemeinsam = empfaenger.diffie_hellman(&eph);
         let statisch = empfaenger.diffie_hellman(absender);
-        let kex = gemeinsame_ableitung(
-            gemeinsam.as_bytes(),
-            statisch.as_bytes(),
-            raum,
-            epoche,
-        )?;
+        let kex = gemeinsame_ableitung(gemeinsam.as_bytes(), statisch.as_bytes(), raum, epoche)?;
 
         let aad = zusatzdaten(raum, epoche);
         let klar = ChaCha20Poly1305::new(Key::from_slice(&kex))
@@ -321,8 +318,8 @@ pub fn rahmen_verschluesseln(
     raum: &str,
 ) -> Result<Vec<u8>> {
     use sprechwerk_protocol::{Sprachkopf, CODEC_VERSCHLUESSELT};
-    let (kopf, nutzlast) = Sprachkopf::lesen(datagramm)
-        .ok_or_else(|| anyhow!("kein gültiger Sprachrahmen"))?;
+    let (kopf, nutzlast) =
+        Sprachkopf::lesen(datagramm).ok_or_else(|| anyhow!("kein gültiger Sprachrahmen"))?;
     let geheim = schluessel.verschluesseln(kopf.folge, raum, nutzlast)?;
     let mut neuer_kopf = kopf;
     neuer_kopf.codec = CODEC_VERSCHLUESSELT;
@@ -338,8 +335,8 @@ pub fn rahmen_entschluesseln(
     raum: &str,
 ) -> Result<Vec<u8>> {
     use sprechwerk_protocol::{Sprachkopf, CODEC_OPUS, CODEC_VERSCHLUESSELT};
-    let (kopf, nutzlast) = Sprachkopf::lesen(datagramm)
-        .ok_or_else(|| anyhow!("kein gültiger Sprachrahmen"))?;
+    let (kopf, nutzlast) =
+        Sprachkopf::lesen(datagramm).ok_or_else(|| anyhow!("kein gültiger Sprachrahmen"))?;
     if kopf.codec != CODEC_VERSCHLUESSELT {
         return Err(anyhow!("Rahmen ist nicht verschlüsselt"));
     }
@@ -356,7 +353,12 @@ mod tests {
     fn paar() -> (StaticSecret, PublicKey, StaticSecret, PublicKey) {
         let a = StaticSecret::from([7u8; 32]);
         let b = StaticSecret::from([9u8; 32]);
-        (a.clone(), PublicKey::from(&a), b.clone(), PublicKey::from(&b))
+        (
+            a.clone(),
+            PublicKey::from(&a),
+            b.clone(),
+            PublicKey::from(&b),
+        )
     }
 
     #[test]
@@ -379,7 +381,11 @@ mod tests {
     fn ableitung_ist_stabil_und_verschieden() {
         let a = geheimnis_aus_anmeldeschluessel(&[1u8; 32]);
         let b = geheimnis_aus_anmeldeschluessel(&[1u8; 32]);
-        assert_eq!(PublicKey::from(&a), PublicKey::from(&b), "gleicher Same → gleicher Schlüssel");
+        assert_eq!(
+            PublicKey::from(&a),
+            PublicKey::from(&b),
+            "gleicher Same → gleicher Schlüssel"
+        );
         let c = geheimnis_aus_anmeldeschluessel(&[2u8; 32]);
         assert_ne!(PublicKey::from(&a), PublicKey::from(&c));
     }
@@ -422,8 +428,15 @@ mod tests {
         let schluessel = Raumschluessel::neu(2);
         let rohdaten = b"Opus-Rahmen mit Sprache";
         let geheim = schluessel.verschluesseln(17, "raum_9", rohdaten).unwrap();
-        assert_ne!(&geheim[..], &rohdaten[..], "Klartext darf nicht durchscheinen");
-        assert!(!geheim.windows(5).any(|w| w == b"Sprac"), "kein Klartext im Geheimtext");
+        assert_ne!(
+            &geheim[..],
+            &rohdaten[..],
+            "Klartext darf nicht durchscheinen"
+        );
+        assert!(
+            !geheim.windows(5).any(|w| w == b"Sprac"),
+            "kein Klartext im Geheimtext"
+        );
         assert_eq!(geheim.len(), rohdaten.len() + AUFSCHLAG);
         let zurueck = schluessel.entschluesseln(17, "raum_9", &geheim).unwrap();
         assert_eq!(zurueck, rohdaten);

@@ -334,10 +334,7 @@ mod mit_cpal {
                     move |ziel: &mut [f32], _| {
                         let werte = hole(&empfangen, &rest_cb, ziel.len() / kanaele.max(1), rate);
                         for (i, platz) in ziel.iter_mut().enumerate() {
-                            let wert = werte
-                                .get(i / kanaele.max(1))
-                                .copied()
-                                .unwrap_or(0) as f32
+                            let wert = werte.get(i / kanaele.max(1)).copied().unwrap_or(0) as f32
                                 / i16::MAX as f32;
                             *platz = wert;
                         }

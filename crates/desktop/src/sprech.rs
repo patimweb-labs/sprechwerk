@@ -178,11 +178,7 @@ impl Sprechbetrieb {
             mikrofon.clone().unwrap_or_default(),
             lautsprecher.clone().unwrap_or_default(),
         );
-        let aktuell = self
-            .geraete
-            .lock()
-            .map(|g| g.clone())
-            .unwrap_or_default();
+        let aktuell = self.geraete.lock().map(|g| g.clone()).unwrap_or_default();
         if aktuell == gewuenscht {
             return Ok(());
         }

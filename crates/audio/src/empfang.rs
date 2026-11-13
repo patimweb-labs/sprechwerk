@@ -111,7 +111,8 @@ impl Empfänger {
             }
         }
         let fertig = eintrag.hersteller.nimm(datagramm);
-        let angenommen = !fertig.is_empty() || crate::verlust::lese(datagramm) != crate::verlust::Empfangen::Verworfen;
+        let angenommen = !fertig.is_empty()
+            || crate::verlust::lese(datagramm) != crate::verlust::Empfangen::Verworfen;
         for (_, daten) in fertig {
             eintrag.schlange.push_back(daten);
         }
@@ -158,8 +159,7 @@ impl Empfänger {
 
         // Sprecher aufräumen, die 30 s nichts geschickt haben.
         let grenze = Duration::from_secs(30);
-        self.sprecher
-            .retain(|_, s| s.zuletzt.elapsed() < grenze);
+        self.sprecher.retain(|_, s| s.zuletzt.elapsed() < grenze);
 
         self.misch.clone()
     }
@@ -178,8 +178,8 @@ impl Empfänger {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sprechwerk_protocol::Sprachkopf;
     use crate::opus::{Kodierer, RAHMEN_SAMPLES as OPUS_SAMPLES};
+    use sprechwerk_protocol::Sprachkopf;
 
     /// Eine ganze Paritätsgruppe: vier Rahmen plus Parität.
     fn gruppe(basis: u16, von: u16, pcm: &[i16]) -> Vec<Vec<u8>> {
@@ -197,7 +197,11 @@ mod tests {
         let mut raus: Vec<Vec<u8>> = rahmen
             .iter()
             .enumerate()
-            .map(|(i, daten)| Sprachkopf::neu(basis + i as u16).mit_von(von).schreiben(daten))
+            .map(|(i, daten)| {
+                Sprachkopf::neu(basis + i as u16)
+                    .mit_von(von)
+                    .schreiben(daten)
+            })
             .collect();
         let mut paritaet = paritaets_datagramm(basis, &laengen, &summe);
         // Der Server stempelt die Sprecher-Nummer in jeden Rahmen — hier im
@@ -210,8 +214,8 @@ mod tests {
     fn sinus(amplitude: f32) -> Vec<i16> {
         (0..OPUS_SAMPLES)
             .map(|i| {
-                let w = amplitude
-                    * (2.0 * std::f32::consts::PI * 500.0 * i as f32 / 48_000.0).sin();
+                let w =
+                    amplitude * (2.0 * std::f32::consts::PI * 500.0 * i as f32 / 48_000.0).sin();
                 (w * i16::MAX as f32) as i16
             })
             .collect()

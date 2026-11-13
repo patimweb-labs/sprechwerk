@@ -220,15 +220,10 @@ impl Wiederhersteller {
                 });
                 self.offen.insert(folge, daten);
             }
-            Empfangen::Paritaet {
-                ab,
-                laengen,
-                summe,
-            } => {
+            Empfangen::Paritaet { ab, laengen, summe } => {
                 let anzahl = laengen.len() as u16;
                 let bis = ab.wrapping_add(anzahl);
-                let fehlend: Vec<u16> =
-                    (ab..bis).filter(|f| !self.offen.contains_key(f)).collect();
+                let fehlend: Vec<u16> = (ab..bis).filter(|f| !self.offen.contains_key(f)).collect();
                 if fehlend.len() == 1 {
                     let luecke = (fehlend[0] - ab) as usize;
                     let vorhanden: Vec<Vec<u8>> = (ab..bis)
@@ -351,7 +346,11 @@ mod tests {
         alle.extend(w.nimm(&paritaet));
         assert_eq!(alle.len(), 4, "Parität füllt die Lücke");
         assert_eq!(alle[2].0, 2, "auch die Folgenummer stimmt");
-        assert_eq!(alle[2].1, vec![3u8; 42], "Inhalt bitgenau wiederhergestellt");
+        assert_eq!(
+            alle[2].1,
+            vec![3u8; 42],
+            "Inhalt bitgenau wiederhergestellt"
+        );
         assert_eq!(w.zaehler(), (1, 0));
     }
 

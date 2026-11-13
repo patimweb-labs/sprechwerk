@@ -142,7 +142,10 @@ mod tests {
         assert_eq!(e.thema, "dark");
         assert_eq!(e.sprache, "de");
         assert_eq!(e.server, "127.0.0.1:7443");
-        assert_eq!(e.vorlauf_ms, 60, "Vorlauf gegen abgeschnittenes erstes Wort");
+        assert_eq!(
+            e.vorlauf_ms, 60,
+            "Vorlauf gegen abgeschnittenes erstes Wort"
+        );
         assert!(!e.push_to_talk);
         assert!(e.favoriten.is_empty());
         assert!(
@@ -153,7 +156,8 @@ mod tests {
 
     #[test]
     fn speichern_und_laden_ist_umkehrbar() {
-        let verzeichnis = std::env::temp_dir().join(format!("sprechwerk-desktop-{}", std::process::id()));
+        let verzeichnis =
+            std::env::temp_dir().join(format!("sprechwerk-desktop-{}", std::process::id()));
         let pfad = verzeichnis.join("einstellungen.json");
         let mut e = Einstellungen::default();
         e.name = "Ada".into();

@@ -186,8 +186,7 @@ impl Sender {
             if self.einstellungen.paritaet {
                 self.gruppe.push(rahmen.clone());
                 if self.gruppe.len() == GRUPPE as usize {
-                    let laengen: Vec<u16> =
-                        self.gruppe.iter().map(|r| r.len() as u16).collect();
+                    let laengen: Vec<u16> = self.gruppe.iter().map(|r| r.len() as u16).collect();
                     let summe = Paritaet::summe(&self.gruppe);
                     let ab = self.folge.wrapping_sub(GRUPPE);
                     raus.push(paritaets_datagramm(ab, &laengen, &summe));
@@ -219,8 +218,9 @@ mod tests {
         (0..anzahl)
             .map(|i| {
                 amplitude
-                    * (2.0 * std::f32::consts::PI * 500.0 * i as f32 / crate::pcm::ABTASTRATE as f32)
-                    .sin()
+                    * (2.0 * std::f32::consts::PI * 500.0 * i as f32
+                        / crate::pcm::ABTASTRATE as f32)
+                        .sin()
             })
             .collect()
     }

@@ -25,10 +25,10 @@ pub static BLOECKE: AtomicU64 = AtomicU64::new(0);
 
 pub mod empfang;
 pub mod geraet;
-pub mod verlust;
 pub mod opus;
 pub mod pcm;
 pub mod senden;
+pub mod verlust;
 
 pub use empfang::Empfänger;
 pub use senden::{Sendeeinstellungen, Sender};

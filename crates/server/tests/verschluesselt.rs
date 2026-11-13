@@ -141,10 +141,7 @@ async fn verbinde(adresse: SocketAddr, schluessel: &Schluessel, name: &str) -> V
 }
 
 /// Wartet auf den nächsten Rahmen, der zu `passt`, und liefert ihn.
-async fn warte_auf(
-    v: &mut Verbindung,
-    passt: impl Fn(&ServerFrame) -> bool,
-) -> ServerFrame {
+async fn warte_auf(v: &mut Verbindung, passt: impl Fn(&ServerFrame) -> bool) -> ServerFrame {
     for _ in 0..60 {
         match tokio::time::timeout(Duration::from_millis(500), v.empfang()).await {
             Ok(Ok(Some(f))) if passt(&f) => return f,
@@ -200,11 +197,13 @@ async fn verschluesselte_sprache_geht_durch_den_server() {
     })
     .await
     {
-        ServerFrame::Raeume { raeume } => raeume
-            .iter()
-            .find(|r| r.id == raum)
-            .expect("Raum")
-            .verschluesselt,
+        ServerFrame::Raeume { raeume } => {
+            raeume
+                .iter()
+                .find(|r| r.id == raum)
+                .expect("Raum")
+                .verschluesselt
+        }
         _ => unreachable!(),
     };
     assert!(verschluesselt, "der Raum gilt jetzt als verschlüsselt");
@@ -231,11 +230,8 @@ async fn verschluesselte_sprache_geht_durch_den_server() {
         &raumschluessel,
     )
     .unwrap();
-    let text = sprechwerk_adapters::verschluesselt::zu_signieren(
-        raum.text().as_str(),
-        1,
-        &umschlag.bytes,
-    );
+    let text =
+        sprechwerk_adapters::verschluesselt::zu_signieren(raum.text().as_str(), 1, &umschlag.bytes);
     let unterschrift = schluessel_a.unterschreibe(&text);
 
     a.sende(ClientFrame::Schluesselpaket {
@@ -248,10 +244,7 @@ async fn verschluesselte_sprache_geht_durch_den_server() {
     .await
     .unwrap();
 
-    let paket = warte_auf(&mut b, |f| {
-        matches!(f, ServerFrame::Schluesselpaket { .. })
-    })
-    .await;
+    let paket = warte_auf(&mut b, |f| matches!(f, ServerFrame::Schluesselpaket { .. })).await;
     let ServerFrame::Schluesselpaket {
         raum: paket_raum,
         epoche,
@@ -302,7 +295,8 @@ async fn verschluesselte_sprache_geht_durch_den_server() {
     .unwrap();
     // Kein Klartext im Geheimtext (das ist die Zusage).
     assert!(!geheim.windows(5).any(|w| w == b"Sprach"));
-    a.sprache_senden(bytes::Bytes::from(geheim.clone())).unwrap();
+    a.sprache_senden(bytes::Bytes::from(geheim.clone()))
+        .unwrap();
 
     let empfangen = tokio::time::timeout(Duration::from_secs(3), b.sprache_empfangen())
         .await
@@ -336,9 +330,11 @@ async fn schluesselpaket_verlaesst_den_raum_nicht() {
     let mut fremd = verbinde(adresse, &Schluessel::neu(), "Fremd").await;
 
     // A legt einen Raum an, verschlüsselt ihn und bleibt drin.
-    a.sende(ClientFrame::RaumAnlegen { name: "Geheim".into() })
-        .await
-        .unwrap();
+    a.sende(ClientFrame::RaumAnlegen {
+        name: "Geheim".into(),
+    })
+    .await
+    .unwrap();
     let raum = match warte_auf(&mut a, |f| matches!(f, ServerFrame::Raeume { .. })).await {
         ServerFrame::Raeume { raeume } => raeume.iter().find(|r| r.name == "Geheim").unwrap().id,
         _ => unreachable!(),
@@ -471,11 +467,13 @@ async fn epoche_dreht_sich_wenn_jemand_geht() {
     .await
     .unwrap();
     let raum = match warte_auf(&mut a, |f| matches!(f, ServerFrame::Raeume { .. })).await {
-        ServerFrame::Raeume { raeume } => raeume
-            .iter()
-            .find(|r| r.name == "Geheim")
-            .expect("neuer Raum")
-            .id,
+        ServerFrame::Raeume { raeume } => {
+            raeume
+                .iter()
+                .find(|r| r.name == "Geheim")
+                .expect("neuer Raum")
+                .id
+        }
         _ => unreachable!(),
     };
     for v in [&mut a, &mut b] {
@@ -493,11 +491,13 @@ async fn epoche_dreht_sich_wenn_jemand_geht() {
     })
     .await
     {
-        ServerFrame::Raeume { raeume } => raeume
-            .iter()
-            .find(|r| r.id == raum)
-            .expect("Raum")
-            .verschluesselt_seit,
+        ServerFrame::Raeume { raeume } => {
+            raeume
+                .iter()
+                .find(|r| r.id == raum)
+                .expect("Raum")
+                .verschluesselt_seit
+        }
         _ => unreachable!(),
     };
     assert!(seit > 0, "verschlüsselter Raum ohne Zeitstempel");
@@ -512,11 +512,13 @@ async fn epoche_dreht_sich_wenn_jemand_geht() {
     })
     .await
     {
-        ServerFrame::Raeume { raeume } => raeume
-            .iter()
-            .find(|r| r.id == raum)
-            .expect("Raum")
-            .verschluesselt_seit,
+        ServerFrame::Raeume { raeume } => {
+            raeume
+                .iter()
+                .find(|r| r.id == raum)
+                .expect("Raum")
+                .verschluesselt_seit
+        }
         _ => unreachable!(),
     };
     assert!(
@@ -547,11 +549,13 @@ async fn abbruch_mitten_im_gespraech_raeumt_auf_und_dreht_die_epoche() {
     .await
     .unwrap();
     let raum = match warte_auf(&mut a, |f| matches!(f, ServerFrame::Raeume { .. })).await {
-        ServerFrame::Raeume { raeume } => raeume
-            .iter()
-            .find(|r| r.name == "Geheim")
-            .expect("neuer Raum")
-            .id,
+        ServerFrame::Raeume { raeume } => {
+            raeume
+                .iter()
+                .find(|r| r.name == "Geheim")
+                .expect("neuer Raum")
+                .id
+        }
         _ => unreachable!(),
     };
     for v in [&mut a, &mut b] {
@@ -568,11 +572,13 @@ async fn abbruch_mitten_im_gespraech_raeumt_auf_und_dreht_die_epoche() {
     })
     .await
     {
-        ServerFrame::Raeume { raeume } => raeume
-            .iter()
-            .find(|r| r.id == raum)
-            .expect("Raum")
-            .verschluesselt_seit,
+        ServerFrame::Raeume { raeume } => {
+            raeume
+                .iter()
+                .find(|r| r.id == raum)
+                .expect("Raum")
+                .verschluesselt_seit
+        }
         _ => unreachable!(),
     };
 
@@ -619,7 +625,10 @@ async fn abbruch_mitten_im_gespraech_raeumt_auf_und_dreht_die_epoche() {
 
     // Zurück mit derselben Kennung: Rolle bleibt, kein doppelter Eintrag.
     let mut wieder = verbinde(adresse, &schluessel_b, "Bosse").await;
-    assert_eq!(wieder.ich, b_id, "dieselbe Kennung ergibt ein neues Mitglied");
+    assert_eq!(
+        wieder.ich, b_id,
+        "dieselbe Kennung ergibt ein neues Mitglied"
+    );
     assert_eq!(
         wieder.rolle,
         sprechwerk_domain::Role::Mitglied,
@@ -654,11 +663,9 @@ async fn schluesselanfrage_wird_an_den_raum_weitergeleitet() {
     .await
     .unwrap();
     let raum = match warte_auf(&mut a, |f| matches!(f, ServerFrame::Raeume { .. })).await {
-        ServerFrame::Raeume { raeume } => raeume
-            .iter()
-            .find(|r| r.name == "Geheim")
-            .expect("Raum")
-            .id,
+        ServerFrame::Raeume { raeume } => {
+            raeume.iter().find(|r| r.name == "Geheim").expect("Raum").id
+        }
         _ => unreachable!(),
     };
     for v in [&mut a, &mut b] {
@@ -667,7 +674,9 @@ async fn schluesselanfrage_wird_an_den_raum_weitergeleitet() {
     }
 
     // Ohne Verschlüsselung: die Bitte ist sinnlos, also abgelehnt.
-    b.sende(ClientFrame::SchluesselAnfrage { raum }).await.unwrap();
+    b.sende(ClientFrame::SchluesselAnfrage { raum })
+        .await
+        .unwrap();
     let absage = warte_auf(&mut b, |f| matches!(f, ServerFrame::Fehler { .. })).await;
     assert!(
         matches!(absage, ServerFrame::Fehler { .. }),
@@ -684,8 +693,13 @@ async fn schluesselanfrage_wird_an_den_raum_weitergeleitet() {
     })
     .await;
 
-    b.sende(ClientFrame::SchluesselAnfrage { raum }).await.unwrap();
-    let anfrage = warte_auf(&mut a, |f| matches!(f, ServerFrame::SchluesselAnfrage { .. })).await;
+    b.sende(ClientFrame::SchluesselAnfrage { raum })
+        .await
+        .unwrap();
+    let anfrage = warte_auf(&mut a, |f| {
+        matches!(f, ServerFrame::SchluesselAnfrage { .. })
+    })
+    .await;
     match anfrage {
         ServerFrame::SchluesselAnfrage { raum: r, von } => {
             assert_eq!(r, raum);

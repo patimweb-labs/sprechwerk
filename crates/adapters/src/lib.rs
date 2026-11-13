@@ -11,8 +11,8 @@
 
 pub mod echo;
 pub mod klang;
-pub mod verschluesselt;
 pub mod sprechpfad;
+pub mod verschluesselt;
 
 use anyhow::Context;
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
