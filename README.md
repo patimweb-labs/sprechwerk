@@ -91,6 +91,25 @@ sonst nicht einsammelt. Für die Oberfläche wird die Komponentenbibliothek
 `weppelmann-ui` neben das Repository geklont; ist sie nicht öffentlich, braucht
 der Job das Secret `WEPPELMANN_UI_TOKEN` (nur Leserechte).
 
+**Vor dem Push prüfen** (einmal einschalten):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Der Haken `.githooks/pre-push` läuft dann vor jedem Push durch Form, Werkzeuge
+und Tests von Arbeitsbereich und Fenster und hält bei einem Befund an. Bewusst
+umgehen: `git push --no-verify` oder `SKIP_PREPUSH=1 git push`.
+
+Branch-Schutz („master nur mit grüner Prüfung") ist auf GitHub für **private**
+Repositories im kostenlosen Tarif nicht verfügbar — deshalb dieser Haken. Sobald
+das Repository öffentlich ist oder ein Pro-Tarif vorliegt, lässt sich derselbe
+Schutz serverseitig erzwingen (die vier Aufgabennamen sind die Prüfungen).
+
+Die Laufumgebung ist auf `ubuntu-24.04` festgelegt, nicht `ubuntu-latest`: GitHub
+verschiebt `latest` im Oktober 2026 auf Ubuntu 26, und damit ändern sich
+Paketnamen unter der Hand.
+
 ## Was das Fenster zeigt (und TeamSpeak nicht)
 
 * **Prüfprotokoll** — wer hat was getan, und was wurde **abgelehnt**. Für

@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Patrick Weppelmann
+#
+# Hält einen Push an, wenn die Prüfung nicht durchläuft.
+#
+# Warum es das gibt: Branch-Schutz („master nur mit grüner Prüfung") ist auf
+# GitHub für **private** Repositories im kostenlosen Tarif nicht verfügbar
+# (`Upgrade to GitHub Pro or make this repository public`). Die CI sieht einen
+# roten Lauf also erst, wenn er schon oben ist. Dieser Haken prüft vorher — auf
+# dem eigenen Rechner, mit denselben Schritten.
+#
+# Einschalten (einmal je Arbeitskopie):
+#     git config core.hooksPath .githooks
+#
+# Umgehen, wenn es schnell gehen muss (bewusst, nicht versehentlich):
+#     git push --no-verify
+#
+# `SKIP_PREPUSH=1 git push` überspringt die Prüfung ebenfalls — gedacht für
+# Rechner ohne Node oder ohne Tauri-Bibliotheken.
+
+set -uo pipefail
+
+if [[ "${SKIP_PREPUSH:-0}" == "1" ]]; then
+  echo "pre-push: übersprungen (SKIP_PREPUSH=1)"
+  exit 0
+fi
+
+WURZEL="$(git rev-parse --show-toplevel)" || exit 0
+cd "$WURZEL" || exit 0
+
+# Nur Arbeitsbereich und Fenster: schnell genug für „vor jedem Push". Die
+# Oberfläche braucht `npm install` und die Bibliothek daneben — das prüft die CI
+# (und `scripts/pruefen.sh` von Hand).
+echo "pre-push: Form, Werkzeuge und Tests (Arbeitsbereich und Fenster) …"
+
+fehler=0
+cargo fmt --all --check || fehler=1
+cargo clippy --all-targets -q -- -D warnings || fehler=1
+cargo test --quiet || fehler=1
+
+if [[ -d crates/desktop ]]; then
+  ( cd crates/desktop && cargo fmt --check ) || fehler=1
+  ( cd crates/desktop && cargo clippy --all-targets -q -- -D warnings ) || fehler=1
+  # Die Ende-zu-Ende-Tests starten den Serverprozess — er muss gebaut sein.
+  cargo build -q -p sprechwerk-server || fehler=1
+  ( cd crates/desktop && cargo test --quiet ) || fehler=1
+fi
+
+if [[ "$fehler" -ne 0 ]]; then
+  echo
+  echo "pre-push: Prüfung fehlgeschlagen — nicht gepusht."
+  echo "          Beheben, oder bewusst umgehen: git push --no-verify"
+  exit 1
+fi
+
+echo "pre-push: alles bestanden."
