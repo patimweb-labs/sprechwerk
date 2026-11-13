@@ -226,14 +226,17 @@ pub fn testton(geraet: &str) -> Result<(), Fehler> {
 /// der Aufrufer wartet mit `recv_timeout`; danach wird der Prozess beendet,
 /// komme was wolle.
 pub fn pegel(geraet: &str, millisekunden: u64) -> Result<u8, Fehler> {
-    if !werkzeug("parec") {
-        return Err(Fehler::Werkzeug);
-    }
-    // Schutz vor Rückkopplung, auch wenn ein Gerät von außen hereingereicht wird.
+    // Erst das Argument prüfen, dann die Werkzeuge: ein Monitor ist **immer**
+    // falsch, egal ob `parec` installiert ist. Sonst hinge die Ablehnung eines
+    // falschen Geräts davon ab, was auf dem Rechner installiert ist — und ihre
+    // Prüfung ebenso.
     if ist_monitor(geraet) {
         return Err(Fehler::Geraet(format!(
             "{geraet} ist ein Monitor (Wiedergabe), kein Mikrofon"
         )));
+    }
+    if !werkzeug("parec") {
+        return Err(Fehler::Werkzeug);
     }
     let mut befehl = Command::new("parec");
     befehl.args(["--format=s16le", "--rate=16000", "--channels=1", "--raw"]);
