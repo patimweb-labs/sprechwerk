@@ -270,6 +270,15 @@ pub struct AudioStand {
     pub taub: bool,
 }
 
+/// Misst die Umlaufzeit zum Server (Ping → Pong).
+#[tauri::command]
+pub async fn ping(anwendung: State<'_, Arc<Anwendung>>) -> Result<(), String> {
+    match anwendung.befehl(sprechwerk_ipc::Befehl::Ping).await {
+        Antwort::Fehler { text } => Err(text),
+        _ => Ok(()),
+    }
+}
+
 /// Listet die verhängten Sperren (nur Administrator).
 #[tauri::command]
 pub async fn sperrliste(anwendung: State<'_, Arc<Anwendung>>) -> Result<(), String> {

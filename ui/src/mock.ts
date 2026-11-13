@@ -105,6 +105,7 @@ function zustandDerWahrheit(verbunden: boolean): Zustand {
     nachrichten: verbunden ? (nachrichten[aktuellerRaum] ?? []).map((n) => ({ ...n, loeschbar: true })) : [],
     // Protokoll und Betriebszahlen holt man sich ausdrücklich; im Dummy
     // beginnen sie leer, damit man den Weg „noch nicht gelesen" sieht.
+    latenz_ms: null,
     guete: null,
     sperren: [],
     protokoll: [],
@@ -155,6 +156,12 @@ export const einstellungenVorgabe: Einstellungen = {
 };
 
 export const mockApi = {
+  async ping(): Promise<void> {
+    // Im Dummy eine plausible Loopback-Zahl, damit man die Anzeige beurteilen kann.
+    stand.latenz_ms = 8 + Math.floor(Math.random() * 6);
+    melden();
+  },
+
   async sperrliste(): Promise<void> {
     stand.sperren = [
       {

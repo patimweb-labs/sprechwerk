@@ -12,6 +12,7 @@ export const modell = reactive<Zustand>({
   raeume: [],
   mitglieder: [],
   nachrichten: [],
+  latenz_ms: null,
   guete: null,
   sperren: [],
   protokoll: [],
@@ -148,6 +149,34 @@ export async function speichere() {
     modell.meldung = `Einstellungen nicht speicherbar: ${String(fehler)}`;
   }
 }
+
+/**
+ * Umlaufzeit zum Server messen.
+ *
+ * Die Zahl kommt aus dem Rust-Teil (dort sitzt die Uhr am selben Faden wie die
+ * Verbindung) und landet als `latenz_ms` im Modell.
+ */
+export async function messeLatenz() {
+  if (!verbunden.value) return;
+  try {
+    await api.ping();
+  } catch {
+    // Beiwerk — kein Grund, den Nutzer zu behelligen.
+  }
+}
+
+/**
+ * Kurztext für die Statuszeile: „8 ms" oder „1,2 s".
+ *
+ * Unter einer Sekunde in Millisekunden (das ist die Zahl, die man bei Sprache
+ * vergleicht), darüber in Sekunden — „1240 ms" liest niemand gern.
+ */
+export const latenzText = computed(() => {
+  const ms = modell.latenz_ms;
+  if (ms === null || ms === undefined) return null;
+  if (ms < 1000) return `${ms} ms`;
+  return `${(ms / 1000).toFixed(1).replace(".", ",")} s`;
+});
 
 /** Sperrliste holen (nur Administrator). */
 export async function ladeSperrliste() {

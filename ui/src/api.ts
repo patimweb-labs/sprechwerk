@@ -97,6 +97,8 @@ export interface Zustand {
   nachrichten: Nachricht[];
   /** Verhängte Sperren (leer, bis sie einmal abgefragt wurden). */
   sperren: Sperre[];
+  /** Umlaufzeit zum Server in Millisekunden (aus Ping/Pong). */
+  latenz_ms: number | null;
   /** Betriebszahlen, bis sie einmal abgefragt wurden: null. */
   guete: Guete | null;
   /** Zuletzt gelesenes Prüfprotokoll (leer, solange niemand es geöffnet hat). */
@@ -175,6 +177,7 @@ const echtApi = {
   protokoll: (ab = 0, anzahl = 50) => invoke<void>("protokoll", { ab, anzahl }),
   zaehler: () => invoke<void>("zaehler"),
   sperrliste: () => invoke<void>("sperrliste"),
+  ping: () => invoke<void>("ping"),
   raumVerschluesseln: (raum: string, an: boolean) =>
     invoke<void>("raum_verschluesseln", { raum, an }),
   audioGeraete: () => invoke<Geraeteliste>("audio_geraete"),

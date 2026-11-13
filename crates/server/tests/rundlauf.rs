@@ -523,3 +523,36 @@ async fn sperre_wird_aufgehoben() {
         anderes => panic!("unerwartet: {anderes:?}"),
     }
 }
+
+/// Lebenszeichen und Antwort: die Umlaufzeit, die das Fenster anzeigt.
+///
+/// Sie wird im Client gemessen (Ping hinaus, Pong zurück). Der Test misst
+/// denselben Weg gegen den echten Server und hält fest, dass er kurz bleibt —
+/// sonst wäre die Zahl in der Statuszeile eine Behauptung.
+#[tokio::test]
+async fn ping_und_pong_gehen_schnell() {
+    let server = Testserver::starten("ping", &[]);
+    server.bereit().await;
+
+    let mut v = Verbindung::oeffnen(server.adresse, &Schluessel::neu(), "Ada", None)
+        .await
+        .unwrap();
+
+    let mut messungen = Vec::new();
+    for _ in 0..20 {
+        let beginn = std::time::Instant::now();
+        v.sende(ClientFrame::Ping).await.unwrap();
+        warte_auf(&mut v, |f| matches!(f, ServerFrame::Pong)).await;
+        messungen.push(beginn.elapsed().as_micros() as u64);
+    }
+    messungen.sort_unstable();
+    let p50 = messungen[messungen.len() / 2];
+    println!(
+        "Umlaufzeit Ping/Pong: p50 {p50} µs, max {} µs",
+        messungen[messungen.len() - 1]
+    );
+    assert!(
+        p50 < 50_000,
+        "die Umlaufzeit ist mit {p50} µs zu hoch für eine lokale Verbindung"
+    );
+}

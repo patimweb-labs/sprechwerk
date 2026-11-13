@@ -100,6 +100,12 @@ pub struct Zustand {
     /// Verhängte Sperren (leer, bis sie einmal abgefragt wurden).
     #[serde(default)]
     pub sperren: Vec<Sperre>,
+    /// Umlaufzeit zum Server in Millisekunden (aus Ping/Pong gemessen).
+    ///
+    /// Sie wird **im Rust-Teil** gemessen, nicht im Fenster: nur dort sitzt die
+    /// Uhr am selben Faden wie die Verbindung.
+    #[serde(default)]
+    pub latenz_ms: Option<u32>,
     /// Betriebszahlen des Servers (leer, bis sie einmal abgefragt wurden).
     #[serde(default)]
     pub guete: Option<Guete>,
@@ -294,6 +300,8 @@ pub enum Befehl {
         #[serde(default)]
         adresse: Option<String>,
     },
+    /// Umlaufzeit messen (schickt ein Lebenszeichen und stoppt die Zeit).
+    Ping,
     /// Verhängte Sperren auflisten (nur Administrator).
     Sperrliste,
     /// Betriebszahlen abfragen.

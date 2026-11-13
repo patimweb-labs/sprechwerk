@@ -1108,5 +1108,11 @@
   "en": "This key is your identity on every device. It is public — sharing it is harmless; the key file next to it is not.",
   "es": "Esta clave es tu identidad en cualquier dispositivo. Es pública: compartirla es inofensivo, el archivo de clave no.",
   "fr": "Cette clé est votre identité sur chaque appareil. Elle est publique — la partager est sans danger ; le fichier de clé, non."
+ },
+ "app.latency": {
+  "de": "Umlaufzeit zum Server",
+  "en": "Round-trip time to the server",
+  "es": "Tiempo de ida y vuelta al servidor",
+  "fr": "Temps aller-retour vers le serveur"
  }
 }

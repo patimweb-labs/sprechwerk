@@ -170,6 +170,8 @@ async fn lauf<F>(
     // Raum, in dem wir gerade sitzen — für Ver- und Entschlüsselung im
     // Netzrand (die Aufgaben dort kennen die Verbindung nicht).
     let aktueller: Arc<Mutex<Option<sprechwerk_domain::RoomId>>> = Arc::new(Mutex::new(None));
+    // Wann das letzte Lebenszeichen hinausging (für die Umlaufzeit).
+    let mut ping_gesendet: Option<std::time::Instant> = None;
 
     loop {
         let mut auftrag: Option<Auftrag> = None;
@@ -218,10 +220,21 @@ async fn lauf<F>(
                     {
                         verwaltung.verteilung_erneuern(*raum);
                     }
+                    // Umlaufzeit: das Pong trägt die Antwort auf unser Ping.
+                    let gemessen = if matches!(frame, sprechwerk_protocol::ServerFrame::Pong) {
+                        ping_gesendet
+                            .take()
+                            .map(|wann| wann.elapsed().as_millis() as u32)
+                    } else {
+                        None
+                    };
                     let mut raum_wechsel = false;
                     if let Ok(mut z) = zustand.lock() {
                         let vorher = z.aktueller_raum;
                         abbilden::verarbeite(&mut z, frame);
+                        if let Some(ms) = gemessen {
+                            z.latenz_ms = Some(ms);
+                        }
                         raum_wechsel = z.aktueller_raum != vorher;
                         neu_melden = true;
                     }
@@ -474,6 +487,12 @@ async fn lauf<F>(
                     }
                     Befehl::Sperren { mitglied, grund } => {
                         sprechwerk_protocol::ClientFrame::MitgliedSperren { mitglied, grund }
+                    }
+                    Befehl::Ping => {
+                        // Zeit **vor** dem Senden stellen: sonst fehlt die
+                        // Sendedauer in der Messung.
+                        ping_gesendet = Some(std::time::Instant::now());
+                        sprechwerk_protocol::ClientFrame::Ping
                     }
                     Befehl::Zaehler => sprechwerk_protocol::ClientFrame::Zaehler,
                     Befehl::Sperrliste => sprechwerk_protocol::ClientFrame::Sperrliste,

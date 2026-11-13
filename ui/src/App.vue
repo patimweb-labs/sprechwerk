@@ -19,6 +19,8 @@ import {
 } from "@weppelmann/icons";
 import {
   holeZaehler,
+  latenzText,
+  messeLatenz,
   qualitaet,
   ansicht,
   eigeneTaub,
@@ -140,7 +142,11 @@ let zaehlerTakt: ReturnType<typeof setInterval> | null = null;
 
 onMounted(() => {
   void holeZaehler();
-  zaehlerTakt = setInterval(() => void holeZaehler(), 10_000);
+  void messeLatenz();
+  zaehlerTakt = setInterval(() => {
+    void holeZaehler();
+    void messeLatenz();
+  }, 10_000);
   window.addEventListener("keydown", beimTastendruck);
   window.addEventListener("keyup", beimTastenloslassen);
   window.addEventListener("mousedown", beimMausdruck);
@@ -249,6 +255,7 @@ async function tonUmschalten() {
       "
     >
       <template #trail>
+        <span v-if="latenzText" class="latenz" :title="t('app.latency')">{{ latenzText }}</span>
         <span v-if="qualitaet" class="guete" :class="qualitaet.tone">{{ qualitaet.text }}</span>
       </template>
 
@@ -277,6 +284,11 @@ async function tonUmschalten() {
 }
 
 /* Pegel in der Kopfzeile: schmal, damit er nicht mit dem Namen konkurriert. */
+.latenz {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .guete {
   white-space: nowrap;
 }

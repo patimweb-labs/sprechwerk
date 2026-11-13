@@ -99,6 +99,7 @@ pub fn run() {
             commands::protokoll,
             commands::zaehler,
             commands::sperrliste,
+            commands::ping,
             commands::raum_verschluesseln,
             commands::audio_starten,
             commands::audio_stoppen,
