@@ -994,5 +994,83 @@
   "en": "{} frames lost",
   "es": "{} paquetes perdidos",
   "fr": "{} trames perdues"
+ },
+ "app.bans": {
+  "de": "Sperren",
+  "en": "Bans",
+  "es": "Bloqueos",
+  "fr": "Bannissements"
+ },
+ "bans.title": {
+  "de": "Verhängte Sperren",
+  "en": "Bans in force",
+  "es": "Bloqueos vigentes",
+  "fr": "Bannissements en vigueur"
+ },
+ "bans.sub": {
+  "de": "Kennungen und Adressen, die nicht hereinkommen. Aufheben wirkt sofort.",
+  "en": "Keys and addresses that cannot get in. Lifting takes effect immediately.",
+  "es": "Claves y direcciones que no pueden entrar. Levantar el bloqueo surte efecto de inmediato.",
+  "fr": "Clés et adresses qui ne peuvent pas entrer. La levée prend effet immédiatement."
+ },
+ "bans.col.what": {
+  "de": "Gesperrt",
+  "en": "Banned",
+  "es": "Bloqueado",
+  "fr": "Banni"
+ },
+ "bans.col.kind": {
+  "de": "Art",
+  "en": "Kind",
+  "es": "Tipo",
+  "fr": "Type"
+ },
+ "bans.col.reason": {
+  "de": "Grund",
+  "en": "Reason",
+  "es": "Motivo",
+  "fr": "Motif"
+ },
+ "bans.col.by": {
+  "de": "Von",
+  "en": "By",
+  "es": "Por",
+  "fr": "Par"
+ },
+ "bans.kind_key": {
+  "de": "Kennung",
+  "en": "key",
+  "es": "clave",
+  "fr": "clé"
+ },
+ "bans.kind_address": {
+  "de": "Adresse",
+  "en": "address",
+  "es": "dirección",
+  "fr": "adresse"
+ },
+ "bans.lift": {
+  "de": "Aufheben",
+  "en": "Lift",
+  "es": "Levantar",
+  "fr": "Lever"
+ },
+ "bans.empty.title": {
+  "de": "Niemand gesperrt",
+  "en": "Nobody banned",
+  "es": "Nadie bloqueado",
+  "fr": "Personne n'est banni"
+ },
+ "bans.empty.desc": {
+  "de": "Wenn jemand gesperrt wird, steht er hier — mit Grund und einem Knopf zum Aufheben.",
+  "en": "When someone is banned, they appear here — with the reason and a button to lift it.",
+  "es": "Cuando alguien sea bloqueado, aparecerá aquí — con el motivo y un botón para levantarlo.",
+  "fr": "Lorsque quelqu'un est banni, il apparaît ici — avec le motif et un bouton pour lever le bannissement."
+ },
+ "bans.no_right": {
+  "de": "Nur Administratoren dürfen Sperren sehen und aufheben.",
+  "en": "Only administrators may see and lift bans.",
+  "es": "Solo los administradores pueden ver y levantar bloqueos.",
+  "fr": "Seuls les administrateurs peuvent voir et lever les bannissements."
  }
 }

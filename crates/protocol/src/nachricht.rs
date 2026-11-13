@@ -293,6 +293,8 @@ pub enum ClientFrame {
     /// Der Server leitet die Bitte an die anderen im Raum weiter — er kann sie
     /// nicht selbst erfüllen, er kennt den Schlüssel nicht.
     SchluesselAnfrage { raum: sprechwerk_domain::RoomId },
+    /// Verhängte Sperren auflisten (nur Administrator).
+    Sperrliste,
     /// Betriebszahlen abfragen (Sprachrahmen, Verworfene, Verbundene).
     ///
     /// Jeder darf das: die Zahlen sagen nichts über Personen, aber viel über
@@ -369,6 +371,10 @@ pub enum ServerFrame {
         raum: sprechwerk_domain::RoomId,
         /// Wer gefragt hat.
         von: sprechwerk_domain::MemberId,
+    },
+    /// Verhängte Sperren.
+    Sperrliste {
+        sperren: Vec<sprechwerk_domain::Ban>,
     },
     /// Betriebszahlen des Servers.
     Zaehler {
@@ -522,6 +528,15 @@ mod tests {
                 unterschrift: "11".into(),
             },
             ServerFrame::SchluesselAnfrage { raum, von: ich },
+            ServerFrame::Sperrliste {
+                sperren: vec![sprechwerk_domain::Ban {
+                    schluessel: Some("ab".repeat(32)),
+                    adresse: None,
+                    grund: "Spam".into(),
+                    zeit: 1_765_000_000_000,
+                    handelnder_name: "Ada".into(),
+                }],
+            },
             ServerFrame::Zaehler {
                 sprachrahmen: 800,
                 verteilt: 5596,
@@ -551,7 +566,7 @@ mod tests {
                 }],
             },
         ];
-        assert_eq!(rahmen.len(), 16, "ServerFrame-Arten: Liste ergänzen");
+        assert_eq!(rahmen.len(), 17, "ServerFrame-Arten: Liste ergänzen");
 
         for f in &rahmen {
             let json = serde_json::to_string(f).expect("serialisieren");

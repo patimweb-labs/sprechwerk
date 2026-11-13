@@ -835,6 +835,27 @@ impl Kern {
                 }
             }
 
+            ClientFrame::Sperrliste => {
+                let darf = self
+                    .state
+                    .mitglied(ich)
+                    .map(|m| {
+                        sprechwerk_domain::role::darf(
+                            m.rolle,
+                            sprechwerk_domain::Capability::Sperren,
+                        )
+                    })
+                    .unwrap_or(false);
+                if !darf {
+                    return vec![Kern::fehler(Fehlercode::KeinRecht)];
+                }
+                // Neueste zuerst: wer eine Sperre sucht, sucht meist die, die
+                // gerade verhängt wurde.
+                let mut sperren = self.state.sperren.clone();
+                sperren.sort_by_key(|b| std::cmp::Reverse(b.zeit));
+                vec![ServerFrame::Sperrliste { sperren }]
+            }
+
             ClientFrame::Zaehler => {
                 let z = self.zaehler();
                 vec![ServerFrame::Zaehler {
@@ -1539,6 +1560,7 @@ mod protokollsweep {
                     raum: w.zweiter_raum,
                 }),
             ),
+            ("Sperrliste", Box::new(|_| ClientFrame::Sperrliste)),
             ("Zaehler", Box::new(|_| ClientFrame::Zaehler)),
             (
                 "Entsperren",
@@ -1558,7 +1580,7 @@ mod protokollsweep {
         // ergänzt, schlägt der Test fehl.
         assert_eq!(
             faelle.len(),
-            22,
+            23,
             "neue ClientFrame-Variante? Dann hier einen Fall ergänzen \
              (und die Zahl mitziehen)"
         );
@@ -1963,5 +1985,48 @@ mod protokollsweep {
             }
             anderes => panic!("unerwartet: {anderes:?}"),
         }
+    }
+    /// Die Sperrliste: nur der Administrator sieht sie, und sie ist vollständig.
+    #[test]
+    fn sperrliste_nur_mit_recht_und_vollstaendig() {
+        let mut w = welt("sweep-sperrliste");
+
+        // Erst sperren, dann auflisten.
+        let kennung = "cd".repeat(32);
+        let antworten = w.kern.befehle(
+            w.ada,
+            ClientFrame::Sperren {
+                kennung: Some(kennung.clone()),
+                adresse: Some("203.0.113.9".into()),
+                grund: "Spam".into(),
+            },
+        );
+        assert!(!meldet_fehler(&antworten), "Sperre: {antworten:?}");
+
+        let antworten = w.kern.befehle(w.ada, ClientFrame::Sperrliste);
+        match &antworten[0] {
+            ServerFrame::Sperrliste { sperren } => {
+                assert_eq!(sperren.len(), 1, "die Sperre fehlt in der Liste");
+                let s = &sperren[0];
+                assert_eq!(s.schluessel.as_deref(), Some(kennung.as_str()));
+                assert_eq!(s.adresse.as_deref(), Some("203.0.113.9"));
+                assert_eq!(s.grund, "Spam");
+                assert_eq!(s.handelnder_name, "Ada");
+            }
+            anderes => panic!("unerwartet: {anderes:?}"),
+        }
+
+        // Ein Mitglied (hier: Gast) darf sie nicht sehen.
+        let antworten = w.kern.befehle(w.dora, ClientFrame::Sperrliste);
+        assert!(
+            meldet_fehler(&antworten),
+            "die Sperrliste ist eine Administratoransicht: {antworten:?}"
+        );
+        // Auch ein Moderator nicht — Sperren ist Administratorsache.
+        let antworten = w.kern.befehle(w.clemens, ClientFrame::Sperrliste);
+        assert!(
+            meldet_fehler(&antworten),
+            "Moderator darf nicht sperren, also auch nicht sehen: {antworten:?}"
+        );
     }
 }

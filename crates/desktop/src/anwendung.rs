@@ -476,6 +476,7 @@ async fn lauf<F>(
                         sprechwerk_protocol::ClientFrame::MitgliedSperren { mitglied, grund }
                     }
                     Befehl::Zaehler => sprechwerk_protocol::ClientFrame::Zaehler,
+                    Befehl::Sperrliste => sprechwerk_protocol::ClientFrame::Sperrliste,
                     Befehl::Protokoll { ab, anzahl } => {
                         sprechwerk_protocol::ClientFrame::Protokoll { ab, anzahl }
                     }

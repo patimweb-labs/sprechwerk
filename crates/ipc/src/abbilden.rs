@@ -162,6 +162,19 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
         // bringt einen Schlüssel, der andere bittet darum.
         ServerFrame::Schluesselpaket { .. } | ServerFrame::SchluesselAnfrage { .. } => {}
 
+        ServerFrame::Sperrliste { sperren } => {
+            zustand.sperren = sperren
+                .iter()
+                .map(|b| crate::Sperre {
+                    kennung: b.schluessel.clone(),
+                    adresse: b.adresse.clone(),
+                    grund: b.grund.clone(),
+                    zeit: b.zeit,
+                    handelnder_name: b.handelnder_name.clone(),
+                })
+                .collect();
+        }
+
         ServerFrame::Zaehler {
             sprachrahmen,
             verteilt,

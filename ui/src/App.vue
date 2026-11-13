@@ -40,6 +40,7 @@ import ServerView from "./views/ServerView.vue";
 import RaeumeView from "./views/RaeumeView.vue";
 import EinstellungenView from "./views/EinstellungenView.vue";
 import ProtokollView from "./views/ProtokollView.vue";
+import SperrenView from "./views/SperrenView.vue";
 
 const eigenerName = computed(() => {
   const v = modell.verbindung;
@@ -55,6 +56,9 @@ const kontomenue = computed<UI.MenuItem[]>(() => {
     // alle anderen wäre der Menüpunkt eine Sackgasse.
     if (["administrator", "moderator"].includes(meineRolle.value ?? "")) {
       punkte.push({ id: "protokoll", label: t("app.audit") });
+    }
+    if (meineRolle.value === "administrator") {
+      punkte.push({ id: "sperren", label: t("app.bans") });
     }
   }
   punkte.push({ id: "server", label: t("app.menu_servers") });
@@ -231,6 +235,7 @@ async function tonUmschalten() {
       <ServerView v-if="ansicht === 'server' || !verbunden" />
       <RaeumeView v-else-if="ansicht === 'raeume'" />
       <ProtokollView v-else-if="ansicht === 'protokoll'" />
+      <SperrenView v-else-if="ansicht === 'sperren'" />
       <EinstellungenView v-else />
     </main>
 

@@ -270,6 +270,15 @@ pub struct AudioStand {
     pub taub: bool,
 }
 
+/// Listet die verhängten Sperren (nur Administrator).
+#[tauri::command]
+pub async fn sperrliste(anwendung: State<'_, Arc<Anwendung>>) -> Result<(), String> {
+    match anwendung.befehl(sprechwerk_ipc::Befehl::Sperrliste).await {
+        Antwort::Fehler { text } => Err(text),
+        _ => Ok(()),
+    }
+}
+
 /// Fragt die Betriebszahlen des Servers ab.
 #[tauri::command]
 pub async fn zaehler(anwendung: State<'_, Arc<Anwendung>>) -> Result<(), String> {

@@ -45,6 +45,16 @@ export interface Nachricht {
   loeschbar: boolean;
 }
 
+/** Eine verhängte Sperre. */
+export interface Sperre {
+  kennung: string | null;
+  adresse: string | null;
+  grund: string;
+  /** Zeitpunkt in Millisekunden seit der Epoche. */
+  zeit: number;
+  handelnder_name: string;
+}
+
 /** Betriebszahlen des Servers — kein Personenbezug. */
 export interface Guete {
   sprachrahmen: number;
@@ -76,6 +86,8 @@ export interface Zustand {
   raeume: Raum[];
   mitglieder: Mitglied[];
   nachrichten: Nachricht[];
+  /** Verhängte Sperren (leer, bis sie einmal abgefragt wurden). */
+  sperren: Sperre[];
   /** Betriebszahlen, bis sie einmal abgefragt wurden: null. */
   guete: Guete | null;
   /** Zuletzt gelesenes Prüfprotokoll (leer, solange niemand es geöffnet hat). */
@@ -153,6 +165,7 @@ const echtApi = {
     invoke<void>("entsperren", { kennung, adresse }),
   protokoll: (ab = 0, anzahl = 50) => invoke<void>("protokoll", { ab, anzahl }),
   zaehler: () => invoke<void>("zaehler"),
+  sperrliste: () => invoke<void>("sperrliste"),
   raumVerschluesseln: (raum: string, an: boolean) =>
     invoke<void>("raum_verschluesseln", { raum, an }),
   audioGeraete: () => invoke<Geraeteliste>("audio_geraete"),

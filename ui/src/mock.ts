@@ -106,6 +106,7 @@ function zustandDerWahrheit(verbunden: boolean): Zustand {
     // Protokoll und Betriebszahlen holt man sich ausdrücklich; im Dummy
     // beginnen sie leer, damit man den Weg „noch nicht gelesen" sieht.
     guete: null,
+    sperren: [],
     protokoll: [],
 
     meldung: null,
@@ -154,6 +155,26 @@ export const einstellungenVorgabe: Einstellungen = {
 };
 
 export const mockApi = {
+  async sperrliste(): Promise<void> {
+    stand.sperren = [
+      {
+        kennung: "ab".repeat(32),
+        adresse: null,
+        grund: "Spam im Chat",
+        zeit: Date.now() - 3_600_000,
+        handelnder_name: "Ada",
+      },
+      {
+        kennung: null,
+        adresse: "203.0.113.9",
+        grund: "Störung",
+        zeit: Date.now() - 86_400_000,
+        handelnder_name: "Ada",
+      },
+    ];
+    melden();
+  },
+
   async zaehler(): Promise<void> {
     stand.guete = { sprachrahmen: 12480, verteilt: 87360, verloren: 0, abgelehnt: 3, verbundene: 4 };
     melden();

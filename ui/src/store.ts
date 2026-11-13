@@ -13,6 +13,7 @@ export const modell = reactive<Zustand>({
   mitglieder: [],
   nachrichten: [],
   guete: null,
+  sperren: [],
   protokoll: [],
 
   meldung: null,
@@ -40,7 +41,9 @@ export const einstellungen = reactive<Einstellungen>({
 /** Welche Ansicht ist offen? (Die Leiste links schreibt hier hinein.) */
 // Startseite ist die Serverliste; im Klickdummy ist man schon verbunden und
 // landet direkt im Gespräch.
-export const ansicht = ref<"server" | "raeume" | "protokoll" | "einstellungen">(
+export const ansicht = ref<
+  "server" | "raeume" | "protokoll" | "sperren" | "einstellungen"
+>(
   istDummy ? "raeume" : "server",
 );
 
@@ -146,6 +149,19 @@ export async function speichere() {
   }
 }
 
+/** Sperrliste holen (nur Administrator). */
+export async function ladeSperrliste() {
+  if (!darfSperren.value) return;
+  try {
+    await api.sperrliste();
+  } catch (fehler) {
+    modell.meldung = `Sperrliste nicht lesbar: ${String(fehler)}`;
+  }
+}
+
+/** Darf ich Sperren verhängen und aufheben? (nur Administrator) */
+export const darfSperren = computed(() => meineRolle.value === "administrator");
+
 /** Betriebszahlen holen (Statuszeile, alle 10 s). */
 export async function holeZaehler() {
   if (!verbunden.value) return;
@@ -200,7 +216,9 @@ export async function entsperren(kennung: string | null, adresse: string | null)
 }
 
 /** Bereich wechseln (Reiter in der Kopfzeile). */
-export function geheZu(bereich: "server" | "raeume" | "protokoll" | "einstellungen") {
+export function geheZu(
+  bereich: "server" | "raeume" | "protokoll" | "sperren" | "einstellungen",
+) {
   ansicht.value = bereich;
 }
 

@@ -98,6 +98,7 @@ pub fn run() {
             commands::entsperren,
             commands::protokoll,
             commands::zaehler,
+            commands::sperrliste,
             commands::raum_verschluesseln,
             commands::audio_starten,
             commands::audio_stoppen,

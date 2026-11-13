@@ -199,6 +199,17 @@ fn zeige(frame: &ServerFrame) {
         ServerFrame::SchluesselAnfrage { von, raum } => {
             println!("[Schlüssel angefragt] von {von} für Raum {raum}");
         }
+        ServerFrame::Sperrliste { sperren } => {
+            println!("[Sperrliste] {} Einträge", sperren.len());
+            for b in sperren {
+                let wer = b
+                    .schluessel
+                    .clone()
+                    .or_else(|| b.adresse.clone())
+                    .unwrap_or_else(|| "?".into());
+                println!("  {wer} — {} ({})", b.grund, b.handelnder_name);
+            }
+        }
         ServerFrame::Zaehler {
             sprachrahmen,
             verteilt,

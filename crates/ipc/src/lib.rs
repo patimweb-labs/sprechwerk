@@ -92,6 +92,9 @@ pub struct Zustand {
     pub raeume: Vec<Raum>,
     pub mitglieder: Vec<Mitglied>,
     pub nachrichten: Vec<Nachricht>,
+    /// Verhängte Sperren (leer, bis sie einmal abgefragt wurden).
+    #[serde(default)]
+    pub sperren: Vec<Sperre>,
     /// Betriebszahlen des Servers (leer, bis sie einmal abgefragt wurden).
     #[serde(default)]
     pub guete: Option<Guete>,
@@ -109,6 +112,20 @@ pub struct Zustand {
 /// Wie viele Protokollzeilen ein Aufruf ohne Angabe liest.
 fn fuenfzig() -> usize {
     50
+}
+
+/// Eine verhängte Sperre, wie sie das Fenster zeigt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Sperre {
+    /// Gesperrte Kennung (Hex), falls die Sperre an einer Kennung hängt.
+    pub kennung: Option<String>,
+    /// Gesperrte Adresse, falls die Sperre an einer Adresse hängt.
+    pub adresse: Option<String>,
+    pub grund: String,
+    /// Zeitpunkt in Millisekunden seit der Epoche.
+    pub zeit: i64,
+    /// Wer sie verhängt hat.
+    pub handelnder_name: String,
 }
 
 /// Betriebszahlen für die Statuszeile.
@@ -272,6 +289,8 @@ pub enum Befehl {
         #[serde(default)]
         adresse: Option<String>,
     },
+    /// Verhängte Sperren auflisten (nur Administrator).
+    Sperrliste,
     /// Betriebszahlen abfragen.
     Zaehler,
     /// Prüfprotokoll lesen (Administrator und Moderator).
