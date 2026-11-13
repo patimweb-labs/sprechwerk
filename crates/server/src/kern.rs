@@ -875,3 +875,356 @@ impl Kern {
         let _ = self.speichern();
     }
 }
+
+// ---------------------------------------------------------------------------
+// Rollenmatrix: jeder Befehl gegen jede der vier Rollen
+// ---------------------------------------------------------------------------
+
+/// Prüft die Rechtetabelle gegen das **Verhalten** des Kerns.
+///
+/// Die Tabelle (`role::darf`) ist die einzige Wahrheit über Rechte — dieser Test
+/// fragt für jede Zelle: verhält sich der Befehl so, wie die Tabelle es sagt?
+/// Damit fällt jede vergessene Prüfung im Handler auf (die Fehlerklasse, an der
+/// TeamSpeak mit 489 Rechten gescheitert ist: niemand kann mehr sagen, warum
+/// jemand etwas darf).
+///
+/// Aufbau je Zelle: frische Welt (eigene Datenbank), vier Mitglieder, ein
+/// zweiter Raum, eine fremde Nachricht. Geprüft wird **nur** die Dimension
+/// „Recht fehlt oder nicht" — andere Fehler (unbekannte Kennung, ungültige
+/// Eingabe) sind kein Rechtebefund und werden ausgeblendet.
+#[cfg(test)]
+mod rollenmatrix {
+    use super::*;
+    use crate::konfig::{Sicherung, Server};
+    use sprechwerk_domain::role::darf;
+    use sprechwerk_domain::{Capability, Role};
+
+    struct Welt {
+        kern: Kern,
+        ada: MemberId,
+        bosse: MemberId,
+        clemens: MemberId,
+        dora: MemberId,
+        zweiter_raum: RoomId,
+        fremde_nachricht: sprechwerk_domain::MessageId,
+        pfad: std::path::PathBuf,
+    }
+
+    impl Drop for Welt {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.pfad);
+        }
+    }
+
+    fn verzeichnis(name: &str) -> std::path::PathBuf {
+        let pfad = std::env::temp_dir().join(format!(
+            "sprechwerk-matrix-{}-{}",
+            std::process::id(),
+            name
+        ));
+        let _ = std::fs::remove_dir_all(&pfad);
+        std::fs::create_dir_all(&pfad).expect("Verzeichnis");
+        pfad
+    }
+
+    fn raum_mit_name(antworten: &[ServerFrame], name: &str) -> Option<RoomId> {
+        antworten.iter().find_map(|a| match a {
+            ServerFrame::Raeume { raeume } => raeume
+                .iter()
+                .find(|r| r.name == name)
+                .map(|r| r.id),
+            _ => None,
+        })
+    }
+
+    fn welt(name: &str) -> Welt {
+        let pfad = verzeichnis(name);
+        let konfig = Konfig {
+            server: Server {
+                daten: pfad.clone(),
+                bind: "127.0.0.1".to_string(),
+                port: 0,
+                standard_rolle: "mitglied".to_string(),
+                ..Default::default()
+            },
+            sicherung: Sicherung {
+                aktiv: false,
+                ..Default::default()
+            },
+        };
+        let mut kern = Kern::neu(konfig).expect("Kern");
+
+        let (ada, _) = kern.anmelden("ada", "Ada", "10.0.0.1").expect("Ada");
+        let (bosse, _) = kern.anmelden("bosse", "Bosse", "10.0.0.2").expect("Bosse");
+        let (clemens, _) = kern
+            .anmelden("clemens", "Clemens", "10.0.0.3")
+            .expect("Clemens");
+        let (dora, _) = kern.anmelden("dora", "Dora", "10.0.0.4").expect("Dora");
+
+        // Ada ist die erste Verbindung und damit Administratorin.
+        let _ = kern.befehle(
+            ada,
+            ClientFrame::RolleSetzen {
+                mitglied: clemens,
+                rolle: Role::Moderator,
+            },
+        );
+        let _ = kern.befehle(
+            ada,
+            ClientFrame::RolleSetzen {
+                mitglied: dora,
+                rolle: Role::Gast,
+            },
+        );
+
+        let antworten = kern.befehle(
+            ada,
+            ClientFrame::RaumAnlegen {
+                name: "Matrix".to_string(),
+            },
+        );
+        let zweiter_raum = raum_mit_name(&antworten, "Matrix").expect("zweiter Raum");
+
+        // Eine Nachricht von Ada, damit ein **fremder** Verfasser existiert.
+        // `Text` antwortet dem Absender nicht direkt: die Nachricht geht als
+        // Rundruf an den Raum (hier gibt es noch keine Sitzungen, also holen wir
+        // die Kennung aus dem Verlauf).
+        let raum_ada = kern
+            .state
+            .mitglied(ada)
+            .and_then(|m| m.raum)
+            .expect("Ada ist in einem Raum");
+        let _ = kern.befehle(
+            ada,
+            ClientFrame::Text {
+                text: "von Ada".to_string(),
+            },
+        );
+        let fremde_nachricht = kern
+            .state
+            .verlauf(ada, raum_ada, jetzt_ms())
+            .ok()
+            .and_then(|eintraege| eintraege.last().map(|n| n.id))
+            .expect("Nachricht von Ada im Verlauf");
+
+        Welt {
+            kern,
+            ada,
+            bosse,
+            clemens,
+            dora,
+            zweiter_raum,
+            fremde_nachricht,
+            pfad,
+        }
+    }
+
+    impl Welt {
+        fn handelnder(&self, rolle: Role) -> MemberId {
+            match rolle {
+                Role::Administrator => self.ada,
+                Role::Moderator => self.clemens,
+                Role::Mitglied => self.bosse,
+                Role::Gast => self.dora,
+            }
+        }
+
+        /// Ziel für Personenbefehle: immer jemand **anderes** als der Handelnde.
+        fn ziel(&self, rolle: Role) -> MemberId {
+            match rolle {
+                Role::Gast => self.bosse,
+                _ => self.dora,
+            }
+        }
+    }
+
+    fn meldet_kein_recht(antworten: &[ServerFrame]) -> bool {
+        antworten.iter().any(|a| match a {
+            ServerFrame::Fehler { code, .. } => *code == Fehlercode::KeinRecht,
+            _ => false,
+        })
+    }
+
+    /// Führt eine Zelle aus und vergleicht mit der Tabelle.
+    fn zelle(
+        name: &str,
+        rolle: Role,
+        recht: Capability,
+        rahmen: impl FnOnce(&Welt) -> ClientFrame,
+    ) {
+        let mut w = welt(name);
+        let ich = w.handelnder(rolle);
+        let befehl = rahmen(&w);
+        let antworten = w.kern.befehle(ich, befehl);
+        let erwartet = !darf(rolle, recht);
+        assert_eq!(
+            meldet_kein_recht(&antworten),
+            erwartet,
+            "{name} als {rolle:?}: erwartet {}, bekommen {:?}",
+            if erwartet { "KeinRecht" } else { "kein Rechtefehler" },
+            antworten
+        );
+    }
+
+    #[test]
+    fn jeder_befehl_folgt_der_rechtetabelle() {
+        use Capability::*;
+        let rollen = [
+            Role::Administrator,
+            Role::Moderator,
+            Role::Mitglied,
+            Role::Gast,
+        ];
+        let mut zellen = 0;
+
+        for rolle in rollen {
+            // --- Räume -------------------------------------------------
+            zelle("Betreten", rolle, RaumBetreten, |w| ClientFrame::Betreten {
+                raum: w.zweiter_raum,
+            });
+            zelle("RaumAnlegen", rolle, RaumVerwalten, |_| {
+                ClientFrame::RaumAnlegen {
+                    name: "Neu".to_string(),
+                }
+            });
+            zelle("RaumUmbenennen", rolle, RaumVerwalten, |w| {
+                ClientFrame::RaumUmbenennen {
+                    raum: w.zweiter_raum,
+                    name: "Anders".to_string(),
+                }
+            });
+            zelle("RaumLoeschen", rolle, RaumVerwalten, |w| {
+                ClientFrame::RaumLoeschen {
+                    raum: w.zweiter_raum,
+                }
+            });
+            zelle("RaumVerschluesseln", rolle, RaumVerwalten, |w| {
+                ClientFrame::RaumVerschluesseln {
+                    raum: w.zweiter_raum,
+                    an: true,
+                }
+            });
+            zellen += 5;
+
+            // --- Text --------------------------------------------------
+            zelle("Text", rolle, TextSchreiben, |_| ClientFrame::Text {
+                text: "Matrix".to_string(),
+            });
+            zelle("NachrichtLoeschen (fremd)", rolle, PersonEingreifen, |w| {
+                ClientFrame::NachrichtLoeschen {
+                    nachricht: w.fremde_nachricht,
+                }
+            });
+            zellen += 2;
+
+            // --- Personen ----------------------------------------------
+            zelle("Stummschalten", rolle, PersonEingreifen, |w| {
+                ClientFrame::Stummschalten {
+                    mitglied: w.ziel(rolle),
+                    taub: false,
+                    an: true,
+                }
+            });
+            zelle("Verschieben", rolle, PersonEingreifen, |w| {
+                ClientFrame::Verschieben {
+                    mitglied: w.ziel(rolle),
+                    raum: w.zweiter_raum,
+                }
+            });
+            zelle("AusRaumWerfen", rolle, PersonEingreifen, |w| {
+                ClientFrame::AusRaumWerfen {
+                    mitglied: w.ziel(rolle),
+                }
+            });
+            zelle("Trennen", rolle, PersonEingreifen, |w| ClientFrame::Trennen {
+                mitglied: w.ziel(rolle),
+                grund: "Matrix".to_string(),
+            });
+            zellen += 4;
+
+            // --- Sperren und Rollen -------------------------------------
+            zelle("MitgliedSperren", rolle, Sperren, |w| {
+                ClientFrame::MitgliedSperren {
+                    mitglied: w.ziel(rolle),
+                    grund: "Matrix".to_string(),
+                }
+            });
+            zelle("Sperren", rolle, Sperren, |_| ClientFrame::Sperren {
+                kennung: Some("00".repeat(32)),
+                adresse: Some("10.9.9.9".to_string()),
+                grund: "Matrix".to_string(),
+            });
+            zelle("RolleSetzen", rolle, RollenVergeben, |w| {
+                ClientFrame::RolleSetzen {
+                    mitglied: w.ziel(rolle),
+                    rolle: Role::Mitglied,
+                }
+            });
+            zellen += 3;
+
+            // --- Protokoll ---------------------------------------------
+            zelle("Protokoll", rolle, ProtokollLesen, |_| ClientFrame::Protokoll {
+                ab: 0,
+                anzahl: 10,
+            });
+            zellen += 1;
+        }
+
+        println!("Rollenmatrix: {zellen} Zellen geprüft (Befehl × Rolle)");
+    }
+
+    /// Befehle ohne Rechtprüfung: sie dürfen **nie** `KeinRecht` melden.
+    #[test]
+    fn befehle_ohne_rechtpruefung_melden_kein_recht() {
+        for rolle in [Role::Administrator, Role::Gast] {
+            // `Ping` ist ein Lebenszeichen.
+            let mut w = welt("ping");
+            let antworten = w.kern.befehle(w.handelnder(rolle), ClientFrame::Ping);
+            assert!(
+                !meldet_kein_recht(&antworten),
+                "Ping als {rolle:?}: {antworten:?}"
+            );
+
+            // `Verlassen` darf jeder.
+            let mut w = welt("verlassen");
+            let antworten = w.kern.befehle(w.handelnder(rolle), ClientFrame::Verlassen);
+            assert!(
+                !meldet_kein_recht(&antworten),
+                "Verlassen als {rolle:?}: {antworten:?}"
+            );
+        }
+    }
+
+    /// Ein Schlüsselpaket braucht nur **Anwesenheit im Raum**, kein Recht:
+    /// der Server kann es nicht lesen und leitet es nur weiter.
+    #[test]
+    fn schluesselpaket_braucht_nur_anwesenheit() {
+        for rolle in [Role::Mitglied, Role::Gast] {
+            let mut w = welt("schluessel");
+            let ich = w.handelnder(rolle);
+            let raum = w.kern.state.mitglied(ich).and_then(|m| m.raum);
+            let Some(raum) = raum else { continue };
+            // Der Handler verlangt einen **verschlüsselten** Raum (`KeinRecht`
+            // sonst — siehe Bericht: der Fehlercode passt nicht ganz).
+            let _ = w.kern.befehle(
+                w.ada,
+                ClientFrame::RaumVerschluesseln { raum, an: true },
+            );
+            let ziel = w.ziel(rolle);
+            let antworten = w.kern.befehle(
+                ich,
+                ClientFrame::Schluesselpaket {
+                    raum,
+                    epoche: 1,
+                    fuer: ziel,
+                    daten: "00".repeat(48),
+                    unterschrift: "11".repeat(64),
+                },
+            );
+            assert!(
+                !meldet_kein_recht(&antworten),
+                "Schluesselpaket als {rolle:?} im Raum: {antworten:?}"
+            );
+        }
+    }
+}

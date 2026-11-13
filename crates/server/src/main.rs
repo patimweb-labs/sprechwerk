@@ -122,9 +122,17 @@ fn main() -> anyhow::Result<()> {
         .or(erster)
         .unwrap_or_else(|| "sprechwerk.toml".to_string());
 
-    // Protokollierung: Text, filterbar über RUST_LOG.
+    // Protokollierung: Text, filterbar über SPRECHWERK_LOG.
+    //
+    // Der Vorgabefilter muss den **Modulpfad des Programms** treffen. Bis
+    // 2026-11-13 stand hier `sprechwerk_server=info` — das ist der Name des
+    // *Crate-Verzeichnisses*, nicht der des Programms; Ziel jedes
+    // `tracing::info!` ist aber `sprechwerk::…`. Folge: ohne gesetztes
+    // `SPRECHWERK_LOG` erschien **keine** Zeile (kein Start, kein „lauscht",
+    // keine Sprachrahmen-Zähler) — in `docker logs` war der Server stumm
+    // (gefunden von `scripts/lastprobe.sh`, 2026-11-13).
     let filter = tracing_subscriber::EnvFilter::try_from_env("SPRECHWERK_LOG")
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("sprechwerk_server=info"));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("sprechwerk=info"));
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(false)
