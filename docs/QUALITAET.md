@@ -165,10 +165,15 @@ scripts/pruefen.sh --nur-tests  # schnell: nur kompilieren und testen
 
 Warum es das gibt: `cargo test` im Wurzelverzeichnis sammelt die Tests von
 `crates/desktop` **nicht** ein — das Fenster-Crate steht wegen Tauri mit eigener
-Sperrdatei außerhalb des Arbeitsbereichs. Dazu kommen die Oberfläche
-(`vue-tsc`) und die drei Sprachproben, die kein Test sind, sondern Messungen an
-einem laufenden Server. Ohne einen gemeinsamen Einstieg vergisst man einen
-davon, und genau das war der Zustand bis heute.
+Sperrdatei außerhalb des Arbeitsbereichs. Dazu kommen die Oberfläche (Typprüfung
+**und** Ansichten-Tests) und die drei Sprachproben, die kein Test sind, sondern
+Messungen an einem laufenden Server. Ohne einen gemeinsamen Einstieg vergisst man
+einen davon, und genau das war der Zustand bis heute.
+
+Die Ansichten-Tests (`ui/src/pruefung/`) rendern jede Ansicht mit dem
+eingebauten Klickdummy — ohne Fenster, ohne Server, ohne Soundkarte — und prüfen,
+was die Typprüfung nicht sieht: dass eine Ansicht **läuft**, dass ein Klick den
+Zustand ändert und dass jeder Text in allen vier Sprachen vorhanden ist.
 
 Der Ablauf meldet je Prüfung „bestanden" oder „FEHLGESCHLAGEN" und gibt am Ende
 einen Rückgabewert — geeignet für einen Wächter vor dem Ausliefern. Die

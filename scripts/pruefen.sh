@@ -10,7 +10,7 @@
 # jahrelang niemand — und die Oberfläche ist genau der Teil, den der Nutzer
 # beurteilt.
 #
-#   scripts/pruefen.sh              Tests + Sprachproben (ohne Geräte)
+#   scripts/pruefen.sh              Tests + Ansichten + Sprachproben
 #   scripts/pruefen.sh --mit-audio  zusätzlich der echte Gerätepfad
 #   scripts/pruefen.sh --nur-tests  schnell: nur kompilieren und testen
 #
@@ -58,13 +58,16 @@ else
 fi
 
 echo
-echo "== Oberfläche: Typprüfung"
+echo "== Oberfläche: Typen und Ansichten"
 if [[ -d ui/node_modules ]]; then
   ( cd ui && npm run --silent typecheck >/dev/null 2>&1 )
   berichte "vue-tsc (ui)" "$?"
+  ( cd ui && npm test --silent >/tmp/sprechwerk-pruefung-ui.log 2>&1 )
+  berichte "vitest (ui, Ansichten)" "$?"
 else
   echo "  ui/node_modules fehlt — nicht geprüft (vorher 'npm install' in ui/)"
   berichte "vue-tsc (ui) [nicht geprüft]" 1
+  berichte "vitest (ui) [nicht geprüft]" 1
 fi
 
 if [[ "$NUR_TESTS" -eq 1 ]]; then
