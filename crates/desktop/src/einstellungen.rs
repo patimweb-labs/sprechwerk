@@ -21,6 +21,11 @@ pub struct Favorit {
     pub name: String,
     /// Adresse, z. B. `sprechwerk.verein.example:7443`.
     pub server: String,
+    /// Wann zuletzt verbunden (ms seit der Epoche); 0 = noch nie.
+    ///
+    /// Steht je Eintrag, nicht nur für den letzten insgesamt: wer drei Server
+    /// hat, will bei jedem sehen, wann er dort war.
+    pub zuletzt: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,6 +71,23 @@ pub struct Einstellungen {
     /// Echounterdrückung: die eigene Wiedergabe aus der Aufnahme rechnen.
     /// Nötig, wenn über Lautsprecher gesprochen wird (sonst pfeift es).
     pub echounterdrueckung: bool,
+}
+
+impl Einstellungen {
+    /// Merkt sich, wann dieser Server zuletzt benutzt wurde.
+    ///
+    /// Nur bei vorhandenen Einträgen: wer einen Server ohne Favorit verbindet,
+    /// soll sich nicht plötzlich einen Eintrag einfangen.
+    pub fn merke_verbindung(&mut self, server: &str) {
+        let jetzt = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        self.server = server.to_string();
+        if let Some(f) = self.favoriten.iter_mut().find(|f| f.server == server) {
+            f.zuletzt = jetzt;
+        }
+    }
 }
 
 impl Default for Einstellungen {
@@ -147,17 +169,21 @@ mod tests {
         let verzeichnis =
             std::env::temp_dir().join(format!("sprechwerk-desktop3-{}", std::process::id()));
         let pfad = verzeichnis.join("einstellungen.json");
-        let mut e = Einstellungen::default();
-        e.favoriten = vec![
-            Favorit {
-                name: "Trainingsabend".into(),
-                server: "192.0.2.10:7443".into(),
-            },
-            Favorit {
-                name: "Vorstand".into(),
-                server: "192.0.2.11:7443".into(),
-            },
-        ];
+        let e = Einstellungen {
+            favoriten: vec![
+                Favorit {
+                    name: "Trainingsabend".into(),
+                    server: "192.0.2.10:7443".into(),
+                    zuletzt: 1_700_000_000_000,
+                },
+                Favorit {
+                    name: "Vorstand".into(),
+                    server: "192.0.2.11:7443".into(),
+                    zuletzt: 0,
+                },
+            ],
+            ..Default::default()
+        };
         e.speichern(&pfad).unwrap();
         let geladen = Einstellungen::laden(&pfad);
         assert_eq!(geladen.favoriten.len(), 2);
@@ -181,11 +207,44 @@ mod tests {
 
     #[test]
     fn kaputte_datei_faellt_auf_vorgaben_zurueck() {
-        let verzeichnis = std::env::temp_dir().join(format!("sprechwerk-desktop2-{}", std::process::id()));
+        let verzeichnis =
+            std::env::temp_dir().join(format!("sprechwerk-desktop2-{}", std::process::id()));
         let pfad = verzeichnis.join("einstellungen.json");
         std::fs::create_dir_all(&verzeichnis).unwrap();
         std::fs::write(&pfad, "{ kaputt").unwrap();
         assert_eq!(Einstellungen::laden(&pfad), Einstellungen::default());
         let _ = std::fs::remove_dir_all(&verzeichnis);
+    }
+    /// „Zuletzt verbunden" gilt je Eintrag — und nur für vorhandene Einträge.
+    #[test]
+    fn zuletzt_verbunden_je_eintrag() {
+        let mut e = Einstellungen {
+            favoriten: vec![
+                Favorit {
+                    name: "Zuhause".into(),
+                    server: "192.0.2.10:7443".into(),
+                    zuletzt: 0,
+                },
+                Favorit {
+                    name: "Verein".into(),
+                    server: "192.0.2.11:7443".into(),
+                    zuletzt: 5_000,
+                },
+            ],
+            ..Default::default()
+        };
+        e.merke_verbindung("192.0.2.10:7443");
+        assert!(
+            e.favoriten[0].zuletzt > 0,
+            "der benutzte Server bekommt eine Zeit"
+        );
+        assert_eq!(e.favoriten[1].zuletzt, 5_000, "der andere bleibt unberührt");
+        assert_eq!(e.server, "192.0.2.10:7443");
+
+        // Ein Server ohne Eintrag legt keinen an.
+        let vorher = e.favoriten.len();
+        e.merke_verbindung("198.51.100.99:7443");
+        assert_eq!(e.favoriten.len(), vorher, "kein Eintrag ohne Favorit");
+        assert_eq!(e.server, "198.51.100.99:7443", "aber gemerkt wird er");
     }
 }

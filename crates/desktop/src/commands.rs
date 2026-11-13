@@ -33,8 +33,13 @@ pub async fn verbinden(
     name: String,
     passwort: Option<String>,
 ) -> Result<String, String> {
-    let ergebnis = anwendung.verbinden(server, name, passwort).await;
+    let ergebnis = anwendung.verbinden(server.clone(), name, passwort).await;
     if ergebnis.is_ok() {
+        // „Zuletzt verbunden" je Eintrag merken: wer drei Server hat, will bei
+        // jedem sehen, wann er dort war.
+        let mut e = Einstellungen::laden(&pfad.0);
+        e.merke_verbindung(&server);
+        let _ = e.speichern(&pfad.0);
         // Der Sprechpfad gehört zur Verbindung: ohne Verbindung kein Ton.
         // Ein Fehler hier darf das Verbinden nicht scheitern lassen — dann
         // steht eben nur das Mikrofon stumm, und die Meldung sagt warum.

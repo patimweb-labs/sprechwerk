@@ -9,6 +9,7 @@
 // der Hauptweg („Verbinden") steht sichtbar.
 import { computed, ref } from "vue";
 import * as UI from "@weppelmann/components";
+import { zuletztText } from "../format";
 import { IconMore, IconPlug, IconPlus } from "@weppelmann/icons";
 import {
   einstellungen,
@@ -32,10 +33,12 @@ const server = computed(() => {
     name: f.name || f.server,
     server: f.server,
     gemerkt: true,
+    // Je Eintrag: wann war ich dort zuletzt? (nicht nur beim letzten insgesamt)
+    zuletzt: zuletztText(f.zuletzt),
   }));
   const letzter = einstellungen.server;
   if (letzter && !liste.some((s) => s.server === letzter)) {
-    liste.unshift({ name: letzter, server: letzter, gemerkt: false });
+    liste.unshift({ name: letzter, server: letzter, gemerkt: false, zuletzt: "zuletzt benutzt" });
   }
   return liste;
 });
@@ -106,6 +109,7 @@ async function entfernen() {
           <span class="spalte spalte--name">
             <span class="name">{{ s.name }}</span>
             <span v-if="!s.gemerkt" class="hinweis">{{ t("server.last_used") }}</span>
+            <span v-else-if="s.zuletzt" class="hinweis">{{ s.zuletzt }}</span>
           </span>
           <span class="spalte spalte--adresse adresse">{{ s.server }}</span>
           <span class="spalte spalte--aktion aktionen">

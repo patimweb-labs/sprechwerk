@@ -121,6 +121,8 @@ export interface Zustand {
 export interface Favorit {
   name: string;
   server: string;
+  /** Wann zuletzt verbunden (ms seit der Epoche); 0 = noch nie. */
+  zuletzt?: number;
 }
 
 export interface Einstellungen {

@@ -1138,5 +1138,41 @@
   "en": "Request key",
   "es": "Solicitar clave",
   "fr": "Demander la clé"
+ },
+ "time.now": {
+  "de": "gerade eben",
+  "en": "just now",
+  "es": "ahora mismo",
+  "fr": "à l'instant"
+ },
+ "time.minutes": {
+  "de": "vor {} Minuten",
+  "en": "{} minutes ago",
+  "es": "hace {} minutos",
+  "fr": "il y a {} minutes"
+ },
+ "time.hours": {
+  "de": "vor {} Stunden",
+  "en": "{} hours ago",
+  "es": "hace {} horas",
+  "fr": "il y a {} heures"
+ },
+ "time.days": {
+  "de": "vor {} Tagen",
+  "en": "{} days ago",
+  "es": "hace {} días",
+  "fr": "il y a {} jours"
+ },
+ "time.months": {
+  "de": "vor {} Monaten",
+  "en": "{} months ago",
+  "es": "hace {} meses",
+  "fr": "il y a {} mois"
+ },
+ "time.years": {
+  "de": "vor {} Jahren",
+  "en": "{} years ago",
+  "es": "hace {} años",
+  "fr": "il y a {} ans"
  }
 }

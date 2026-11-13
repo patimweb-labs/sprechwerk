@@ -24,3 +24,29 @@ describe("Kennung lesbar machen", () => {
     expect(kennungGruppiert("")).toBe("—");
   });
 });
+
+import { zuletztText } from "../format";
+
+describe("zuletzt verbunden", () => {
+  const jetzt = Date.parse("2026-11-13T12:00:00");
+  const vor = (ms: number) => jetzt - ms;
+
+  it("ohne Zeit kein Text", () => {
+    expect(zuletztText(0, jetzt)).toBeNull();
+    expect(zuletztText(null, jetzt)).toBeNull();
+  });
+
+  it("sagt die Größenordnung, nicht die Sekunde", () => {
+    expect(zuletztText(vor(10_000), jetzt)).toBe("gerade eben");
+    expect(zuletztText(vor(5 * 60_000), jetzt)).toBe("vor 5 Minuten");
+    expect(zuletztText(vor(3 * 3_600_000), jetzt)).toBe("vor 3 Stunden");
+    expect(zuletztText(vor(4 * 24 * 3_600_000), jetzt)).toBe("vor 4 Tagen");
+    expect(zuletztText(vor(90 * 24 * 3_600_000), jetzt)).toBe("vor 3 Monaten");
+    expect(zuletztText(vor(800 * 24 * 3_600_000), jetzt)).toBe("vor 2 Jahren");
+  });
+
+  it("eine Zeit in der Zukunft ist gerade eben, nicht negativ", () => {
+    // Uhren gehen falsch; „vor -3 Minuten" wäre ein Fehler im Fenster.
+    expect(zuletztText(jetzt + 180_000, jetzt)).toBe("gerade eben");
+  });
+});
