@@ -199,6 +199,18 @@ fn zeige(frame: &ServerFrame) {
         ServerFrame::SchluesselAnfrage { von, raum } => {
             println!("[Schlüssel angefragt] von {von} für Raum {raum}");
         }
+        ServerFrame::Zaehler {
+            sprachrahmen,
+            verteilt,
+            verloren,
+            abgelehnt,
+            verbundene,
+        } => {
+            println!(
+                "[Zähler] {sprachrahmen} Rahmen, {verteilt} verteilt, {verloren} verloren, \
+                 {abgelehnt} abgelehnt, {verbundene} verbunden"
+            );
+        }
         ServerFrame::Text { nachricht } => {
             let text = if nachricht.geloescht {
                 "(gelöscht)".to_string()

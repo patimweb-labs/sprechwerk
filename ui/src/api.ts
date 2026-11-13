@@ -45,6 +45,15 @@ export interface Nachricht {
   loeschbar: boolean;
 }
 
+/** Betriebszahlen des Servers — kein Personenbezug. */
+export interface Guete {
+  sprachrahmen: number;
+  verteilt: number;
+  verloren: number;
+  abgelehnt: number;
+  verbundene: number;
+}
+
 /** Eine Zeile des Prüfprotokolls. */
 export interface Eintrag {
   laufnummer: number;
@@ -67,6 +76,8 @@ export interface Zustand {
   raeume: Raum[];
   mitglieder: Mitglied[];
   nachrichten: Nachricht[];
+  /** Betriebszahlen, bis sie einmal abgefragt wurden: null. */
+  guete: Guete | null;
   /** Zuletzt gelesenes Prüfprotokoll (leer, solange niemand es geöffnet hat). */
   protokoll: Eintrag[];
   meldung: string | null;
@@ -141,6 +152,7 @@ const echtApi = {
   entsperren: (kennung: string | null, adresse: string | null) =>
     invoke<void>("entsperren", { kennung, adresse }),
   protokoll: (ab = 0, anzahl = 50) => invoke<void>("protokoll", { ab, anzahl }),
+  zaehler: () => invoke<void>("zaehler"),
   raumVerschluesseln: (raum: string, an: boolean) =>
     invoke<void>("raum_verschluesseln", { raum, an }),
   audioGeraete: () => invoke<Geraeteliste>("audio_geraete"),

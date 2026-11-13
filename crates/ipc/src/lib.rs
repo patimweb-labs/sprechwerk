@@ -92,6 +92,9 @@ pub struct Zustand {
     pub raeume: Vec<Raum>,
     pub mitglieder: Vec<Mitglied>,
     pub nachrichten: Vec<Nachricht>,
+    /// Betriebszahlen des Servers (leer, bis sie einmal abgefragt wurden).
+    #[serde(default)]
+    pub guete: Option<Guete>,
     /// Zuletzt gelesenes Prüfprotokoll (leer, solange niemand es geöffnet hat).
     ///
     /// Es steht im Modell, nicht in der Ansicht: die Oberfläche ist
@@ -106,6 +109,20 @@ pub struct Zustand {
 /// Wie viele Protokollzeilen ein Aufruf ohne Angabe liest.
 fn fuenfzig() -> usize {
     50
+}
+
+/// Betriebszahlen für die Statuszeile.
+///
+/// Kein Personenbezug: Zahlen über den Server, nicht über Menschen. Deshalb
+/// darf sie jeder sehen — „0 verworfen" ist die ehrlichste Auskunft, die ein
+/// Sprachserver geben kann.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Guete {
+    pub sprachrahmen: u64,
+    pub verteilt: u64,
+    pub verloren: u64,
+    pub abgelehnt: u64,
+    pub verbundene: usize,
 }
 
 /// Eine Zeile des Prüfprotokolls, wie sie das Fenster zeigt.
@@ -255,6 +272,8 @@ pub enum Befehl {
         #[serde(default)]
         adresse: Option<String>,
     },
+    /// Betriebszahlen abfragen.
+    Zaehler,
     /// Prüfprotokoll lesen (Administrator und Moderator).
     Protokoll {
         #[serde(default)]

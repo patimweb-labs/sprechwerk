@@ -293,6 +293,12 @@ pub enum ClientFrame {
     /// Der Server leitet die Bitte an die anderen im Raum weiter — er kann sie
     /// nicht selbst erfüllen, er kennt den Schlüssel nicht.
     SchluesselAnfrage { raum: sprechwerk_domain::RoomId },
+    /// Betriebszahlen abfragen (Sprachrahmen, Verworfene, Verbundene).
+    ///
+    /// Jeder darf das: die Zahlen sagen nichts über Personen, aber viel über
+    /// den Server. „0 verworfen" ist die ehrlichste Auskunft, die ein
+    /// Sprachserver geben kann.
+    Zaehler,
     /// Prüfprotokoll lesen.
     Protokoll { ab: usize, anzahl: usize },
     /// Lebenszeichen.
@@ -363,6 +369,19 @@ pub enum ServerFrame {
         raum: sprechwerk_domain::RoomId,
         /// Wer gefragt hat.
         von: sprechwerk_domain::MemberId,
+    },
+    /// Betriebszahlen des Servers.
+    Zaehler {
+        /// Sprachrahmen, die ankamen.
+        sprachrahmen: u64,
+        /// Wie oft ein Rahmen an einen Empfänger ging.
+        verteilt: u64,
+        /// Rahmen, die nicht hinausgingen (Sendepuffer voll).
+        verloren: u64,
+        /// Rahmen, die der Server abgelehnt hat (kein Recht, kein Raum, kaputt).
+        abgelehnt: u64,
+        /// Gerade verbundene Mitglieder.
+        verbundene: usize,
     },
     /// Prüfprotokoll.
     Protokoll {
@@ -503,6 +522,13 @@ mod tests {
                 unterschrift: "11".into(),
             },
             ServerFrame::SchluesselAnfrage { raum, von: ich },
+            ServerFrame::Zaehler {
+                sprachrahmen: 800,
+                verteilt: 5596,
+                verloren: 0,
+                abgelehnt: 3,
+                verbundene: 4,
+            },
             ServerFrame::Protokoll {
                 eintraege: Vec::new(),
             },
@@ -525,7 +551,7 @@ mod tests {
                 }],
             },
         ];
-        assert_eq!(rahmen.len(), 15, "ServerFrame-Arten: Liste ergänzen");
+        assert_eq!(rahmen.len(), 16, "ServerFrame-Arten: Liste ergänzen");
 
         for f in &rahmen {
             let json = serde_json::to_string(f).expect("serialisieren");

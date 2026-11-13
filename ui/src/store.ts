@@ -12,6 +12,7 @@ export const modell = reactive<Zustand>({
   raeume: [],
   mitglieder: [],
   nachrichten: [],
+  guete: null,
   protokoll: [],
 
   meldung: null,
@@ -144,6 +145,30 @@ export async function speichere() {
     modell.meldung = `Einstellungen nicht speicherbar: ${String(fehler)}`;
   }
 }
+
+/** Betriebszahlen holen (Statuszeile, alle 10 s). */
+export async function holeZaehler() {
+  if (!verbunden.value) return;
+  try {
+    await api.zaehler();
+  } catch {
+    // Kein Grund, den Nutzer zu behelligen: die Zahlen sind Beiwerk.
+  }
+}
+
+/**
+ * Text für die Statuszeile: „keine Rahmen verloren" oder „3 Rahmen verloren".
+ *
+ * **0** ist die gute Nachricht und wird auch so gesagt. TeamSpeak zeigt an
+ * dieser Stelle ein Symbol ohne Zahl — hier steht die Zahl.
+ */
+export const qualitaet = computed<{ text: string; tone: "ok" | "warn" } | null>(() => {
+  const g = modell.guete;
+  if (!g) return null;
+  return g.verloren === 0
+    ? { text: t("app.quality_ok"), tone: "ok" }
+    : { text: t("app.quality_loss", g.verloren), tone: "warn" };
+});
 
 /** Darf ich das Prüfprotokoll lesen? (Administrator und Moderator) */
 export const darfProtokollLesen = computed(() => {

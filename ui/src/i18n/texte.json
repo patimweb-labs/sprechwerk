@@ -982,5 +982,17 @@
   "en": "Message deleted",
   "es": "Mensaje eliminado",
   "fr": "Message supprimé"
+ },
+ "app.quality_ok": {
+  "de": "keine Rahmen verloren",
+  "en": "no frames lost",
+  "es": "sin paquetes perdidos",
+  "fr": "aucune trame perdue"
+ },
+ "app.quality_loss": {
+  "de": "{} Rahmen verloren",
+  "en": "{} frames lost",
+  "es": "{} paquetes perdidos",
+  "fr": "{} trames perdues"
  }
 }

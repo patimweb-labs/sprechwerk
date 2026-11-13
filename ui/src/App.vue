@@ -18,6 +18,8 @@ import {
   IconUnplug,
 } from "@weppelmann/icons";
 import {
+  holeZaehler,
+  qualitaet,
   ansicht,
   eigeneTaub,
   eigenesHoeren,
@@ -128,7 +130,13 @@ function beimMausloslassen(e: MouseEvent) {
   void sprechtaste(false);
 }
 
+// Betriebszahlen alle 10 s: sie ändern sich langsam, und ein Takt von einer
+// Sekunde wäre Funklärm für eine Zahl, die niemand so genau braucht.
+let zaehlerTakt: ReturnType<typeof setInterval> | null = null;
+
 onMounted(() => {
+  void holeZaehler();
+  zaehlerTakt = setInterval(() => void holeZaehler(), 10_000);
   window.addEventListener("keydown", beimTastendruck);
   window.addEventListener("keyup", beimTastenloslassen);
   window.addEventListener("mousedown", beimMausdruck);
@@ -235,6 +243,10 @@ async function tonUmschalten() {
           : t('app.saved_servers', einstellungen.favoriten.length)
       "
     >
+      <template #trail>
+        <span v-if="qualitaet" class="guete" :class="qualitaet.tone">{{ qualitaet.text }}</span>
+      </template>
+
       <template #lead>
         <span v-if="modell.meldung" class="meldung">{{ modell.meldung }}</span>
       </template>
@@ -260,6 +272,19 @@ async function tonUmschalten() {
 }
 
 /* Pegel in der Kopfzeile: schmal, damit er nicht mit dem Namen konkurriert. */
+.guete {
+  white-space: nowrap;
+}
+
+.guete.ok {
+  color: var(--wp-color-text-faint);
+}
+
+.guete.warn {
+  color: var(--wp-color-warning, var(--wp-color-text));
+  font-weight: 600;
+}
+
 .pegel {
   width: 88px;
   margin-right: var(--wp-space-1);

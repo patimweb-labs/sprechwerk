@@ -103,8 +103,9 @@ function zustandDerWahrheit(verbunden: boolean): Zustand {
     raeume: verbunden ? raumListe : [],
     mitglieder: verbunden ? mitglieder.filter((m) => m.raum) : [],
     nachrichten: verbunden ? (nachrichten[aktuellerRaum] ?? []).map((n) => ({ ...n, loeschbar: true })) : [],
-    // Das Protokoll holt man sich ausdrücklich (`protokoll()`); im Dummy
-    // beginnt es leer, damit man den Weg „noch nicht gelesen" sieht.
+    // Protokoll und Betriebszahlen holt man sich ausdrücklich; im Dummy
+    // beginnen sie leer, damit man den Weg „noch nicht gelesen" sieht.
+    guete: null,
     protokoll: [],
 
     meldung: null,
@@ -153,6 +154,11 @@ export const einstellungenVorgabe: Einstellungen = {
 };
 
 export const mockApi = {
+  async zaehler(): Promise<void> {
+    stand.guete = { sprachrahmen: 12480, verteilt: 87360, verloren: 0, abgelehnt: 3, verbundene: 4 };
+    melden();
+  },
+
   async protokoll(): Promise<void> {
     stand.protokoll = [
       {

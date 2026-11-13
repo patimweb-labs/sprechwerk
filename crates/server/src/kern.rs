@@ -835,6 +835,17 @@ impl Kern {
                 }
             }
 
+            ClientFrame::Zaehler => {
+                let z = self.zaehler();
+                vec![ServerFrame::Zaehler {
+                    sprachrahmen: z.sprachrahmen,
+                    verteilt: z.verteilt,
+                    verloren: z.verworfen,
+                    abgelehnt: z.abgelehnt,
+                    verbundene: z.verbundene,
+                }]
+            }
+
             ClientFrame::Protokoll { ab, anzahl } => {
                 let m = self.state.mitglied(ich);
                 if !m
@@ -1528,6 +1539,7 @@ mod protokollsweep {
                     raum: w.zweiter_raum,
                 }),
             ),
+            ("Zaehler", Box::new(|_| ClientFrame::Zaehler)),
             (
                 "Entsperren",
                 Box::new(|_| ClientFrame::Entsperren {
@@ -1546,7 +1558,7 @@ mod protokollsweep {
         // ergänzt, schlägt der Test fehl.
         assert_eq!(
             faelle.len(),
-            21,
+            22,
             "neue ClientFrame-Variante? Dann hier einen Fall ergänzen \
              (und die Zahl mitziehen)"
         );
@@ -1901,5 +1913,55 @@ mod protokollsweep {
             !meldet_fehler(&antworten),
             "gültige Kennung muss angenommen werden: {antworten:?}"
         );
+    }
+    /// Die Betriebszahlen, die jeder abfragen darf.
+    ///
+    /// Sie müssen zu dem passen, was der Server wirklich tut: „0 verloren" darf
+    /// nicht behauptet werden, während der Sendepuffer überläuft.
+    #[test]
+    fn zaehler_geben_auskunft() {
+        let mut w = welt("sweep-zaehler");
+
+        // Zwei gültige Rahmen einer Administratorin im Raum …
+        let gueltig = sprechwerk_protocol::Sprachkopf::neu(1).schreiben(&[0u8; 40]);
+        w.kern.sprache(w.ada, &gueltig);
+        w.kern.sprache(w.ada, &gueltig);
+        // … und ein kaputter, der als abgelehnt zählt.
+        w.kern.sprache(w.ada, &[1, 2, 3]);
+
+        let antworten = w.kern.befehle(w.ada, ClientFrame::Zaehler);
+        match &antworten[0] {
+            ServerFrame::Zaehler {
+                sprachrahmen,
+                abgelehnt,
+                verbundene,
+                verloren,
+                ..
+            } => {
+                assert_eq!(*sprachrahmen, 2, "zwei gültige Rahmen kamen an");
+                assert_eq!(*abgelehnt, 1, "der kaputte zählt als abgelehnt");
+                // Im Kern ohne echte Verbindungen sind es null — im Betrieb
+                // zählt der Zähler die Verbindungen (`scripts/lastprobe.sh`).
+                assert_eq!(*verbundene, 0, "keine Verbindungen im Kern");
+                assert_eq!(*verloren, 0, "niemand war im Raum, also nichts verteilt");
+            }
+            anderes => panic!("unerwartet: {anderes:?}"),
+        }
+
+        // Wer nicht im Raum ist, spricht ins Leere: gezählt als abgelehnt.
+        let _ = w.kern.befehle(w.ada, ClientFrame::Verlassen);
+        w.kern.sprache(w.ada, &gueltig);
+        let antworten = w.kern.befehle(w.ada, ClientFrame::Zaehler);
+        match &antworten[0] {
+            ServerFrame::Zaehler {
+                sprachrahmen,
+                abgelehnt,
+                ..
+            } => {
+                assert_eq!(*sprachrahmen, 2, "ohne Raum kommt nichts durch");
+                assert_eq!(*abgelehnt, 2, "der Rahmen ohne Raum zählt als abgelehnt");
+            }
+            anderes => panic!("unerwartet: {anderes:?}"),
+        }
     }
 }

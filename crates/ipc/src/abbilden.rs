@@ -162,6 +162,22 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
         // bringt einen Schlüssel, der andere bittet darum.
         ServerFrame::Schluesselpaket { .. } | ServerFrame::SchluesselAnfrage { .. } => {}
 
+        ServerFrame::Zaehler {
+            sprachrahmen,
+            verteilt,
+            verloren,
+            abgelehnt,
+            verbundene,
+        } => {
+            zustand.guete = Some(crate::Guete {
+                sprachrahmen,
+                verteilt,
+                verloren,
+                abgelehnt,
+                verbundene,
+            });
+        }
+
         ServerFrame::Protokoll { eintraege } => {
             zustand.protokoll = eintraege.iter().map(eintrag_abbilden).collect();
         }

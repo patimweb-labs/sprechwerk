@@ -270,6 +270,15 @@ pub struct AudioStand {
     pub taub: bool,
 }
 
+/// Fragt die Betriebszahlen des Servers ab.
+#[tauri::command]
+pub async fn zaehler(anwendung: State<'_, Arc<Anwendung>>) -> Result<(), String> {
+    match anwendung.befehl(sprechwerk_ipc::Befehl::Zaehler).await {
+        Antwort::Fehler { text } => Err(text),
+        _ => Ok(()),
+    }
+}
+
 /// Liest das Prüfprotokoll (Administrator und Moderator).
 ///
 /// Die Einträge kommen als Rahmen zurück und landen über `abbilden` im Modell;
