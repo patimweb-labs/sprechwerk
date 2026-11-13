@@ -37,6 +37,15 @@ wird hier bewusst nicht versprochen.
 6. **Überlappung.** Zwei Epochen dürfen kurz parallel gelten (Schlüsselwechsel
    braucht einen Rahmen Zeit), sonst gehen beim Wechsel Wörter verloren.
 
+**Nachtrag 2026-11-13.** Punkt 5 war bis heute nur beschrieben, nicht gebaut:
+`State::verlassen` ließ `verschluesselt_seit` unverändert, die Epoche drehte
+sich nur beim Ein- und Ausschalten der Verschlüsselung. Wer den Raum verließ,
+behielt den Schlüssel also beliebig lange — und konnte mitgeschnittene Rahmen
+später entschlüsseln. Gefunden beim Prüfen der Zusagen des Protokolls
+(`ClientFrame::Schluesselpaket`: „Zählt bei jedem Verlassen hoch"), behoben in
+`State::epoche_weiter`; der Schritt ist mindestens eine Sekunde, weil die
+Epoche Sekunden zählt und zwei Drehungen sonst dieselbe Zahl ergäben.
+
 ## Was das schützt — und was nicht
 
 | Geschützt | Nicht geschützt |
@@ -60,7 +69,8 @@ wird hier bewusst nicht versprochen.
 | Raumschlüssel, Umschlag (X25519 + HKDF-SHA256 + ChaCha20-Poly1305) | `crates/adapters/src/verschluesselt.rs`, 11 Tests |
 | Rahmen verschlüsseln/entschlüsseln (Kopf bleibt lesbar) | dort, 2 Tests |
 | Schlüsselverwaltung, Wärter-Wahl, Unterschrift prüfen | `crates/desktop/src/verschluesselung.rs`, 6 Tests |
-| Raum-Flag, Epoche, Protokoll-Eintrag | `crates/domain/src/state.rs`, 2 Tests |
+| Raum-Flag, Epoche, Protokoll-Eintrag | `crates/domain/src/state.rs` |
+| Epoche dreht beim Verlassen, Verschieben und Rauswurf | dort, `verlassen_dreht_die_epoche` (3 Fälle) |
 | Speicherung (überlebt Neustart) | `crates/store/src/lib.rs`, 1 Test |
 | Weiterleitung der Pakete, Recht, Raumgrenze | `crates/server/src/kern.rs` |
 | **Beweis am echten Server** | `crates/server/tests/verschluesselt.rs`, 4 Tests |

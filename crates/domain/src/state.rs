@@ -681,22 +681,45 @@ impl State {
                 .mitglieder
                 .get_mut(&wer)
                 .ok_or(Error::MitgliedUnbekannt)?;
-            let raum = m.raum.take().map(|r| r.text());
+            let raum = m.raum;
+            m.raum = None;
             m.raum_seit = None;
             m.zuletzt_gesehen = jetzt_ms;
             (m.name.clone(), raum)
         };
+        self.epoche_weiter(raum, jetzt_ms);
         self.protokolliere(
             jetzt_ms,
             Some(wer),
             &handelnder_name,
             "raum_verlassen",
-            raum.unwrap_or_default(),
+            raum.map(|r| r.text()).unwrap_or_default(),
             None,
             None,
             "erlaubt".into(),
         );
         Ok(())
+    }
+
+    /// Dreht die Epoche der Ende-zu-Ende-Verschlüsselung eines Raums weiter.
+    ///
+    /// **Warum beim Verlassen?** Der Raumschlüssel liegt bei allen Anwesenden.
+    /// Wer geht, darf ihn nicht behalten — sonst könnte er später
+    /// mitgeschnittene Sprachrahmen aufbewahren und in Ruhe entschlüsseln. Die
+    /// Clients bilden die Epoche aus `verschluesselt_seit` (Sekunden); ändert
+    /// sie sich, erzeugt der „Wart" des Raums einen neuen Schlüssel und verteilt
+    /// ihn (`verschluesselung::Verwaltung::sorge_fuer`).
+    ///
+    /// Mindestens **eine Sekunde** Schritt, weil die Epoche Sekunden zählt: zwei
+    /// Drehungen in derselben Sekunde ergäben sonst dieselbe Zahl, und der alte
+    /// Schlüssel bliebe gültig.
+    fn epoche_weiter(&mut self, raum: Option<RoomId>, jetzt_ms: i64) {
+        let Some(r) = raum.and_then(|r| self.raeume.get_mut(&r)) else {
+            return;
+        };
+        if r.verschluesselt {
+            r.verschluesselt_seit = jetzt_ms.max(r.verschluesselt_seit.saturating_add(1_000));
+        }
     }
 
     /// Wer ist gerade in diesem Raum?
@@ -1081,11 +1104,17 @@ impl State {
             return Err(Error::MitgliedUnbekannt);
         }
         let alt;
+        let alter_raum;
         {
             let m = self.mitglieder.get_mut(&ziel).expect("vorher geprüft");
+            alter_raum = m.raum;
             alt = m.raum.map(|r| r.text());
             m.raum = Some(raum);
             m.raum_seit = Some(jetzt_ms);
+        }
+        // Wer den Raum wechselt, nimmt den alten Schlüssel nicht mit.
+        if alter_raum != Some(raum) {
+            self.epoche_weiter(alter_raum, jetzt_ms);
         }
         self.protokolliere(
             jetzt_ms,
@@ -1120,11 +1149,13 @@ impl State {
         ergebnis?;
         let wurzel = self.wurzel_raum();
         let alt;
+        let alter_raum;
         {
             let m = self
                 .mitglieder
                 .get_mut(&ziel)
                 .ok_or(Error::MitgliedUnbekannt)?;
+            alter_raum = m.raum;
             alt = m.raum.map(|r| r.text());
             if alt.is_none() {
                 return Err(Error::RaumUnbekannt);
@@ -1132,6 +1163,7 @@ impl State {
             m.raum = wurzel;
             m.raum_seit = Some(jetzt_ms);
         }
+        self.epoche_weiter(alter_raum, jetzt_ms);
         self.protokolliere(
             jetzt_ms,
             Some(wer),
@@ -1742,4 +1774,48 @@ mod tests {
         assert!(st.raum_verschluesseln(mitglied, raum, true, 1_000).is_err());
         assert!(!st.raeume[&raum].verschluesselt);
     }
+    /// Wer einen verschlüsselten Raum verlässt, nimmt den Schlüssel nicht mit:
+    /// die Epoche zählt hoch, damit die Verbliebenen neu aushandeln.
+    #[test]
+    fn verlassen_dreht_die_epoche() {
+        let mut s = zustand();
+        let a = admin(&mut s);
+        let raum = s.raum_anlegen(a, "Geheim", 1_010).unwrap();
+        s.raum_verschluesseln(a, raum, true, 1_020).unwrap();
+        let seit = s.raeume.get(&raum).unwrap().verschluesselt_seit;
+        assert_eq!(seit, 1_020);
+
+        let b = s.anmelden("k2", "Bosse", 1_020).unwrap();
+        s.betreten(b, raum, 1_030).unwrap();
+        assert_eq!(
+            s.raeume.get(&raum).unwrap().verschluesselt_seit,
+            seit,
+            "Betreten allein darf die Epoche nicht drehen — sonst würde bei jedem Kommen ein neuer Schlüssel fällig"
+        );
+
+        s.verlassen(b, 1_040).unwrap();
+        let nachher = s.raeume.get(&raum).unwrap().verschluesselt_seit;
+        assert!(
+            nachher >= seit + 1_000,
+            "Epoche muss um mindestens eine Sekunde steigen (war {seit}, ist {nachher})"
+        );
+
+        // Zweimal kurz hintereinander: die Zahl muss trotzdem steigen, sonst
+        // bliebe die Epoche gleich und der alte Schlüssel gültig.
+        let c = s.anmelden("k3", "Clemens", 1_040).unwrap();
+        s.betreten(c, raum, 1_040).unwrap();
+        let vorher = s.raeume.get(&raum).unwrap().verschluesselt_seit;
+        s.verlassen(c, vorher).unwrap();
+        assert!(
+            s.raeume.get(&raum).unwrap().verschluesselt_seit > vorher,
+            "zwei Drehungen in derselben Millisekunde müssen trotzdem steigen"
+        );
+
+        // Ohne Verschlüsselung wird nichts gedreht.
+        let offen = s.raum_anlegen(a, "Offen", 2_000).unwrap();
+        s.betreten(c, offen, 2_000).unwrap();
+        s.verlassen(c, 2_100).unwrap();
+        assert_eq!(s.raeume.get(&offen).unwrap().verschluesselt_seit, 0);
+    }
+
 }
