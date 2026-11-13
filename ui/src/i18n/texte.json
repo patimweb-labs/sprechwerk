@@ -1114,5 +1114,11 @@
   "en": "Round-trip time to the server",
   "es": "Tiempo de ida y vuelta al servidor",
   "fr": "Temps aller-retour vers le serveur"
+ },
+ "member.ban.reason": {
+  "de": "Grund (erscheint im Prüfprotokoll)",
+  "en": "Reason (appears in the audit log)",
+  "es": "Motivo (aparece en el registro)",
+  "fr": "Motif (apparaît dans le journal)"
  }
 }

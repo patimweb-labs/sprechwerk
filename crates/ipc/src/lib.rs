@@ -171,6 +171,9 @@ pub struct Eintrag {
     /// „erlaubt" oder „abgelehnt: …" — die zweite Hälfte ist der eigentliche
     /// Wert: man sieht, was **nicht** passiert ist.
     pub ergebnis: String,
+    /// Begründung der Handlung, falls es eine gibt (Sperre, Trennung).
+    #[serde(default)]
+    pub grund: Option<String>,
 }
 
 impl Zustand {

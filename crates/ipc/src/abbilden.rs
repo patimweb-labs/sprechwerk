@@ -86,6 +86,7 @@ pub fn eintrag_abbilden(e: &sprechwerk_domain::AuditEntry) -> crate::Eintrag {
         vorher: e.vorher.clone(),
         nachher: e.nachher.clone(),
         ergebnis: e.ergebnis.clone(),
+        grund: e.grund.clone(),
     }
 }
 

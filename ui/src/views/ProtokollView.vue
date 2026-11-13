@@ -88,6 +88,7 @@ onMounted(laden);
               <span v-if="z.vorher || z.nachher" class="wechsel">
                 {{ z.vorher ?? "—" }} → {{ z.nachher ?? "—" }}
               </span>
+              <span v-if="z.grund" class="grund">· {{ z.grund }}</span>
             </td>
             <td class="ziel">{{ z.ziel || "—" }}</td>
             <td class="ergebnis">
@@ -170,6 +171,13 @@ tr.abgelehnt td {
 }
 
 .wechsel {
+  color: var(--wp-color-text-muted);
+  margin-left: var(--wp-space-2);
+}
+
+/* Der Grund gehört zur Handlung, nicht zum Ziel — deshalb hier und nicht in
+   der Zielspalte. */
+.grund {
   color: var(--wp-color-text-muted);
   margin-left: var(--wp-space-2);
 }

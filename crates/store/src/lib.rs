@@ -84,7 +84,8 @@ CREATE TABLE IF NOT EXISTS protokoll (
   ziel             TEXT NOT NULL,
   vorher           TEXT,
   nachher          TEXT,
-  ergebnis         TEXT NOT NULL
+  ergebnis         TEXT NOT NULL,
+  grund            TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_protokoll_zeit ON protokoll (zeit);
 CREATE TABLE IF NOT EXISTS sperren (
@@ -96,6 +97,25 @@ CREATE TABLE IF NOT EXISTS sperren (
   handelnder_name  TEXT NOT NULL
 );
 "#;
+
+/// Ergänzt Spalten, die in einer älteren Datenbank fehlen (idempotent).
+fn nachruesten(conn: &Connection) -> Ergebnis<()> {
+    let fehlend = |tabelle: &str, spalte: &str| -> Ergebnis<bool> {
+        let mut stmt = conn.prepare(&format!("PRAGMA table_info({tabelle})"))?;
+        let mut zeilen = stmt.query([])?;
+        while let Some(z) = zeilen.next()? {
+            let name: String = z.get(1)?;
+            if name == spalte {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    };
+    if fehlend("protokoll", "grund")? {
+        conn.execute("ALTER TABLE protokoll ADD COLUMN grund TEXT", [])?;
+    }
+    Ok(())
+}
 
 /// Kennung der aktuellen Datenbankstruktur.
 pub const SCHEMA_VERSION: u32 = 1;
@@ -119,6 +139,10 @@ impl Store {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.execute_batch(SCHEMA)?;
+        // Spalten nachrüsten, die erst später dazukamen. `CREATE TABLE IF NOT
+        // EXISTS` ändert eine **vorhandene** Tabelle nicht — ohne diesen Schritt
+        // hätte eine bestehende Datenbank die Spalte nie bekommen.
+        nachruesten(&conn)?;
         conn.execute(
             "INSERT OR IGNORE INTO meta (schluessel, wert) VALUES ('schema_version', ?1)",
             params![SCHEMA_VERSION.to_string()],
@@ -175,12 +199,10 @@ impl Store {
         }
 
         // Räume
-        let mut stmt = self
-            .conn
-            .prepare(
-                "SELECT id, eltern, name, reihenfolge, angelegt_am, \
+        let mut stmt = self.conn.prepare(
+            "SELECT id, eltern, name, reihenfolge, angelegt_am, \
                  COALESCE(verschluesselt, 0), COALESCE(verschluesselt_seit, 0) FROM raeume",
-            )?;
+        )?;
         let mut zeilen = stmt.query([])?;
         let mut raeume = std::collections::BTreeMap::new();
         while let Some(z) = zeilen.next()? {
@@ -254,7 +276,7 @@ impl Store {
 
         // Protokoll
         let mut stmt = self.conn.prepare(
-            "SELECT laufnummer, zeit, handelnder, handelnder_name, aktion, ziel, vorher, nachher, ergebnis \
+            "SELECT laufnummer, zeit, handelnder, handelnder_name, aktion, ziel, vorher, nachher, ergebnis, grund \
              FROM protokoll ORDER BY laufnummer",
         )?;
         let mut zeilen = stmt.query([])?;
@@ -274,6 +296,7 @@ impl Store {
                 vorher: z.get(6)?,
                 nachher: z.get(7)?,
                 ergebnis: z.get(8)?,
+                grund: z.get(9)?,
             });
         }
         state.protokoll = protokoll;
@@ -436,8 +459,8 @@ impl Store {
         // Protokoll: nur anhängen.
         for e in &state.protokoll {
             tx.execute(
-                "INSERT OR IGNORE INTO protokoll (laufnummer, zeit, handelnder, handelnder_name, aktion, ziel, vorher, nachher, ergebnis) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "INSERT OR IGNORE INTO protokoll (laufnummer, zeit, handelnder, handelnder_name, aktion, ziel, vorher, nachher, ergebnis, grund) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
                     e.laufnummer,
                     e.zeit,
@@ -447,7 +470,8 @@ impl Store {
                     e.ziel,
                     e.vorher,
                     e.nachher,
-                    e.ergebnis
+                    e.ergebnis,
+                    e.grund
                 ],
             )?;
         }
@@ -604,7 +628,9 @@ mod tests {
             st.speichern(&s).unwrap();
         }
         let st = Store::oeffnen(&datei).unwrap();
-        let geladen = st.laden(|| State::neu("Testwerk", Role::Mitglied, 2_000)).unwrap();
+        let geladen = st
+            .laden(|| State::neu("Testwerk", Role::Mitglied, 2_000))
+            .unwrap();
         assert!(
             geladen.raeume[&raum].verschluesselt,
             "das Flag muss den Neustart überleben"
@@ -717,6 +743,67 @@ mod tests {
                 .mitglieder
                 .len(),
             1
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    /// Eine Sperre behält ihren Grund — und eine **ältere** Datenbank bekommt
+    /// die Spalte beim Öffnen nachgerüstet (sonst hätte sie sie nie).
+    #[test]
+    fn grund_ueberlebt_und_wird_nachgeruestet() {
+        let dir = std::env::temp_dir().join(format!("sprechwerk-grund-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let datei = dir.join("test.sqlitedb");
+
+        // Eine Datenbank im alten Stand: protokoll ohne Spalte `grund`.
+        {
+            let conn = rusqlite::Connection::open(&datei).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE protokoll (
+                   laufnummer INTEGER PRIMARY KEY, zeit INTEGER NOT NULL, handelnder TEXT,
+                   handelnder_name TEXT NOT NULL, aktion TEXT NOT NULL, ziel TEXT NOT NULL,
+                   vorher TEXT, nachher TEXT, ergebnis TEXT NOT NULL);
+                 CREATE TABLE meta (schluessel TEXT PRIMARY KEY, wert TEXT NOT NULL);
+                 INSERT INTO meta (schluessel, wert) VALUES ('schema_version', '1');
+                 INSERT INTO meta (schluessel, wert) VALUES ('naechste_laufnummer', '2');",
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO protokoll VALUES (1, 1000, NULL, 'Ada', 'anmeldung', 'ab12', NULL, NULL, 'erlaubt')",
+                [],
+            )
+            .unwrap();
+        }
+
+        // Öffnen rüstet nach, Laden liest die alte Zeile ohne Grund.
+        let mut store = Store::oeffnen(&datei).unwrap();
+        let geladen = store
+            .laden(|| State::neu("Testwerk", Role::Mitglied, 0))
+            .unwrap();
+        assert_eq!(geladen.protokoll.len(), 1);
+        assert_eq!(geladen.protokoll[0].ziel, "ab12");
+        assert_eq!(
+            geladen.protokoll[0].grund, None,
+            "alte Zeilen haben keinen Grund"
+        );
+
+        // Und eine neue Zeile mit Grund überlebt Speichern und Laden.
+        let mut s = geladen;
+        let a = s.anmelden("k-admin", "Ada", 2_000).unwrap();
+        let gesperrt = kennung("k-boese");
+        s.sperren(a, Some(gesperrt.clone()), None, "Spam im Chat", 2_100)
+            .unwrap();
+        store.speichern(&s).unwrap();
+        let wieder = store.laden(|| State::neu("egal", Role::Gast, 0)).unwrap();
+        let zeile = wieder
+            .protokoll
+            .iter()
+            .find(|e| e.aktion == "sperre_verhaengt")
+            .expect("Sperrzeile");
+        assert_eq!(zeile.grund.as_deref(), Some("Spam im Chat"));
+        assert_eq!(
+            zeile.ziel, gesperrt,
+            "im Ziel muss stehen, wen es trifft — nicht der Grund"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

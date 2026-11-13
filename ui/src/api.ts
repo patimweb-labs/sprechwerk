@@ -86,6 +86,8 @@ export interface Eintrag {
   nachher: string | null;
   /** „erlaubt" oder „abgelehnt: …". */
   ergebnis: string;
+  /** Begründung der Handlung (Sperre, Trennung), falls es eine gibt. */
+  grund?: string | null;
 }
 
 /** Der vollständige Modellstand — die Oberfläche ist `render(modell)`. */

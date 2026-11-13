@@ -119,6 +119,13 @@ pub struct AuditEntry {
     pub nachher: Option<String>,
     /// `erlaubt` oder `abgelehnt: <grund>`.
     pub ergebnis: String,
+    /// Begründung der Handlung, falls es eine gibt (Sperre, Trennung).
+    ///
+    /// Eigenes Feld, weil der Grund **nicht** das Ziel ist: in `ziel` stand bei
+    /// einer Sperre früher der Grund — wer gesperrt wurde, war der Zeile damit
+    /// nicht zu entnehmen.
+    #[serde(default)]
+    pub grund: Option<String>,
 }
 
 /// Eine Sperre. **Festlegung SPEC §4:** Kennung **und** Adresse, wie bei
@@ -200,6 +207,7 @@ struct Protokollzeile<'a> {
     vorher: Option<String>,
     nachher: Option<String>,
     ergebnis: String,
+    grund: Option<String>,
 }
 
 impl State {
@@ -246,6 +254,7 @@ impl State {
             vorher: zeile.vorher,
             nachher: zeile.nachher,
             ergebnis: zeile.ergebnis,
+            grund: zeile.grund,
         });
     }
 
@@ -291,6 +300,7 @@ impl State {
                 ziel: schluessel.to_string(),
                 vorher: None,
                 nachher: None,
+                grund: None,
                 ergebnis: "abgelehnt: ungültiger Name".into(),
             });
             return Err(Error::NameUngueltig);
@@ -304,6 +314,7 @@ impl State {
                 ziel: schluessel.to_string(),
                 vorher: None,
                 nachher: None,
+                grund: None,
                 ergebnis: format!("abgelehnt: gesperrt ({grund})"),
             });
             return Err(Error::Gesperrt(grund));
@@ -332,6 +343,7 @@ impl State {
                     ziel: id.text(),
                     vorher: Some(alter_name),
                     nachher: Some(name.to_string()),
+                    grund: None,
                     ergebnis: "erlaubt".into(),
                 });
             }
@@ -374,6 +386,7 @@ impl State {
             },
             ziel: id.text(),
             nachher: Some(rolle.text().to_string()),
+            grund: None,
             ergebnis: "erlaubt".into(),
             ..Default::default()
         });
@@ -420,6 +433,7 @@ impl State {
                 ziel: name,
                 vorher: None,
                 nachher: None,
+                grund: None,
                 ergebnis: "abgelehnt: ungültiger Name".into(),
             });
             return Err(Error::NameUngueltig);
@@ -450,6 +464,7 @@ impl State {
             ziel: id.text(),
             vorher: None,
             nachher: Some(name),
+            grund: None,
             ergebnis: "erlaubt".into(),
         });
         Ok(id)
@@ -493,6 +508,7 @@ impl State {
             ziel: raum.text(),
             vorher,
             nachher: Some(if an { "an" } else { "aus" }.to_string()),
+            grund: None,
             ergebnis: String::new(),
         });
         Ok(())
@@ -523,6 +539,7 @@ impl State {
                 ziel: raum.text(),
                 vorher: None,
                 nachher: None,
+                grund: None,
                 ergebnis: "abgelehnt: ungültiger Name".into(),
             });
             return Err(Error::NameUngueltig);
@@ -541,6 +558,7 @@ impl State {
             ziel: raum.text(),
             vorher: Some(alt),
             nachher: Some(name),
+            grund: None,
             ergebnis: "erlaubt".into(),
         });
         Ok(())
@@ -589,6 +607,7 @@ impl State {
             ziel: raum.text(),
             vorher: Some(name),
             nachher: Some(format!("{entfernt} Nachrichten entfernt")),
+            grund: None,
             ergebnis: "erlaubt".into(),
         });
         Ok(())
@@ -643,6 +662,7 @@ impl State {
                 ziel: raum.text(),
                 vorher: None,
                 nachher: None,
+                grund: None,
                 ergebnis: "abgelehnt: Raum unbekannt".into(),
             });
             return Err(Error::RaumUnbekannt);
@@ -662,6 +682,7 @@ impl State {
             ziel: raum.text(),
             vorher: None,
             nachher: None,
+            grund: None,
             ergebnis: "erlaubt".into(),
         });
         Ok(verlauf)
@@ -688,6 +709,7 @@ impl State {
             ziel: raum.map(|r| r.text()).unwrap_or_default(),
             vorher: None,
             nachher: None,
+            grund: None,
             ergebnis: "erlaubt".into(),
         });
         Ok(())
@@ -769,6 +791,7 @@ impl State {
                 ziel: String::new(),
                 vorher: None,
                 nachher: None,
+                grund: None,
                 ergebnis: "abgelehnt: in keinem Raum".into(),
             });
             return Err(Error::RaumUnbekannt);
@@ -794,6 +817,7 @@ impl State {
                 ziel: raum.text(),
                 vorher: None,
                 nachher: None,
+                grund: None,
                 ergebnis: "abgelehnt: zu lang".into(),
             });
             return Err(Error::NachrichtZuLang);
@@ -816,6 +840,7 @@ impl State {
             ziel: nachricht.id.text(),
             vorher: None,
             nachher: None,
+            grund: None,
             ergebnis: "erlaubt".into(),
         });
         Ok(nachricht)
@@ -849,6 +874,7 @@ impl State {
                 ziel: id.text(),
                 vorher: None,
                 nachher: None,
+                grund: None,
                 ergebnis: "abgelehnt: kein Recht".into(),
             });
             return Err(Error::RechtFehlt(Capability::PersonEingreifen));
@@ -867,6 +893,7 @@ impl State {
                 ziel: id.text(),
                 vorher: None,
                 nachher: Some("Platzhalter".into()),
+                grund: None,
                 ergebnis: "erlaubt: weich".into(),
             });
             return Ok(false);
@@ -881,6 +908,7 @@ impl State {
             ziel: id.text(),
             vorher: Some(n.text),
             nachher: None,
+            grund: None,
             ergebnis: "erlaubt: hart".into(),
         });
         Ok(true)
@@ -925,6 +953,7 @@ impl State {
                     ziel: ziel.text(),
                     vorher: Some(alt.text().into()),
                     nachher: Some(rolle.text().into()),
+                    grund: None,
                     ergebnis: "abgelehnt: letzter Administrator".into(),
                 });
                 return Err(Error::LetzterAdministrator);
@@ -942,6 +971,7 @@ impl State {
             ziel: ziel.text(),
             vorher: Some(alt.text().into()),
             nachher: Some(rolle.text().into()),
+            grund: None,
             ergebnis: "erlaubt".into(),
         });
         Ok(())
@@ -1055,6 +1085,7 @@ impl State {
             ziel: ziel.text(),
             vorher: Some(if vorher { "an" } else { "aus" }.to_string()),
             nachher: Some(if an { "an" } else { "aus" }.to_string()),
+            grund: None,
             ergebnis: "erlaubt".into(),
         });
         Ok(())
@@ -1096,6 +1127,7 @@ impl State {
                 ziel: ziel.text(),
                 vorher: None,
                 nachher: None,
+                grund: None,
                 ergebnis: "abgelehnt: Raum unbekannt".into(),
             });
             return Err(Error::RaumUnbekannt);
@@ -1124,6 +1156,7 @@ impl State {
             ziel: ziel.text(),
             vorher: alt,
             nachher: Some(raum.text()),
+            grund: None,
             ergebnis: "erlaubt".into(),
         });
         Ok(())
@@ -1172,6 +1205,7 @@ impl State {
             ziel: ziel.text(),
             vorher: alt,
             nachher: wurzel.map(|r| r.text()),
+            grund: None,
             ergebnis: "erlaubt".into(),
         });
         Ok(())
@@ -1212,15 +1246,29 @@ impl State {
             zeit: jetzt_ms,
             handelnder_name: handelnder_name.clone(),
         });
+        // Ziel ist, **wen** es trifft (Kennung oder Adresse) — der Grund steht
+        // im eigenen Feld. Vorher stand hier der Grund, und die Zeile sagte
+        // damit nicht, wen die Sperre trifft.
+        let betroffen = self
+            .sperren
+            .last()
+            .map(|b| {
+                b.schluessel
+                    .clone()
+                    .or_else(|| b.adresse.clone())
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
         self.protokolliere(Protokollzeile {
             zeit: jetzt_ms,
             handelnder: Some(wer),
             handelnder_name: &handelnder_name,
             aktion: "sperre_verhaengt",
-            ziel: grund.to_string(),
+            ziel: betroffen,
             vorher: None,
             nachher: None,
             ergebnis: "erlaubt".into(),
+            grund: Some(grund.to_string()).filter(|g| !g.trim().is_empty()),
         });
         Ok(())
     }
@@ -1257,6 +1305,7 @@ impl State {
             ziel: format!("{anzahl} Einträge"),
             vorher: None,
             nachher: None,
+            grund: None,
             ergebnis: "erlaubt".into(),
         });
         Ok(anzahl)
@@ -1298,6 +1347,7 @@ impl State {
                 ziel,
                 vorher: None,
                 nachher: None,
+                grund: None,
                 ergebnis: format!("abgelehnt: Recht fehlt ({recht:?})"),
             });
             (name, Err(Error::RechtFehlt(recht)))

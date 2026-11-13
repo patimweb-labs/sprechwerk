@@ -15,6 +15,7 @@ function eintrag(teil: Partial<(typeof modell.protokoll)[number]> = {}) {
     vorher: null,
     nachher: null,
     ergebnis: "erlaubt",
+    grund: null,
     ...teil,
   };
 }
@@ -70,5 +71,23 @@ describe("Prüfprotokoll", () => {
     expect(w.text()).toContain("Nur Administrator und Moderator");
     // Und die Einträge bleiben verborgen — Rechte sind keine Höflichkeit.
     expect(w.text()).not.toContain("Vorstand");
+  });
+});
+
+describe("Sperre und Grund", () => {
+  it("Ziel und Grund bleiben getrennt", () => {
+    modell.verbindung = { art: "verbunden", server: "s:7443", server_name: "Werk", ich: "mitglied_1", name: "Ada", rolle: "administrator" };
+    const kennung = "ab".repeat(32);
+    modell.protokoll = [
+      eintrag({ aktion: "sperre_verhaengt", ziel: kennung, grund: "Spam im Chat" }),
+    ];
+    const w = mount(ProtokollView);
+    const zellen = w.findAll("tbody td");
+    const ziel = zellen[3].text();
+    const was = zellen[2].text();
+    // Früher stand der Grund in der Zielspalte — dann wusste niemand, wen es traf.
+    expect(ziel).toBe(kennung);
+    expect(was).toContain("Spam im Chat");
+    expect(ziel).not.toContain("Spam");
   });
 });

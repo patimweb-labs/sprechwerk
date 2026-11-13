@@ -524,10 +524,10 @@ async function absenden() {
       :description="t('member.ban.desc')"
       tone="error"
       :confirm-label="t('member.ban.confirm')"
-      @cancel="dialog = null"
+      @update:open="dialog = null"
       @confirm="bestaetigen"
     >
-      <UI.WpInput v-model="eingabeGrund" :placeholder="t('member.kick.reason')" />
+      <UI.WpInput v-model="eingabeGrund" :placeholder="t('member.ban.reason')" />
     </UI.WpDialog>
   </div>
 </template>
