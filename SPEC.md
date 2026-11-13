@@ -36,6 +36,12 @@ Rollen werden im Client verwaltet. Dazu kommt eine schlanke Diagnose (wer ist
 verbunden, letztes Protokoll, letzte Sicherung) — **[A]** als Unterbefehl des
 Servers, nicht als Weboberfläche.
 
+**Nachtrag 2026-11-13:** Das **Prüfprotokoll** ist zusätzlich im Fenster
+sichtbar — für Administrator und Moderator, also genau die Rollen, die das Recht
+„Prüfprotokoll lesen" haben. Ein Recht, das kein Client ausüben kann, ist eine
+Zeile in einer Tabelle. Ein Betriebs-*Werkzeug* (Sicherungen, Einstellungen,
+Sperrverwaltung von außen) bleibt weiterhin der Serverbefehl.
+
 **[P] Sicherung: automatisch nach Plan**, die letzten N werden behalten, dazu
 ein Handbefehl.
 

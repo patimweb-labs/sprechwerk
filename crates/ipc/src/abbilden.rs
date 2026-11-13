@@ -39,6 +39,20 @@ pub fn aus_willkommen(
     z
 }
 
+/// Eine Protokollzeile fürs Fenster.
+pub fn eintrag_abbilden(e: &sprechwerk_domain::AuditEntry) -> crate::Eintrag {
+    crate::Eintrag {
+        laufnummer: e.laufnummer,
+        zeit: e.zeit,
+        handelnder_name: e.handelnder_name.clone(),
+        aktion: e.aktion.clone(),
+        ziel: e.ziel.clone(),
+        vorher: e.vorher.clone(),
+        nachher: e.nachher.clone(),
+        ergebnis: e.ergebnis.clone(),
+    }
+}
+
 /// Rechnet einen Rahmen in den Stand ein.
 pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
     match rahmen {
@@ -147,6 +161,10 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
         // Beide gehören der Schlüsselverwaltung, nicht dem Modell: der eine
         // bringt einen Schlüssel, der andere bittet darum.
         ServerFrame::Schluesselpaket { .. } | ServerFrame::SchluesselAnfrage { .. } => {}
+
+        ServerFrame::Protokoll { eintraege } => {
+            zustand.protokoll = eintraege.iter().map(eintrag_abbilden).collect();
+        }
 
         ServerFrame::Raeume { raeume } => {
             let hier = zustand.aktueller_raum;

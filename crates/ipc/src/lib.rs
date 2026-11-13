@@ -92,8 +92,40 @@ pub struct Zustand {
     pub raeume: Vec<Raum>,
     pub mitglieder: Vec<Mitglied>,
     pub nachrichten: Vec<Nachricht>,
+    /// Zuletzt gelesenes Prüfprotokoll (leer, solange niemand es geöffnet hat).
+    ///
+    /// Es steht im Modell, nicht in der Ansicht: die Oberfläche ist
+    /// `render(modell)`, und ein zweiter Zustand neben dem Modell wäre genau die
+    /// Doppelung, die dieses Projekt vermeidet.
+    #[serde(default)]
+    pub protokoll: Vec<Eintrag>,
     /// Letzte Meldung an den Nutzer (Fehler, Hinweis).
     pub meldung: Option<String>,
+}
+
+/// Wie viele Protokollzeilen ein Aufruf ohne Angabe liest.
+fn fuenfzig() -> usize {
+    50
+}
+
+/// Eine Zeile des Prüfprotokolls, wie sie das Fenster zeigt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Eintrag {
+    pub laufnummer: u64,
+    /// Zeitpunkt in Millisekunden seit der Epoche.
+    pub zeit: i64,
+    pub handelnder_name: String,
+    /// Kurzbezeichnung, etwa `raum_angelegt`.
+    pub aktion: String,
+    /// Betroffenes Objekt in Textform.
+    pub ziel: String,
+    #[serde(default)]
+    pub vorher: Option<String>,
+    #[serde(default)]
+    pub nachher: Option<String>,
+    /// „erlaubt" oder „abgelehnt: …" — die zweite Hälfte ist der eigentliche
+    /// Wert: man sieht, was **nicht** passiert ist.
+    pub ergebnis: String,
 }
 
 impl Zustand {
@@ -216,9 +248,28 @@ pub enum Befehl {
         #[serde(default)]
         grund: String,
     },
+    /// Eine Sperre aufheben (Kennung und/oder Adresse).
+    Entsperren {
+        #[serde(default)]
+        kennung: Option<String>,
+        #[serde(default)]
+        adresse: Option<String>,
+    },
+    /// Prüfprotokoll lesen (Administrator und Moderator).
+    Protokoll {
+        #[serde(default)]
+        ab: usize,
+        #[serde(default = "fuenfzig")]
+        anzahl: usize,
+    },
 }
 
 /// Was der Rust-Teil antwortet.
+///
+/// `Zustand` ist deutlich größer als die anderen Fälle; das ist Absicht: eine
+/// Antwort wird **einmal** je Änderung über die Grenze geschickt, und ein
+/// Umweg über den Haufen (`Box`) spart dabei nichts, was man merken würde.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "art", rename_all = "snake_case")]
 pub enum Antwort {

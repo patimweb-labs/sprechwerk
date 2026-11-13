@@ -95,6 +95,8 @@ pub fn run() {
             commands::aus_raum_werfen,
             commands::trennen_mitglied,
             commands::sperren,
+            commands::entsperren,
+            commands::protokoll,
             commands::raum_verschluesseln,
             commands::audio_starten,
             commands::audio_stoppen,

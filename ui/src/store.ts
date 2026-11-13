@@ -12,6 +12,7 @@ export const modell = reactive<Zustand>({
   raeume: [],
   mitglieder: [],
   nachrichten: [],
+  protokoll: [],
 
   meldung: null,
 });
@@ -38,7 +39,9 @@ export const einstellungen = reactive<Einstellungen>({
 /** Welche Ansicht ist offen? (Die Leiste links schreibt hier hinein.) */
 // Startseite ist die Serverliste; im Klickdummy ist man schon verbunden und
 // landet direkt im Gespräch.
-export const ansicht = ref<"server" | "raeume" | "einstellungen">(istDummy ? "raeume" : "server");
+export const ansicht = ref<"server" | "raeume" | "protokoll" | "einstellungen">(
+  istDummy ? "raeume" : "server",
+);
 
 export const laeuft = ref(false);
 
@@ -142,8 +145,37 @@ export async function speichere() {
   }
 }
 
+/** Darf ich das Prüfprotokoll lesen? (Administrator und Moderator) */
+export const darfProtokollLesen = computed(() => {
+  const r = meineRolle.value;
+  return r === "administrator" || r === "moderator";
+});
+
+/**
+ * Prüfprotokoll laden.
+ *
+ * Die Antwort kommt als Rahmen zurück und landet über `abbilden` im Modell —
+ * hier wird nur angestoßen, nicht zwischengespeichert.
+ */
+export async function ladeProtokoll(ab = 0, anzahl = 50) {
+  try {
+    await api.protokoll(ab, anzahl);
+  } catch (fehler) {
+    modell.meldung = `Protokoll nicht lesbar: ${String(fehler)}`;
+  }
+}
+
+/** Eine Sperre aufheben. */
+export async function entsperren(kennung: string | null, adresse: string | null) {
+  try {
+    await api.entsperren(kennung, adresse);
+  } catch (fehler) {
+    modell.meldung = `Sperre nicht aufgehoben: ${String(fehler)}`;
+  }
+}
+
 /** Bereich wechseln (Reiter in der Kopfzeile). */
-export function geheZu(bereich: "server" | "raeume" | "einstellungen") {
+export function geheZu(bereich: "server" | "raeume" | "protokoll" | "einstellungen") {
   ansicht.value = bereich;
 }
 

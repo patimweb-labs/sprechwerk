@@ -275,6 +275,17 @@ pub enum ClientFrame {
         /// Signatur des Absenders (Hex).
         unterschrift: String,
     },
+    /// Hebt eine Sperre auf (Kennung und/oder Adresse).
+    ///
+    /// Ohne diesen Befehl käme man an eine verhängte Sperre nur über die
+    /// Datenbank — eine Sperre, die man nicht zurücknehmen kann, ist im Betrieb
+    /// eine Falle.
+    Entsperren {
+        #[serde(default)]
+        kennung: Option<String>,
+        #[serde(default)]
+        adresse: Option<String>,
+    },
     /// Bittet den Schlüsselwart um den Raumschlüssel.
     ///
     /// Nötig, wenn ein Schlüsselpaket **verloren** ging: der Wart hat den

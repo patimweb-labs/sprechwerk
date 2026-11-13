@@ -796,5 +796,191 @@
   "en": "{} (not found)",
   "es": "{} (no encontrado)",
   "fr": "{} (introuvable)"
+ },
+ "app.audit": {
+  "de": "Protokoll",
+  "en": "Audit log",
+  "es": "Registro",
+  "fr": "Journal"
+ },
+ "audit.title": {
+  "de": "Prüfprotokoll",
+  "en": "Audit log",
+  "es": "Registro de auditoría",
+  "fr": "Journal d'audit"
+ },
+ "audit.sub": {
+  "de": "Was geschah, wer es tat — und was abgelehnt wurde. Einträge lassen sich nicht ändern.",
+  "en": "What happened, who did it — and what was refused. Entries cannot be changed.",
+  "es": "Qué pasó, quién lo hizo — y qué se rechazó. Las entradas no se pueden cambiar.",
+  "fr": "Ce qui s'est passé, qui l'a fait — et ce qui a été refusé. Les entrées ne sont pas modifiables."
+ },
+ "audit.refresh": {
+  "de": "Neu laden",
+  "en": "Reload",
+  "es": "Recargar",
+  "fr": "Recharger"
+ },
+ "audit.empty.title": {
+  "de": "Noch nichts geschehen",
+  "en": "Nothing has happened yet",
+  "es": "Todavía no ha pasado nada",
+  "fr": "Rien ne s'est encore passé"
+ },
+ "audit.empty.desc": {
+  "de": "Sobald jemand Räume, Rollen oder Sperren ändert, steht es hier.",
+  "en": "As soon as someone changes rooms, roles or bans, it appears here.",
+  "es": "En cuanto alguien cambie salas, roles o bloqueos, aparecerá aquí.",
+  "fr": "Dès que quelqu'un modifie des salons, des rôles ou des bannissements, cela apparaît ici."
+ },
+ "audit.col.time": {
+  "de": "Zeit",
+  "en": "Time",
+  "es": "Hora",
+  "fr": "Heure"
+ },
+ "audit.col.who": {
+  "de": "Wer",
+  "en": "Who",
+  "es": "Quién",
+  "fr": "Qui"
+ },
+ "audit.col.what": {
+  "de": "Was",
+  "en": "What",
+  "es": "Qué",
+  "fr": "Quoi"
+ },
+ "audit.col.target": {
+  "de": "Betroffen",
+  "en": "Subject",
+  "es": "Afectado",
+  "fr": "Concerné"
+ },
+ "audit.col.result": {
+  "de": "Ergebnis",
+  "en": "Result",
+  "es": "Resultado",
+  "fr": "Résultat"
+ },
+ "audit.refused": {
+  "de": "abgelehnt",
+  "en": "refused",
+  "es": "rechazado",
+  "fr": "refusé"
+ },
+ "audit.system": {
+  "de": "Server",
+  "en": "Server",
+  "es": "Servidor",
+  "fr": "Serveur"
+ },
+ "audit.no_right": {
+  "de": "Nur Administrator und Moderator dürfen das Protokoll lesen.",
+  "en": "Only administrators and moderators may read the log.",
+  "es": "Solo administradores y moderadores pueden leer el registro.",
+  "fr": "Seuls les administrateurs et modérateurs peuvent lire le journal."
+ },
+ "audit.action.raum_angelegt": {
+  "de": "Raum angelegt",
+  "en": "Room created",
+  "es": "Sala creada",
+  "fr": "Salon créé"
+ },
+ "audit.action.raum_umbenannt": {
+  "de": "Raum umbenannt",
+  "en": "Room renamed",
+  "es": "Sala renombrada",
+  "fr": "Salon renommé"
+ },
+ "audit.action.raum_geloescht": {
+  "de": "Raum gelöscht",
+  "en": "Room deleted",
+  "es": "Sala eliminada",
+  "fr": "Salon supprimé"
+ },
+ "audit.action.raum_verlassen": {
+  "de": "Raum gewechselt",
+  "en": "Room changed",
+  "es": "Sala cambiada",
+  "fr": "Salon changé"
+ },
+ "audit.action.raum_verschluesselt": {
+  "de": "Verschlüsselung geändert",
+  "en": "Encryption changed",
+  "es": "Cifrado cambiado",
+  "fr": "Chiffrement modifié"
+ },
+ "audit.action.rolle_gesetzt": {
+  "de": "Rolle gesetzt",
+  "en": "Role set",
+  "es": "Rol asignado",
+  "fr": "Rôle attribué"
+ },
+ "audit.action.gesperrt": {
+  "de": "gesperrt",
+  "en": "banned",
+  "es": "bloqueado",
+  "fr": "banni"
+ },
+ "audit.action.sperre_verhaengt": {
+  "de": "Sperre verhängt",
+  "en": "ban issued",
+  "es": "bloqueo impuesto",
+  "fr": "bannissement prononcé"
+ },
+ "audit.action.sperre_aufgehoben": {
+  "de": "Sperre aufgehoben",
+  "en": "ban lifted",
+  "es": "bloqueo levantado",
+  "fr": "bannissement levé"
+ },
+ "audit.action.getrennt": {
+  "de": "vom Server getrennt",
+  "en": "disconnected",
+  "es": "desconectado",
+  "fr": "déconnecté"
+ },
+ "audit.action.verschoben": {
+  "de": "verschoben",
+  "en": "moved",
+  "es": "movido",
+  "fr": "déplacé"
+ },
+ "audit.action.stummgeschaltet": {
+  "de": "stummgeschaltet",
+  "en": "muted",
+  "es": "silenciado",
+  "fr": "mis en sourdine"
+ },
+ "audit.action.taubgeschaltet": {
+  "de": "Ton stummgeschaltet",
+  "en": "deafened",
+  "es": "ensordecido",
+  "fr": "sourdine"
+ },
+ "audit.action.anmeldung": {
+  "de": "Anmeldung",
+  "en": "Sign-in",
+  "es": "Inicio de sesión",
+  "fr": "Connexion"
+ },
+ "audit.action.mitglied_umbenannt": {
+  "de": "Mitglied umbenannt",
+  "en": "Member renamed",
+  "es": "Miembro renombrado",
+  "fr": "Membre renommé"
+ },
+ "audit.action.text_gesendet": {
+  "de": "Nachricht geschrieben",
+  "en": "Message posted",
+  "es": "Mensaje escrito",
+  "fr": "Message publié"
+ },
+ "audit.action.nachricht_geloescht": {
+  "de": "Nachricht gelöscht",
+  "en": "Message deleted",
+  "es": "Mensaje eliminado",
+  "fr": "Message supprimé"
  }
 }

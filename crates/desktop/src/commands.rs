@@ -270,6 +270,42 @@ pub struct AudioStand {
     pub taub: bool,
 }
 
+/// Liest das Prüfprotokoll (Administrator und Moderator).
+///
+/// Die Einträge kommen als Rahmen zurück und landen über `abbilden` im Modell;
+/// die Ansicht liest sie von dort. Deshalb ist die Antwort leer — der neue
+/// Stand geht wie immer über die Melderinne zum Fenster.
+#[tauri::command]
+pub async fn protokoll(
+    anwendung: State<'_, Arc<Anwendung>>,
+    ab: usize,
+    anzahl: usize,
+) -> Result<(), String> {
+    match anwendung
+        .befehl(sprechwerk_ipc::Befehl::Protokoll { ab, anzahl })
+        .await
+    {
+        Antwort::Fehler { text } => Err(text),
+        _ => Ok(()),
+    }
+}
+
+/// Hebt eine Sperre auf (nur Administrator).
+#[tauri::command]
+pub async fn entsperren(
+    anwendung: State<'_, Arc<Anwendung>>,
+    kennung: Option<String>,
+    adresse: Option<String>,
+) -> Result<(), String> {
+    match anwendung
+        .befehl(sprechwerk_ipc::Befehl::Entsperren { kennung, adresse })
+        .await
+    {
+        Antwort::Fehler { text } => Err(text),
+        _ => Ok(()),
+    }
+}
+
 /// Startet den Sprechpfad mit den gespeicherten Einstellungen.
 #[tauri::command]
 pub fn audio_starten(

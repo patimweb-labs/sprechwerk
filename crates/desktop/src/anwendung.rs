@@ -475,6 +475,12 @@ async fn lauf<F>(
                     Befehl::Sperren { mitglied, grund } => {
                         sprechwerk_protocol::ClientFrame::MitgliedSperren { mitglied, grund }
                     }
+                    Befehl::Protokoll { ab, anzahl } => {
+                        sprechwerk_protocol::ClientFrame::Protokoll { ab, anzahl }
+                    }
+                    Befehl::Entsperren { kennung, adresse } => {
+                        sprechwerk_protocol::ClientFrame::Entsperren { kennung, adresse }
+                    }
                     Befehl::Zustand | Befehl::Verbinden { .. } | Befehl::Trennen => unreachable!(),
                 };
 

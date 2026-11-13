@@ -448,3 +448,78 @@ async fn zu_viele_rahmen_werden_abgewiesen() {
         "der Server hat 40 Rahmen in einer Sekunde hingenommen"
     );
 }
+
+/// Eine Sperre lässt sich auch wieder aufheben — mit Recht, und mit einer
+/// ehrlichen Antwort, wenn keine Sperre passte.
+#[tokio::test]
+async fn sperre_wird_aufgehoben() {
+    let server = Testserver::starten("entsperren", &[]);
+    server.bereit().await;
+
+    let mut ada = Verbindung::oeffnen(server.adresse, &Schluessel::neu(), "Ada", None)
+        .await
+        .unwrap();
+    let fremd = Verbindung::oeffnen(server.adresse, &Schluessel::neu(), "Bosse", None)
+        .await
+        .unwrap();
+    let kennung = sprechwerk_adapters::Schluessel::neu().kennung();
+
+    // Sperren.
+    ada.sende(ClientFrame::Sperren {
+        kennung: Some(kennung.clone()),
+        adresse: None,
+        grund: "Test".into(),
+    })
+    .await
+    .unwrap();
+    warte_auf(&mut ada, |f| matches!(f, ServerFrame::Ok)).await;
+
+    // Aufheben: bestätigt.
+    ada.sende(ClientFrame::Entsperren {
+        kennung: Some(kennung.clone()),
+        adresse: None,
+    })
+    .await
+    .unwrap();
+    warte_auf(&mut ada, |f| matches!(f, ServerFrame::Ok)).await;
+
+    // Nochmal aufheben: passt zu keiner Sperre → Fehler, nicht „Ok".
+    ada.sende(ClientFrame::Entsperren {
+        kennung: Some(kennung.clone()),
+        adresse: None,
+    })
+    .await
+    .unwrap();
+    let absage = warte_auf(&mut ada, |f| matches!(f, ServerFrame::Fehler { .. })).await;
+    assert!(
+        matches!(absage, ServerFrame::Fehler { .. }),
+        "eine Sperre, die es nicht gibt, darf nicht als Erfolg gemeldet werden"
+    );
+
+    // Ein Mitglied (kein Administrator) darf nicht entsperren.
+    ada.sende(ClientFrame::Sperren {
+        kennung: Some(kennung.clone()),
+        adresse: None,
+        grund: "Test".into(),
+    })
+    .await
+    .unwrap();
+    warte_auf(&mut ada, |f| matches!(f, ServerFrame::Ok)).await;
+    let mut bosse = fremd;
+    bosse
+        .sende(ClientFrame::Entsperren {
+            kennung: Some(kennung),
+            adresse: None,
+        })
+        .await
+        .unwrap();
+    let absage = warte_auf(&mut bosse, |f| matches!(f, ServerFrame::Fehler { .. })).await;
+    match absage {
+        ServerFrame::Fehler { code, .. } => assert_eq!(
+            code,
+            sprechwerk_protocol::Fehlercode::KeinRecht,
+            "Entsperren ist eine Administratorhandlung"
+        ),
+        anderes => panic!("unerwartet: {anderes:?}"),
+    }
+}

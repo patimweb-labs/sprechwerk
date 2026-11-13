@@ -103,6 +103,9 @@ function zustandDerWahrheit(verbunden: boolean): Zustand {
     raeume: verbunden ? raumListe : [],
     mitglieder: verbunden ? mitglieder.filter((m) => m.raum) : [],
     nachrichten: verbunden ? (nachrichten[aktuellerRaum] ?? []).map((n) => ({ ...n, loeschbar: true })) : [],
+    // Das Protokoll holt man sich ausdrücklich (`protokoll()`); im Dummy
+    // beginnt es leer, damit man den Weg „noch nicht gelesen" sieht.
+    protokoll: [],
 
     meldung: null,
   };
@@ -150,6 +153,46 @@ export const einstellungenVorgabe: Einstellungen = {
 };
 
 export const mockApi = {
+  async protokoll(): Promise<void> {
+    stand.protokoll = [
+      {
+        laufnummer: 12,
+        zeit: Date.now() - 60_000,
+        handelnder_name: "Ada",
+        aktion: "rolle_gesetzt",
+        ziel: "Bosse",
+        vorher: "mitglied",
+        nachher: "moderator",
+        ergebnis: "erlaubt",
+      },
+      {
+        laufnummer: 11,
+        zeit: Date.now() - 120_000,
+        handelnder_name: "Bosse",
+        aktion: "raum_angelegt",
+        ziel: "Vorstand",
+        vorher: null,
+        nachher: null,
+        ergebnis: "abgelehnt: dafür fehlt das Recht",
+      },
+      {
+        laufnummer: 10,
+        zeit: Date.now() - 300_000,
+        handelnder_name: "",
+        aktion: "anmeldung",
+        ziel: "ab12…",
+        vorher: null,
+        nachher: null,
+        ergebnis: "abgelehnt: gesperrt (Spam)",
+      },
+    ];
+    melden();
+  },
+
+  async entsperren(): Promise<void> {
+    melden();
+  },
+
   async zustand(): Promise<Zustand> {
     return JSON.parse(JSON.stringify(stand));
   },

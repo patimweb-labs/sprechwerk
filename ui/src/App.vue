@@ -37,6 +37,7 @@ import SprechwerkMarke from "./marke/SprechwerkMarke.vue";
 import ServerView from "./views/ServerView.vue";
 import RaeumeView from "./views/RaeumeView.vue";
 import EinstellungenView from "./views/EinstellungenView.vue";
+import ProtokollView from "./views/ProtokollView.vue";
 
 const eigenerName = computed(() => {
   const v = modell.verbindung;
@@ -48,6 +49,11 @@ const kontomenue = computed<UI.MenuItem[]>(() => {
   const punkte: UI.MenuItem[] = [];
   if (verbunden.value) {
     punkte.push({ id: "raeume", label: t("app.rooms") });
+    // Das Prüfprotokoll ist eine Administrator- und Moderatorenansicht; für
+    // alle anderen wäre der Menüpunkt eine Sackgasse.
+    if (["administrator", "moderator"].includes(meineRolle.value ?? "")) {
+      punkte.push({ id: "protokoll", label: t("app.audit") });
+    }
   }
   punkte.push({ id: "server", label: t("app.menu_servers") });
   punkte.push({ id: "einstellungen", label: t("app.settings") });
@@ -216,6 +222,7 @@ async function tonUmschalten() {
     <main class="bildschirm">
       <ServerView v-if="ansicht === 'server' || !verbunden" />
       <RaeumeView v-else-if="ansicht === 'raeume'" />
+      <ProtokollView v-else-if="ansicht === 'protokoll'" />
       <EinstellungenView v-else />
     </main>
 

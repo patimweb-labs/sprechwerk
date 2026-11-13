@@ -45,6 +45,21 @@ export interface Nachricht {
   loeschbar: boolean;
 }
 
+/** Eine Zeile des Prüfprotokolls. */
+export interface Eintrag {
+  laufnummer: number;
+  /** Zeitpunkt in Millisekunden seit der Epoche. */
+  zeit: number;
+  handelnder_name: string;
+  /** Kurzbezeichnung, etwa `raum_angelegt`. */
+  aktion: string;
+  ziel: string;
+  vorher: string | null;
+  nachher: string | null;
+  /** „erlaubt" oder „abgelehnt: …". */
+  ergebnis: string;
+}
+
 /** Der vollständige Modellstand — die Oberfläche ist `render(modell)`. */
 export interface Zustand {
   verbindung: Verbindung | null;
@@ -52,6 +67,8 @@ export interface Zustand {
   raeume: Raum[];
   mitglieder: Mitglied[];
   nachrichten: Nachricht[];
+  /** Zuletzt gelesenes Prüfprotokoll (leer, solange niemand es geöffnet hat). */
+  protokoll: Eintrag[];
   meldung: string | null;
 }
 
@@ -121,6 +138,9 @@ const echtApi = {
   trenneMitglied: (mitglied: string, grund: string) =>
     invoke<void>("trennen_mitglied", { mitglied, grund }),
   sperreMitglied: (mitglied: string, grund: string) => invoke<void>("sperren", { mitglied, grund }),
+  entsperren: (kennung: string | null, adresse: string | null) =>
+    invoke<void>("entsperren", { kennung, adresse }),
+  protokoll: (ab = 0, anzahl = 50) => invoke<void>("protokoll", { ab, anzahl }),
   raumVerschluesseln: (raum: string, an: boolean) =>
     invoke<void>("raum_verschluesseln", { raum, an }),
   audioGeraete: () => invoke<Geraeteliste>("audio_geraete"),

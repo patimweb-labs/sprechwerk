@@ -813,6 +813,28 @@ impl Kern {
                 })],
             },
 
+            ClientFrame::Entsperren { kennung, adresse } => {
+                match self
+                    .state
+                    .entsperren(ich, kennung.as_deref(), adresse.as_deref(), jetzt)
+                {
+                    Ok(anzahl) => {
+                        let _ = self.speichern();
+                        // „0 Sperren aufgehoben" ist keine Auskunft, sondern
+                        // ein Fehler: die Kennung passte zu keiner Sperre.
+                        if anzahl == 0 {
+                            vec![Kern::fehler(Fehlercode::Unbekannt)]
+                        } else {
+                            vec![ServerFrame::Ok]
+                        }
+                    }
+                    Err(e) => vec![Kern::fehler(match e {
+                        sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                        _ => Fehlercode::UngueltigeEingabe,
+                    })],
+                }
+            }
+
             ClientFrame::Protokoll { ab, anzahl } => {
                 let m = self.state.mitglied(ich);
                 if !m
@@ -1507,16 +1529,24 @@ mod protokollsweep {
                 }),
             ),
             (
+                "Entsperren",
+                Box::new(|_| ClientFrame::Entsperren {
+                    kennung: Some("ab".repeat(32)),
+                    adresse: None,
+                }),
+            ),
+            (
                 "Protokoll",
                 Box::new(|_| ClientFrame::Protokoll { ab: 0, anzahl: 10 }),
             ),
         ];
 
-        // Nachrichtenarten zählen — 22 laut `enum ClientFrame`. Absichtlich
-        // **nicht** 22 als Wächter, sondern die geprüfte Zahl mit Begründung:
+        // Jede Nachrichtenart des Clients steht hier genau einmal. Der Wächter
+        // ist die geprüfte Zahl: kommt eine Variante dazu und wird sie hier nicht
+        // ergänzt, schlägt der Test fehl.
         assert_eq!(
             faelle.len(),
-            20,
+            21,
             "neue ClientFrame-Variante? Dann hier einen Fall ergänzen \
              (und die Zahl mitziehen)"
         );
