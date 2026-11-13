@@ -37,6 +37,25 @@ wird hier bewusst nicht versprochen.
 6. **Überlappung.** Zwei Epochen dürfen kurz parallel gelten (Schlüsselwechsel
    braucht einen Rahmen Zeit), sonst gehen beim Wechsel Wörter verloren.
 
+**Gemessen 2026-11-13** (Ende zu Ende, echter Server, drei echte Clients,
+`schluesselwechsel_im_laufenden_gespraech` in `crates/desktop/src/verschluesselung.rs`):
+Das Wechselfenster — vom Verlassen bis zum neuen Schlüssel bei den
+Verbliebenen — beträgt **35–50 ms**, also **zwei bis drei 20-ms-Rahmen**. Eine
+Überlappung beider Epochen gibt es derzeit **nicht**; sie wäre nötig, um auch
+diese Rahmen zu retten.
+
+Dabei fiel ein zweiter Fehler auf: ein **Späterkommender** bekam keinen
+Schlüssel. Der Wart hatte den Schlüssel der Epoche schon und tat deshalb
+nichts — wer danach kam (oder nach einem Abbruch zurückkam), sah nur „warte auf
+den Schlüssel des Raums". Behoben: der Wart verteilt erneut, sobald sich die
+Runde der Anwesenden ändert.
+
+**Testausführung:** `crates/desktop` liegt außerhalb des Arbeitsbereichs (Tauri
+hat eine eigene Sperrdatei), `cargo test` im Wurzelverzeichnis sammelt seine
+Tests also nicht ein. Für Fenster und Verschlüsselung:
+`cd crates/desktop && cargo test` (der Ende-zu-Ende-Test startet den echten
+Serverprozess; vorher `cargo build -p sprechwerk-server`).
+
 **Nachtrag 2026-11-13.** Punkt 5 war bis heute nur beschrieben, nicht gebaut:
 `State::verlassen` ließ `verschluesselt_seit` unverändert, die Epoche drehte
 sich nur beim Ein- und Ausschalten der Verschlüsselung. Wer den Raum verließ,
@@ -68,7 +87,8 @@ Epoche Sekunden zählt und zwei Drehungen sonst dieselbe Zahl ergäben.
 |---|---|
 | Raumschlüssel, Umschlag (X25519 + HKDF-SHA256 + ChaCha20-Poly1305) | `crates/adapters/src/verschluesselt.rs`, 11 Tests |
 | Rahmen verschlüsseln/entschlüsseln (Kopf bleibt lesbar) | dort, 2 Tests |
-| Schlüsselverwaltung, Wärter-Wahl, Unterschrift prüfen | `crates/desktop/src/verschluesselung.rs`, 6 Tests |
+| Schlüsselverwaltung, Wärter-Wahl, Unterschrift prüfen | `crates/desktop/src/verschluesselung.rs` |
+| Ende zu Ende: Wechsel im laufenden Gespräch (35 ms Fenster), Späterkommende | dort, 2 Tests (echter Serverprozess) |
 | Raum-Flag, Epoche, Protokoll-Eintrag | `crates/domain/src/state.rs` |
 | Epoche dreht beim Verlassen, Verschieben und Rauswurf | dort, `verlassen_dreht_die_epoche` (3 Fälle) |
 | Speicherung (überlebt Neustart) | `crates/store/src/lib.rs`, 1 Test |

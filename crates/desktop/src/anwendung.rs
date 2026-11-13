@@ -207,21 +207,15 @@ async fn lauf<F>(
                 Ok(Some(frame)) => {
                     // Schlüsselpaket: gehört nicht ins Modell, sondern in die
                     // Schlüsselverwaltung.
-                    if let Some((raum, epoche, von, daten, unterschrift)) =
-                        crate::verschluesselung::aus_rahmen(&frame)
-                    {
+                    if let Some(paket) = crate::verschluesselung::aus_rahmen(&frame) {
                         if let (Some(v), Some(e)) = (netz.as_ref(), eigener.as_ref()) {
-                            nimm_schluesselpaket(
-                                v,
-                                &verwaltung,
-                                e,
-                                raum,
-                                epoche,
-                                von,
-                                &daten,
-                                &unterschrift,
-                            );
+                            nimm_schluesselpaket(v, &verwaltung, e, paket);
                         }
+                    }
+                    // Jemand bittet um den Schlüssel: die Verteilung neu
+                    // anstoßen, damit der nächste Durchlauf ihn bedient.
+                    if let sprechwerk_protocol::ServerFrame::SchluesselAnfrage { raum, .. } = &frame {
+                        verwaltung.verteilung_erneuern(*raum);
                     }
                     let mut raum_wechsel = false;
                     if let Ok(mut z) = zustand.lock() {
@@ -542,13 +536,8 @@ fn entschluessle(
         return Some(datagramm.to_vec());
     }
     let raum = aktueller.lock().ok().and_then(|r| *r)?;
-    let schluessel = verwaltung.hole(raum)?;
-    sprechwerk_adapters::verschluesselt::rahmen_entschluesseln(
-        datagramm,
-        &schluessel,
-        raum.text().as_str(),
-    )
-    .ok()
+    // Aktueller Schlüssel, sonst der vorige (Übergangsfenster beim Wechsel).
+    verwaltung.entschluesseln(raum, datagramm)
 }
 
 /// Sorgt für den Raumschlüssel: erzeugen und verteilen (als Wart) oder warten.
@@ -589,21 +578,9 @@ fn nimm_schluesselpaket(
     verbindung: &Netz,
     verwaltung: &Schluesselverwaltung,
     eigener: &Schluessel,
-    raum: sprechwerk_domain::RoomId,
-    epoche: u32,
-    von: sprechwerk_domain::MemberId,
-    daten: &str,
-    unterschrift: &str,
+    paket: crate::verschluesselung::Paket<'_>,
 ) {
-    if let Err(fehler) = verwaltung.nimm_paket(
-        raum,
-        epoche,
-        von,
-        daten,
-        unterschrift,
-        eigener,
-        &verbindung.mitglieder,
-    ) {
+    if let Err(fehler) = verwaltung.nimm_paket(paket, eigener, &verbindung.mitglieder) {
         eprintln!("Schlüsselpaket abgelehnt: {fehler}");
     }
 }
