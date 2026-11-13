@@ -518,7 +518,11 @@ async fn lauf<F>(
                     Befehl::Zaehler => sprechwerk_protocol::ClientFrame::Zaehler,
                     Befehl::Sperrliste => sprechwerk_protocol::ClientFrame::Sperrliste,
                     Befehl::Protokoll { ab, anzahl } => {
-                        sprechwerk_protocol::ClientFrame::Protokoll { ab, anzahl }
+                        sprechwerk_protocol::ClientFrame::Protokoll {
+                            ab,
+                            anzahl,
+                            von_hinten: true,
+                        }
                     }
                     Befehl::Entsperren { kennung, adresse } => {
                         sprechwerk_protocol::ClientFrame::Entsperren { kennung, adresse }

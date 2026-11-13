@@ -195,9 +195,13 @@ async fn protokoll_ist_lesbar_und_rechte_werden_geprueft() {
     }
 
     // Protokoll enthält die Ablehnung **und** die Erlaubnis.
-    ada.sende(ClientFrame::Protokoll { ab: 0, anzahl: 100 })
-        .await
-        .unwrap();
+    ada.sende(ClientFrame::Protokoll {
+        ab: 0,
+        anzahl: 100,
+        von_hinten: false,
+    })
+    .await
+    .unwrap();
     let protokoll = warte_auf(&mut ada, |f| matches!(f, ServerFrame::Protokoll { .. })).await;
     match protokoll {
         ServerFrame::Protokoll { eintraege } => {
@@ -220,7 +224,11 @@ async fn protokoll_ist_lesbar_und_rechte_werden_geprueft() {
 
     // Ein Mitglied darf das Protokoll nicht lesen.
     bosse
-        .sende(ClientFrame::Protokoll { ab: 0, anzahl: 10 })
+        .sende(ClientFrame::Protokoll {
+            ab: 0,
+            anzahl: 10,
+            von_hinten: false,
+        })
         .await
         .unwrap();
     let absage = warte_auf(&mut bosse, |f| matches!(f, ServerFrame::Fehler { .. })).await;

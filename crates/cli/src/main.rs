@@ -171,7 +171,11 @@ async fn main() -> Result<()> {
                     continue;
                 }
                 if zeile == "/protokoll" {
-                    verbindung.sende(ClientFrame::Protokoll { ab: 0, anzahl: 20 }).await?;
+                    verbindung.sende(ClientFrame::Protokoll {
+                        ab: 0,
+                        anzahl: 20,
+                        von_hinten: false,
+                    }).await?;
                     continue;
                 }
                 if zeile == "/wer" { verbindung.sende(ClientFrame::Ping).await?; continue; }

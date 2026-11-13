@@ -867,7 +867,11 @@ impl Kern {
                 }]
             }
 
-            ClientFrame::Protokoll { ab, anzahl } => {
+            ClientFrame::Protokoll {
+                ab,
+                anzahl,
+                von_hinten,
+            } => {
                 let m = self.state.mitglied(ich);
                 if !m
                     .map(|m| {
@@ -880,7 +884,20 @@ impl Kern {
                 {
                     return vec![Kern::fehler(Fehlercode::KeinRecht)];
                 }
-                let eintraege = self.state.protokoll_lesen(ab, anzahl.min(500)).to_vec();
+                let grenze = anzahl.min(500);
+                let eintraege = if von_hinten {
+                    // Die neuesten: vom Ende rückwärts, neueste zuerst. Wer die
+                    // Ansicht öffnet, will sehen, was gerade geschah.
+                    let gesamt = self.state.protokoll.len();
+                    let ab_hinten = ab.min(gesamt);
+                    let start = gesamt.saturating_sub(ab_hinten + grenze);
+                    let ende = gesamt - ab_hinten;
+                    let mut teil = self.state.protokoll[start..ende].to_vec();
+                    teil.reverse();
+                    teil
+                } else {
+                    self.state.protokoll_lesen(ab, grenze).to_vec()
+                };
                 vec![ServerFrame::Protokoll { eintraege }]
             }
         }
@@ -1323,7 +1340,11 @@ pub(crate) mod rollenmatrix {
 
             // --- Protokoll ---------------------------------------------
             zelle("Protokoll", rolle, ProtokollLesen, |_| {
-                ClientFrame::Protokoll { ab: 0, anzahl: 10 }
+                ClientFrame::Protokoll {
+                    ab: 0,
+                    anzahl: 10,
+                    von_hinten: false,
+                }
             });
             zellen += 1;
         }
@@ -1571,7 +1592,11 @@ mod protokollsweep {
             ),
             (
                 "Protokoll",
-                Box::new(|_| ClientFrame::Protokoll { ab: 0, anzahl: 10 }),
+                Box::new(|_| ClientFrame::Protokoll {
+                    ab: 0,
+                    anzahl: 10,
+                    von_hinten: false,
+                }),
             ),
         ];
 
@@ -1763,6 +1788,7 @@ mod protokollsweep {
         let antworten = frage("sweep-protokoll-max", |_| ClientFrame::Protokoll {
             ab: usize::MAX,
             anzahl: usize::MAX,
+            von_hinten: false,
         });
         let eintraege = antworten.iter().find_map(|a| match a {
             ServerFrame::Protokoll { eintraege } => Some(eintraege.len()),
@@ -1779,6 +1805,7 @@ mod protokollsweep {
         let antworten = frage("sweep-protokoll-500", |_| ClientFrame::Protokoll {
             ab: 0,
             anzahl: usize::MAX,
+            von_hinten: false,
         });
         let eintraege = antworten.iter().find_map(|a| match a {
             ServerFrame::Protokoll { eintraege } => Some(eintraege.len()),
@@ -2027,6 +2054,76 @@ mod protokollsweep {
         assert!(
             meldet_fehler(&antworten),
             "Moderator darf nicht sperren, also auch nicht sehen: {antworten:?}"
+        );
+    }
+    /// Das Protokoll **von hinten**: die neuesten zuerst.
+    ///
+    /// Vorher zeigte die Ansicht im Fenster die ältesten Einträge — bei einem
+    /// Protokoll genau das Gegenteil dessen, was man sehen will.
+    #[test]
+    fn protokoll_von_hinten_liefert_die_neuesten() {
+        let mut w = welt("sweep-protokoll-hinten");
+        // Genug Zeilen erzeugen: jeder Raumname steht danach im Protokoll.
+        for i in 0..5 {
+            let _ = w.kern.befehle(
+                w.ada,
+                ClientFrame::RaumAnlegen {
+                    name: format!("Raum {i}"),
+                },
+            );
+        }
+
+        let antworten = w.kern.befehle(
+            w.ada,
+            ClientFrame::Protokoll {
+                ab: 0,
+                anzahl: 3,
+                von_hinten: true,
+            },
+        );
+        let eintraege = match &antworten[0] {
+            ServerFrame::Protokoll { eintraege } => eintraege.clone(),
+            anderes => panic!("unerwartet: {anderes:?}"),
+        };
+        assert_eq!(eintraege.len(), 3, "genau die drei neuesten");
+        // Neueste zuerst: die Laufnummern fallen.
+        let nummern: Vec<u64> = eintraege.iter().map(|e| e.laufnummer).collect();
+        assert!(
+            nummern.windows(2).all(|p| p[0] > p[1]),
+            "neueste zuerst erwartet, bekommen: {nummern:?}"
+        );
+        // Der neueste Eintrag gehört zum zuletzt angelegten Raum (das Ziel ist
+        // die Raumkennung, nicht der Name).
+        let letzter_raum = w
+            .kern
+            .raeume()
+            .into_iter()
+            .find(|r| r.name == "Raum 4")
+            .map(|r| r.id)
+            .expect("Raum 4");
+        assert_eq!(
+            eintraege[0].ziel,
+            letzter_raum.text(),
+            "der neueste Eintrag ist der zuletzt angelegte Raum"
+        );
+
+        // Und von vorn bleibt es beim Mitschnitt: älteste zuerst.
+        let antworten = w.kern.befehle(
+            w.ada,
+            ClientFrame::Protokoll {
+                ab: 0,
+                anzahl: 3,
+                von_hinten: false,
+            },
+        );
+        let eintraege = match &antworten[0] {
+            ServerFrame::Protokoll { eintraege } => eintraege.clone(),
+            anderes => panic!("unerwartet: {anderes:?}"),
+        };
+        let nummern: Vec<u64> = eintraege.iter().map(|e| e.laufnummer).collect();
+        assert!(
+            nummern.windows(2).all(|p| p[0] < p[1]),
+            "von vorn aufsteigend erwartet, bekommen: {nummern:?}"
         );
     }
 }

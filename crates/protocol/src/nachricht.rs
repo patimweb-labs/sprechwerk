@@ -118,6 +118,11 @@ pub struct Sprachkopf {
 /// Länge des Sprachkopfs.
 pub const SPRACHKOPF_LEN: usize = 6;
 
+/// Wie viele Protokollzeilen ein Aufruf ohne Angabe liest.
+fn fuenfzig() -> usize {
+    50
+}
+
 /// Aktuelle Version des Sprachkopfs.
 pub const SPRACHKOPF_VERSION: u8 = 2;
 
@@ -302,7 +307,19 @@ pub enum ClientFrame {
     /// Sprachserver geben kann.
     Zaehler,
     /// Prüfprotokoll lesen.
-    Protokoll { ab: usize, anzahl: usize },
+    ///
+    /// `von_hinten` liefert die **neuesten** Einträge (neueste zuerst). Ohne
+    /// das Flag zählt `ab` vom Anfang — das ist für einen Mitschnitt richtig,
+    /// für die Ansicht im Fenster aber falsch: dort will man sehen, was gerade
+    /// geschehen ist, nicht was im ersten Jahr passierte.
+    Protokoll {
+        #[serde(default)]
+        ab: usize,
+        #[serde(default = "fuenfzig")]
+        anzahl: usize,
+        #[serde(default)]
+        von_hinten: bool,
+    },
     /// Lebenszeichen.
     Ping,
 }
