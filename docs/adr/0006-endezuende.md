@@ -40,9 +40,14 @@ wird hier bewusst nicht versprochen.
 **Gemessen 2026-11-13** (Ende zu Ende, echter Server, drei echte Clients,
 `schluesselwechsel_im_laufenden_gespraech` in `crates/desktop/src/verschluesselung.rs`):
 Das Wechselfenster — vom Verlassen bis zum neuen Schlüssel bei den
-Verbliebenen — beträgt **35–50 ms**, also **zwei bis drei 20-ms-Rahmen**. Eine
-Überlappung beider Epochen gibt es derzeit **nicht**; sie wäre nötig, um auch
-diese Rahmen zu retten.
+Verbliebenen — beträgt **35–110 ms**, also **zwei bis fünf 20-ms-Rahmen**
+(mehrere Läufe, Loopback).
+
+Punkt 6 ist damit ebenfalls gebaut: der **vorige** Schlüssel bleibt 1,5 s
+gültig (`UEBERGANG` in `verschluesselung.rs`), länger nicht. Ein Rahmen, der
+beim Wechsel schon unterwegs war, kommt also an — einzeln geprüft
+(`uebergang_laesst_den_alten_schluessel_kurz_gelten`) und Ende zu Ende
+(der Test schickt nach dem Wechsel einen Rahmen mit dem alten Schlüssel).
 
 Dabei fiel ein zweiter Fehler auf: ein **Späterkommender** bekam keinen
 Schlüssel. Der Wart hatte den Schlüssel der Epoche schon und tat deshalb
@@ -88,7 +93,8 @@ Epoche Sekunden zählt und zwei Drehungen sonst dieselbe Zahl ergäben.
 | Raumschlüssel, Umschlag (X25519 + HKDF-SHA256 + ChaCha20-Poly1305) | `crates/adapters/src/verschluesselt.rs`, 11 Tests |
 | Rahmen verschlüsseln/entschlüsseln (Kopf bleibt lesbar) | dort, 2 Tests |
 | Schlüsselverwaltung, Wärter-Wahl, Unterschrift prüfen | `crates/desktop/src/verschluesselung.rs` |
-| Ende zu Ende: Wechsel im laufenden Gespräch (35 ms Fenster), Späterkommende | dort, 2 Tests (echter Serverprozess) |
+| Übergangsfenster (ADR §6) | dort, `uebergang_laesst_den_alten_schluessel_kurz_gelten` |
+| Ende zu Ende: Wechsel im laufenden Gespräch, verlorenes Paket, Späterkommende | dort, 3 Tests (echter Serverprozess) |
 | Raum-Flag, Epoche, Protokoll-Eintrag | `crates/domain/src/state.rs` |
 | Epoche dreht beim Verlassen, Verschieben und Rauswurf | dort, `verlassen_dreht_die_epoche` (3 Fälle) |
 | Speicherung (überlebt Neustart) | `crates/store/src/lib.rs`, 1 Test |
