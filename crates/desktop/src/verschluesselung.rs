@@ -71,10 +71,12 @@ pub struct Schluesselverwaltung {
     /// Anwesenden, wird erneut verteilt — das deckt Kommen, Gehen und
     /// Wiederkommen ab (jedes ändert die Liste).
     ///
-    /// // offen: geht ein Schlüsselpaket **verloren**, wiederholt es niemand —
-    /// der Empfänger wartet, bis sich die Runde erneut ändert. Ein Wiederholen
-    /// nach Frist (etwa alle fünf Sekunden, solange die Notiz „warte auf den
-    /// Schlüssel" steht) wäre die einfache Abhilfe.
+    /// Geht ein Schlüsselpaket **verloren**, fragt der Wartende selbst nach
+    /// (`SchluesselAnfrage`), und zwar höchstens alle [`ANFRAGE_ABSTAND`].
+    /// Geht auch die Bitte verloren, wiederholt sie sich nach diesem Abstand —
+    /// deshalb ist die Frist kurz (1 s) und nicht Minuten. Geprüft ist beides
+    /// Ende zu Ende: `verlorenes_schluesselpaket_wird_nachgefordert` und
+    /// `verlorene_bitte_wiederholt_sich`.
     verteilt: Mutex<HashMap<RoomId, (u32, Vec<MemberId>)>>,
 }
 
@@ -900,8 +902,12 @@ mod tests {
         /// (Prüfung der Nachforderung).
         verlieren: std::cell::Cell<usize>,
         verloren: std::cell::Cell<usize>,
-        /// Wie oft nach dem Schlüssel gefragt wurde.
+        /// Wie oft nach dem Schlüssel gefragt wurde (erzeugt).
         anfragen: std::cell::Cell<usize>,
+        /// Wie viele Bitten absichtlich verloren gehen sollen.
+        bitten_verlieren: std::cell::Cell<usize>,
+        /// Wie viele Bitten tatsächlich verloren gingen.
+        bitten_verloren: std::cell::Cell<usize>,
     }
 
     impl Teilnehmer {
@@ -929,6 +935,8 @@ mod tests {
                 verlieren: std::cell::Cell::new(0),
                 verloren: std::cell::Cell::new(0),
                 anfragen: std::cell::Cell::new(0),
+                bitten_verlieren: std::cell::Cell::new(0),
+                bitten_verloren: std::cell::Cell::new(0),
             }
         }
 
@@ -958,6 +966,12 @@ mod tests {
             for paket in pakete {
                 if matches!(paket, ClientFrame::SchluesselAnfrage { .. }) {
                     self.anfragen.set(self.anfragen.get() + 1);
+                    if self.bitten_verlieren.get() > 0 {
+                        // Auch die Bitte kann im Netz verloren gehen.
+                        self.bitten_verlieren.set(self.bitten_verlieren.get() - 1);
+                        self.bitten_verloren.set(self.bitten_verloren.get() + 1);
+                        continue;
+                    }
                 }
                 let _ = self.verbindung.sende(paket).await;
             }
@@ -1180,6 +1194,119 @@ mod tests {
         // Der Abstand zwischen zwei Nachforderungen (und damit das Wiederholen,
         // wenn auch die Bitte verloren geht) steht in `ohne_wart_wird_gewartet`;
         // hier geht es um den Weg über den Server: Bitte raus, Schlüssel zurück.
+        assert_eq!(
+            epoche_danach,
+            Some(epoche),
+            "der Wartende hat den Schlüssel am Ende doch nicht"
+        );
+    }
+
+    /// Auch die **Bitte** kann verloren gehen: dann muss sie sich nach dem
+    /// Abstand wiederholen — sonst hängt der Wartende wieder für immer.
+    ///
+    /// Der Abstand (`ANFRAGE_ABSTAND`, 1 s) ist die Obergrenze, um die sich ein
+    /// Verlust höchstens verzögert. Geprüft wird genau dieser eine Schritt:
+    /// erste Bitte weg, Schlüsselpaket weg, zweite Bitte kommt an.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn verlorene_bitte_wiederholt_sich() {
+        let server = server_starten("bitte");
+        let adresse = server.adresse;
+
+        let mut a = Teilnehmer::neu(adresse, "Ada").await;
+        let mut b = Teilnehmer::neu(adresse, "Bosse").await;
+
+        a.verbindung
+            .sende(ClientFrame::RaumAnlegen {
+                name: "Geheim".into(),
+            })
+            .await
+            .expect("Raum anlegen");
+        let raum = loop {
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(200),
+                a.verbindung.empfang(),
+            )
+            .await
+            {
+                Ok(Ok(Some(ServerFrame::Raeume { raeume }))) => {
+                    if let Some(r) = raeume.iter().find(|r| r.name == "Geheim") {
+                        break r.id;
+                    }
+                }
+                Ok(Ok(Some(_))) => continue,
+                Ok(Ok(None)) => panic!("Verbindung geschlossen"),
+                Ok(Err(fehler)) => panic!("Fehler: {fehler}"),
+                Err(_) => continue,
+            }
+        };
+        for t in [&mut a, &mut b] {
+            t.verbindung
+                .sende(ClientFrame::Betreten { raum })
+                .await
+                .expect("betreten");
+        }
+        for t in [&mut a, &mut b] {
+            bis_raumliste(t, |r| r.id == raum && r.anwesend == 2).await;
+        }
+        a.verbindung
+            .sende(ClientFrame::RaumVerschluesseln { raum, an: true })
+            .await
+            .expect("verschlüsseln");
+        for t in [&mut a, &mut b] {
+            bis_raumliste(t, |r| r.id == raum && r.verschluesselt).await;
+        }
+        let epoche = super::epoche_aus(a.seit(raum));
+        bis_schluessel_stehen(&mut [&mut a, &mut b], raum, epoche).await;
+
+        // Der Verlierer ist wieder, wer nicht der Wart ist.
+        let ist_wart = |t: &Teilnehmer| {
+            Schluesselverwaltung::bin_wart(t.verbindung.ich, &t.verbindung.mitglieder, raum)
+        };
+        let verlierer_ist_a = !ist_wart(&a);
+        if verlierer_ist_a {
+            a.verwaltung.vergiss(raum);
+            a.anfragen.set(0);
+            a.verlieren.set(1); // Schlüsselpaket weg
+            a.bitten_verlieren.set(1); // und die erste Bitte auch
+        } else {
+            b.verwaltung.vergiss(raum);
+            b.anfragen.set(0);
+            b.verlieren.set(1);
+            b.bitten_verlieren.set(1);
+        }
+
+        let beginn = std::time::Instant::now();
+        bis_schluessel_stehen(&mut [&mut a, &mut b], raum, epoche).await;
+        let gedauert = beginn.elapsed();
+
+        let (anfragen, bitten_verloren, pakete_verloren, epoche_danach) = if verlierer_ist_a {
+            (
+                a.anfragen.get(),
+                a.bitten_verloren.get(),
+                a.verloren.get(),
+                a.epoche(raum),
+            )
+        } else {
+            (
+                b.anfragen.get(),
+                b.bitten_verloren.get(),
+                b.verloren.get(),
+                b.epoche(raum),
+            )
+        };
+
+        assert_eq!(pakete_verloren, 1, "das Schlüsselpaket ging nicht verloren");
+        assert_eq!(bitten_verloren, 1, "die erste Bitte ging nicht verloren");
+        assert!(
+            anfragen >= 2,
+            "es wurde nur {anfragen}× gefragt — nach dem Verlust der Bitte muss \
+             erneut gefragt werden"
+        );
+        assert!(
+            gedauert >= super::ANFRAGE_ABSTAND,
+            "die Wiederholung kam nach {gedauert:?}, der Abstand ist {:?}",
+            super::ANFRAGE_ABSTAND
+        );
         assert_eq!(
             epoche_danach,
             Some(epoche),
