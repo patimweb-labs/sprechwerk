@@ -447,6 +447,7 @@ fn kennung_ist_gueltiges_ed25519() {
         spricht: false,
         stumm: false,
         taub: false,
+        raum_seit: 0,
     };
     let _ = Signer::sign(&ed25519_dalek::SigningKey::from_bytes(&[1u8; 32]), b"x");
 }

@@ -303,6 +303,7 @@ mod tests {
             spricht: false,
             stumm: false,
             taub: false,
+            raum_seit: 0,
         }
     }
 

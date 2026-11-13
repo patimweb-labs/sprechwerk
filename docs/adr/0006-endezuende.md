@@ -26,6 +26,15 @@ wird hier bewusst nicht versprochen.
 2. **Gruppenschlüssel je Raum und Epoche.** Beim Betreten erzeugt der
    „Schlüsselwart" (der am längsten anwesende Client, deterministisch aus der
    Mitgliedsliste) einen 32-Byte-Schlüssel `K_epoche`.
+
+   **Nachtrag 2026-11-13.** Der Code nahm dafür die kleinste `MemberId`, der
+   Kommentar sagte „kleinster öffentlicher Schlüssel" — beides nicht das, was
+   hier steht, und die Id-Regel hatte einen Fehler: kam jemand mit kleinerer Id
+   dazu, wechselte der Wart **mitten in der Epoche**, erzeugte einen zweiten
+   Schlüssel und verteilte ihn. Erreichte die Verteilung nicht alle, hörten die
+   Betroffenen einander nicht mehr — ohne Fehlermeldung. Jetzt entscheidet die
+   Anwesenheitszeit (`raum_seit`, im Protokoll mitgeführt); ein Neuankömmling
+   kann den Wart nicht mehr ablösen.
 3. **Verteilung einzeln.** `K` wird für jeden Anwesenden mit dessen X25519-
    Schlüssel verschlüsselt (X25519 + HKDF-SHA256 + ChaCha20-Poly1305) und über
    den Server verschickt. Der Server sieht nur Geheimtext.

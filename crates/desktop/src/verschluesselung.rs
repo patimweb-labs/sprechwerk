@@ -197,15 +197,22 @@ impl Schluesselverwaltung {
 
     /// Bin ich der Schlüsselwart dieses Raums?
     ///
-    /// Der kleinste **öffentliche** Schlüssel unter den Anwesenden, die einen
-    /// haben. Deterministisch, ohne Absprache, ohne Server.
+    /// Der **am längsten anwesende** Client, der eine Kennung hat (ADR 0006 §2).
+    /// Deterministisch aus der Mitgliederliste, ohne Absprache, ohne Server.
+    ///
+    /// Warum nicht „kleinste Kennung" (so stand es hier bis 2026-11-13): kam
+    /// jemand mit kleinerer Kennung dazu, wechselte der Wart **mitten in der
+    /// Epoche**. Der Neue erzeugte seinen eigenen Schlüssel und verteilte ihn;
+    /// erreichte der Verteilung nicht alle, gab es zwei Schlüssel für dieselbe
+    /// Epoche — die Betroffenen hörten einander nicht mehr, ohne Fehlermeldung.
+    /// Mit „am längsten anwesend" kann ein Neuankömmling den Wart nicht
+    /// ablösen.
     pub fn bin_wart(ich: MemberId, mitglieder: &[Mitgliedsansicht], raum: RoomId) -> bool {
         mitglieder
             .iter()
             .filter(|m| m.raum == Some(raum) && !m.kennung.is_empty())
-            .map(|m| m.id)
-            .min()
-            .map(|kleinster| kleinster == ich)
+            .min_by_key(|m| (m.raum_seit, m.id))
+            .map(|aeltester| aeltester.id == ich)
             .unwrap_or(false)
     }
 
@@ -436,6 +443,16 @@ mod tests {
     use sprechwerk_protocol::Raumansicht;
 
     fn mitglied(id: u128, kennung: &str, raum: Option<RoomId>) -> Mitgliedsansicht {
+        mitglied_seit(id, kennung, raum, 0)
+    }
+
+    /// Wie [`mitglied`], aber mit Anwesenheitszeit — sie entscheidet, wer Wart ist.
+    fn mitglied_seit(
+        id: u128,
+        kennung: &str,
+        raum: Option<RoomId>,
+        raum_seit: i64,
+    ) -> Mitgliedsansicht {
         Mitgliedsansicht {
             id: MemberId::aus_roh(id),
             name: format!("M{id}"),
@@ -445,7 +462,57 @@ mod tests {
             spricht: false,
             stumm: false,
             taub: false,
+            raum_seit,
         }
+    }
+
+    /// Der **am längsten Anwesende** ist Wart — nicht der mit der kleinsten
+    /// Kennung. Sonst übernähme ein Neuankömmling den Raum mitten in der
+    /// Epoche, erzeugte einen zweiten Schlüssel und die Betroffenen hörten
+    /// einander nicht mehr.
+    #[test]
+    fn aeltester_ist_wart_und_bleibt_es() {
+        let raum = RoomId::aus_roh(2);
+        let alt = Schluessel::neu();
+        let neu = Schluessel::neu();
+        // Der Neue hat die **kleinere** Kennung und die kleinere Id.
+        let mitglieder = vec![
+            mitglied_seit(9, &alt.kennung(), Some(raum), 1_000),
+            mitglied_seit(1, &neu.kennung(), Some(raum), 5_000),
+        ];
+        assert!(
+            Schluesselverwaltung::bin_wart(MemberId::aus_roh(9), &mitglieder, raum),
+            "der Neuankömmling hat den Wart abgelöst"
+        );
+        assert!(
+            !Schluesselverwaltung::bin_wart(MemberId::aus_roh(1), &mitglieder, raum),
+            "der Neuankömmling gilt als Wart"
+        );
+
+        // Ohne Anwesenheitszeit (ältere Rahmen) entscheidet die Id — dieselbe
+        // Wahl in allen Clients, darauf kommt es an.
+        let ohne_zeit = vec![
+            mitglied(9, &alt.kennung(), Some(raum)),
+            mitglied(1, &neu.kennung(), Some(raum)),
+        ];
+        assert!(
+            Schluesselverwaltung::bin_wart(MemberId::aus_roh(1), &ohne_zeit, raum),
+            "bei Gleichstand muss die Id entscheiden"
+        );
+        // Wer keinen Schlüssel hat (leere Kennung), ist nie Wart.
+        let ohne_kennung = vec![
+            mitglied_seit(1, "", Some(raum), 0),
+            mitglied_seit(2, &alt.kennung(), Some(raum), 9_000),
+        ];
+        assert!(
+            !Schluesselverwaltung::bin_wart(MemberId::aus_roh(1), &ohne_kennung, raum),
+            "ohne Kennung kann niemand Wart sein"
+        );
+        assert!(Schluesselverwaltung::bin_wart(
+            MemberId::aus_roh(2),
+            &ohne_kennung,
+            raum
+        ));
     }
 
     #[test]

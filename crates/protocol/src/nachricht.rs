@@ -78,6 +78,13 @@ pub struct Mitgliedsansicht {
     /// Vom Server taubgeschaltet (Wiedergabe).
     #[serde(default)]
     pub taub: bool,
+    /// Seit wann in diesem Raum (ms). Bestimmt den **Schlüsselwart** der
+    /// Ende-zu-Ende-Verschlüsselung: der am längsten Anwesende. Damit wechselt
+    /// der Wart nicht, wenn jemand dazukommt — sonst könnten zwei Mitglieder
+    /// verschiedene Schlüssel derselben Epoche erzeugen und einander nicht mehr
+    /// hören.
+    #[serde(default)]
+    pub raum_seit: i64,
 }
 
 /// Kopf eines Sprach-Datagramms.
@@ -431,6 +438,7 @@ mod tests {
             spricht: false,
             stumm: false,
             taub: false,
+            raum_seit: 0,
         };
         let rahmen = vec![
             ServerFrame::Anforderung {

@@ -160,6 +160,7 @@ impl Kern {
             spricht,
             stumm: m.stumm,
             taub: m.taub,
+            raum_seit: m.raum_seit.unwrap_or(0),
         })
     }
 
@@ -706,6 +707,7 @@ impl Kern {
                             spricht: false,
                             stumm: false,
                             taub: false,
+                            raum_seit: 0,
                         },
                     },
                 );
