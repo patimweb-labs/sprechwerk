@@ -458,6 +458,32 @@ impl Kern {
                 }
             }
 
+            // Nachforderung eines Schlüsselpakets: **nur weiterleiten**.
+            //
+            // Der Server kennt den Raumschlüssel nicht; er kann die Bitte nur an
+            // die anderen im Raum geben. Damit holt sich ein Client, dessen
+            // Schlüsselpaket verloren ging, selbst einen neuen — ohne dass der
+            // Wart in festen Abständen in alle Räume funken muss.
+            ClientFrame::SchluesselAnfrage { raum } => {
+                let im_raum = self.state.mitglied(ich).and_then(|m| m.raum) == Some(raum);
+                let verschluesselt = self
+                    .state
+                    .raeume
+                    .get(&raum)
+                    .map(|r| r.verschluesselt)
+                    .unwrap_or(false);
+                if !im_raum || !verschluesselt {
+                    return vec![Kern::fehler(Fehlercode::UngueltigeAnfrage)];
+                }
+                for (id, _) in self.teilnehmer.iter().filter(|(id, _)| **id != ich) {
+                    let id = *id;
+                    if self.state.mitglied(id).and_then(|m| m.raum) == Some(raum) {
+                        self.senden(id, ServerFrame::SchluesselAnfrage { raum, von: ich });
+                    }
+                }
+                vec![ServerFrame::Ok]
+            }
+
             ClientFrame::RaumUmbenennen { raum, name } => {
                 match self.state.raum_umbenennen(ich, raum, &name, jetzt) {
                     Ok(()) => {
@@ -1421,6 +1447,9 @@ mod protokollsweep {
                 daten: "00".into(),
                 unterschrift: "11".into(),
             })),
+            ("SchluesselAnfrage", Box::new(|w| ClientFrame::SchluesselAnfrage {
+                raum: w.zweiter_raum,
+            })),
             ("Protokoll", Box::new(|_| ClientFrame::Protokoll {
                 ab: 0,
                 anzahl: 10,
@@ -1431,7 +1460,7 @@ mod protokollsweep {
         // **nicht** 22 als Wächter, sondern die geprüfte Zahl mit Begründung:
         assert_eq!(
             faelle.len(),
-            19,
+            20,
             "neue ClientFrame-Variante? Dann hier einen Fall ergänzen \
              (und die Zahl mitziehen)"
         );

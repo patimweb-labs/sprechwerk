@@ -154,3 +154,22 @@ hörbar. Ein Vorlaufpuffer liefert dieselbe Sicherheit ohne die Wartezeit.
    einmal über den TS3-Server, einmal über sprechwerk; gemessen wird die Zeit
    vom Einspeisen bis zur Wiedergabe (Schleifenkabel oder virtuelles Gerät).
    Erst dieser Vergleich beantwortet „mindestens so gut" endgültig.
+
+## 4. Alles auf einmal prüfen
+
+```bash
+scripts/pruefen.sh              # Tests + drei Sprachproben
+scripts/pruefen.sh --mit-audio  # zusätzlich der echte Gerätepfad
+scripts/pruefen.sh --nur-tests  # schnell: nur kompilieren und testen
+```
+
+Warum es das gibt: `cargo test` im Wurzelverzeichnis sammelt die Tests von
+`crates/desktop` **nicht** ein — das Fenster-Crate steht wegen Tauri mit eigener
+Sperrdatei außerhalb des Arbeitsbereichs. Dazu kommen die Oberfläche
+(`vue-tsc`) und die drei Sprachproben, die kein Test sind, sondern Messungen an
+einem laufenden Server. Ohne einen gemeinsamen Einstieg vergisst man einen
+davon, und genau das war der Zustand bis heute.
+
+Der Ablauf meldet je Prüfung „bestanden" oder „FEHLGESCHLAGEN" und gibt am Ende
+einen Rückgabewert — geeignet für einen Wächter vor dem Ausliefern. Die
+Protokolle der Messungen liegen unter `/tmp/sprechwerk-pruefung-*.log`.

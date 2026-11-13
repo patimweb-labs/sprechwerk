@@ -636,3 +636,75 @@ async fn abbruch_mitten_im_gespraech_raeumt_auf_und_dreht_die_epoche() {
         "nach dem Wiederkommen stimmt die Zahl der Anwesenden nicht"
     );
 }
+
+/// Die Nachforderung des Raumschlüssels: der Server leitet sie weiter, ohne
+/// den Schlüssel zu kennen — und nur innerhalb eines verschlüsselten Raums.
+#[tokio::test]
+async fn schluesselanfrage_wird_an_den_raum_weitergeleitet() {
+    let (_server, adresse) = starte_server().await;
+
+    let mut a = verbinde(adresse, &Schluessel::neu(), "Ada").await;
+    let mut b = verbinde(adresse, &Schluessel::neu(), "Bosse").await;
+    let mut fremd = verbinde(adresse, &Schluessel::neu(), "Fremder").await;
+
+    a.sende(ClientFrame::RaumAnlegen {
+        name: "Geheim".into(),
+    })
+    .await
+    .unwrap();
+    let raum = match warte_auf(&mut a, |f| matches!(f, ServerFrame::Raeume { .. })).await {
+        ServerFrame::Raeume { raeume } => raeume
+            .iter()
+            .find(|r| r.name == "Geheim")
+            .expect("Raum")
+            .id,
+        _ => unreachable!(),
+    };
+    for v in [&mut a, &mut b] {
+        v.sende(ClientFrame::Betreten { raum }).await.unwrap();
+        warte_auf(v, |f| matches!(f, ServerFrame::Betreten { .. })).await;
+    }
+
+    // Ohne Verschlüsselung: die Bitte ist sinnlos, also abgelehnt.
+    b.sende(ClientFrame::SchluesselAnfrage { raum }).await.unwrap();
+    let absage = warte_auf(&mut b, |f| matches!(f, ServerFrame::Fehler { .. })).await;
+    assert!(
+        matches!(absage, ServerFrame::Fehler { .. }),
+        "Anfrage in einem offenen Raum muss abgelehnt werden"
+    );
+
+    // Mit Verschlüsselung: A (im Raum) bekommt sie, der Fremde nicht.
+    a.sende(ClientFrame::RaumVerschluesseln { raum, an: true })
+        .await
+        .unwrap();
+    warte_auf(&mut b, |f| {
+        matches!(f, ServerFrame::Raeume { raeume }
+            if raeume.iter().any(|r| r.id == raum && r.verschluesselt))
+    })
+    .await;
+
+    b.sende(ClientFrame::SchluesselAnfrage { raum }).await.unwrap();
+    let anfrage = warte_auf(&mut a, |f| matches!(f, ServerFrame::SchluesselAnfrage { .. })).await;
+    match anfrage {
+        ServerFrame::SchluesselAnfrage { raum: r, von } => {
+            assert_eq!(r, raum);
+            assert_eq!(von, b.ich, "die Anfrage muss den Fragenden nennen");
+        }
+        anderes => panic!("unerwartet: {anderes:?}"),
+    }
+
+    // Der Frager bekommt eine Bestätigung, aber keine eigene Anfrage zurück.
+    warte_auf(&mut b, |f| matches!(f, ServerFrame::Ok)).await;
+
+    // Der Fremde (anderer Raum) bekommt nichts — er hat keinen Zugang.
+    match tokio::time::timeout(Duration::from_millis(300), fremd.empfang()).await {
+        // Zeitüberschreitung heißt: es kam nichts. Genau das erwarten wir.
+        Err(_) => {}
+        Ok(Ok(Some(ServerFrame::SchluesselAnfrage { .. }))) => {
+            panic!("die Anfrage ging an jemanden außerhalb des Raums")
+        }
+        Ok(Ok(Some(_))) => {}
+        Ok(Ok(None)) => panic!("Verbindung des Fremden wurde geschlossen"),
+        Ok(Err(fehler)) => panic!("Fehler beim Fremden: {fehler}"),
+    }
+}

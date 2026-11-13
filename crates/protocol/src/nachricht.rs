@@ -268,6 +268,13 @@ pub enum ClientFrame {
         /// Signatur des Absenders (Hex).
         unterschrift: String,
     },
+    /// Bittet den Schlüsselwart um den Raumschlüssel.
+    ///
+    /// Nötig, wenn ein Schlüsselpaket **verloren** ging: der Wart hat den
+    /// Schlüssel der Epoche schon und würde von selbst nichts mehr schicken.
+    /// Der Server leitet die Bitte an die anderen im Raum weiter — er kann sie
+    /// nicht selbst erfüllen, er kennt den Schlüssel nicht.
+    SchluesselAnfrage { raum: sprechwerk_domain::RoomId },
     /// Prüfprotokoll lesen.
     Protokoll { ab: usize, anzahl: usize },
     /// Lebenszeichen.
@@ -329,6 +336,15 @@ pub enum ServerFrame {
         von: sprechwerk_domain::MemberId,
         daten: String,
         unterschrift: String,
+    },
+    /// Jemand bittet um den Raumschlüssel (weitergeleitet vom Server).
+    ///
+    /// Der Wart antwortet mit [`ClientFrame::Schluesselpaket`]-Paketen an die
+    /// Anwesenden; der Server sieht dabei nur Geheimtext.
+    SchluesselAnfrage {
+        raum: sprechwerk_domain::RoomId,
+        /// Wer gefragt hat.
+        von: sprechwerk_domain::MemberId,
     },
     /// Prüfprotokoll.
     Protokoll {
@@ -469,6 +485,7 @@ mod tests {
                 daten: "00".into(),
                 unterschrift: "11".into(),
             },
+            ServerFrame::SchluesselAnfrage { raum, von: ich },
             ServerFrame::Protokoll {
                 eintraege: Vec::new(),
             },
@@ -491,7 +508,7 @@ mod tests {
                 }],
             },
         ];
-        assert_eq!(rahmen.len(), 14, "ServerFrame-Arten: Liste ergänzen");
+        assert_eq!(rahmen.len(), 15, "ServerFrame-Arten: Liste ergänzen");
 
         for f in &rahmen {
             let json = serde_json::to_string(f).expect("serialisieren");
@@ -536,6 +553,17 @@ mod tests {
     }
 
     /// Ein Rahmen über der Grenze wird abgewiesen, bevor er Speicher kostet.
+    /// Die Nachforderung des Schlüssels ist ein normaler Rahmen.
+    #[test]
+    fn schluesselanfrage_ist_umkehrbar() {
+        let f = ClientFrame::SchluesselAnfrage {
+            raum: sprechwerk_domain::RoomId::neu(),
+        };
+        let json = serde_json::to_string(&f).unwrap();
+        assert!(json.contains("schluessel_anfrage"), "{json}");
+        assert_eq!(serde_json::from_str::<ClientFrame>(&json).unwrap(), f);
+    }
+
     #[test]
     fn zu_grosse_nutzlast_wird_abgelehnt() {
         let zu_gross = ClientFrame::Text {

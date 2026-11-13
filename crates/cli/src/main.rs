@@ -196,6 +196,9 @@ fn zeige(frame: &ServerFrame) {
         ServerFrame::Schluesselpaket { von, raum, .. } => {
             println!("[Schlüsselpaket] von {von} für Raum {raum}");
         }
+        ServerFrame::SchluesselAnfrage { von, raum } => {
+            println!("[Schlüssel angefragt] von {von} für Raum {raum}");
+        }
         ServerFrame::Text { nachricht } => {
             let text = if nachricht.geloescht {
                 "(gelöscht)".to_string()

@@ -144,7 +144,9 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
 
         // Schlüsselpakete gehören nicht in den Modellstand: sie sind ein
         // Auftrag an die Schlüsselverwaltung, nicht eine Anzeige.
-        ServerFrame::Schluesselpaket { .. } => {}
+        // Beide gehören der Schlüsselverwaltung, nicht dem Modell: der eine
+        // bringt einen Schlüssel, der andere bittet darum.
+        ServerFrame::Schluesselpaket { .. } | ServerFrame::SchluesselAnfrage { .. } => {}
 
         ServerFrame::Raeume { raeume } => {
             let hier = zustand.aktueller_raum;
