@@ -480,9 +480,7 @@ mod tests {
                 nachricht,
                 hart: true,
             },
-            ServerFrame::Raeume {
-                raeume: Vec::new(),
-            },
+            ServerFrame::Raeume { raeume: Vec::new() },
             ServerFrame::MitgliedGeaendert {
                 mitglied: mitglied.clone(),
             },
@@ -520,7 +518,8 @@ mod tests {
 
         for f in &rahmen {
             let json = serde_json::to_string(f).expect("serialisieren");
-            let zurueck: ServerFrame = serde_json::from_str(&json).expect(&format!("{json}"));
+            let zurueck: ServerFrame = serde_json::from_str(&json)
+                .unwrap_or_else(|_| panic!("Rahmen lässt sich nicht zurücklesen: {json}"));
             assert_eq!(&zurueck, f, "Rahmen verliert beim Umweg Informationen");
         }
     }
@@ -584,11 +583,7 @@ mod tests {
     /// ein Client mit einer erfundenen Kennung ein fremdes Mitglied treffen.
     #[test]
     fn kennungen_sind_streng() {
-        assert!(serde_json::from_str::<sprechwerk_domain::MemberId>(
-            r#""mitglied_zzzz""#
-        )
-        .is_err());
+        assert!(serde_json::from_str::<sprechwerk_domain::MemberId>(r#""mitglied_zzzz""#).is_err());
         assert!(serde_json::from_str::<sprechwerk_domain::MemberId>(r#""""#).is_err());
     }
-
 }

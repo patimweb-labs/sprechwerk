@@ -987,7 +987,7 @@ impl Kern {
 #[cfg(test)]
 pub(crate) mod rollenmatrix {
     use super::*;
-    use crate::konfig::{Sicherung, Server};
+    use crate::konfig::{Server, Sicherung};
     use sprechwerk_domain::role::darf;
     use sprechwerk_domain::{Capability, Role};
 
@@ -1014,11 +1014,8 @@ pub(crate) mod rollenmatrix {
     }
 
     pub(crate) fn verzeichnis(name: &str) -> std::path::PathBuf {
-        let pfad = std::env::temp_dir().join(format!(
-            "sprechwerk-matrix-{}-{}",
-            std::process::id(),
-            name
-        ));
+        let pfad =
+            std::env::temp_dir().join(format!("sprechwerk-matrix-{}-{}", std::process::id(), name));
         let _ = std::fs::remove_dir_all(&pfad);
         std::fs::create_dir_all(&pfad).expect("Verzeichnis");
         pfad
@@ -1026,10 +1023,7 @@ pub(crate) mod rollenmatrix {
 
     pub(crate) fn raum_mit_name(antworten: &[ServerFrame], name: &str) -> Option<RoomId> {
         antworten.iter().find_map(|a| match a {
-            ServerFrame::Raeume { raeume } => raeume
-                .iter()
-                .find(|r| r.name == name)
-                .map(|r| r.id),
+            ServerFrame::Raeume { raeume } => raeume.iter().find(|r| r.name == name).map(|r| r.id),
             _ => None,
         })
     }
@@ -1166,7 +1160,11 @@ pub(crate) mod rollenmatrix {
             meldet_kein_recht(&antworten),
             erwartet,
             "{name} als {rolle:?}: erwartet {}, bekommen {:?}",
-            if erwartet { "KeinRecht" } else { "kein Rechtefehler" },
+            if erwartet {
+                "KeinRecht"
+            } else {
+                "kein Rechtefehler"
+            },
             antworten
         );
     }
@@ -1241,9 +1239,11 @@ pub(crate) mod rollenmatrix {
                     mitglied: w.ziel(rolle),
                 }
             });
-            zelle("Trennen", rolle, PersonEingreifen, |w| ClientFrame::Trennen {
-                mitglied: w.ziel(rolle),
-                grund: "Matrix".to_string(),
+            zelle("Trennen", rolle, PersonEingreifen, |w| {
+                ClientFrame::Trennen {
+                    mitglied: w.ziel(rolle),
+                    grund: "Matrix".to_string(),
+                }
             });
             zellen += 4;
 
@@ -1268,9 +1268,8 @@ pub(crate) mod rollenmatrix {
             zellen += 3;
 
             // --- Protokoll ---------------------------------------------
-            zelle("Protokoll", rolle, ProtokollLesen, |_| ClientFrame::Protokoll {
-                ab: 0,
-                anzahl: 10,
+            zelle("Protokoll", rolle, ProtokollLesen, |_| {
+                ClientFrame::Protokoll { ab: 0, anzahl: 10 }
             });
             zellen += 1;
         }
@@ -1311,10 +1310,9 @@ pub(crate) mod rollenmatrix {
             let Some(raum) = raum else { continue };
             // Der Handler verlangt einen **verschlüsselten** Raum (`KeinRecht`
             // sonst — siehe Bericht: der Fehlercode passt nicht ganz).
-            let _ = w.kern.befehle(
-                w.ada,
-                ClientFrame::RaumVerschluesseln { raum, an: true },
-            );
+            let _ = w
+                .kern
+                .befehle(w.ada, ClientFrame::RaumVerschluesseln { raum, an: true });
             let ziel = w.ziel(rolle);
             let antworten = w.kern.befehle(
                 ich,
@@ -1360,8 +1358,17 @@ mod protokollsweep {
     use super::*;
     use sprechwerk_domain::{MemberId, MessageId, Role, RoomId};
 
+    /// Ein Prüffall: Name für die Fehlermeldung und der Rahmen, der gebaut wird.
+    type Fall = (
+        &'static str,
+        Box<dyn Fn(&mut super::rollenmatrix::Welt) -> ClientFrame>,
+    );
+
     /// Führt einen Befehl als Administratorin in ihrer Welt aus.
-    fn frage(name: &str, rahmen: impl FnOnce(&mut super::rollenmatrix::Welt) -> ClientFrame) -> Vec<ServerFrame> {
+    fn frage(
+        name: &str,
+        rahmen: impl FnOnce(&mut super::rollenmatrix::Welt) -> ClientFrame,
+    ) -> Vec<ServerFrame> {
         let mut w = welt(name);
         let befehl = rahmen(&mut w);
         w.kern.befehle(w.ada, befehl)
@@ -1380,82 +1387,129 @@ mod protokollsweep {
     /// auch ihre Fehlerfälle zu prüfen.
     #[test]
     fn alle_clientrahmen_antworten() {
-        let faelle: Vec<(&str, Box<dyn Fn(&mut super::rollenmatrix::Welt) -> ClientFrame>)> = vec![
-            ("Hallo", Box::new(|_| ClientFrame::Hallo {
-                version: sprechwerk_protocol::frame::PROTOKOLL_VERSION,
-                kennung: "00".into(),
-                name: "Eindringling".into(),
-                beweis: "00".into(),
-                serverpasswort: None,
-            })),
+        let faelle: Vec<Fall> = vec![
+            (
+                "Hallo",
+                Box::new(|_| ClientFrame::Hallo {
+                    version: sprechwerk_protocol::frame::PROTOKOLL_VERSION,
+                    kennung: "00".into(),
+                    name: "Eindringling".into(),
+                    beweis: "00".into(),
+                    serverpasswort: None,
+                }),
+            ),
             ("Ping", Box::new(|_| ClientFrame::Ping)),
-            ("Betreten", Box::new(|w| ClientFrame::Betreten {
-                raum: w.zweiter_raum,
-            })),
+            (
+                "Betreten",
+                Box::new(|w| ClientFrame::Betreten {
+                    raum: w.zweiter_raum,
+                }),
+            ),
             ("Verlassen", Box::new(|_| ClientFrame::Verlassen)),
-            ("Text", Box::new(|_| ClientFrame::Text {
-                text: "hallo".into(),
-            })),
-            ("NachrichtLoeschen", Box::new(|w| ClientFrame::NachrichtLoeschen {
-                nachricht: w.fremde_nachricht,
-            })),
-            ("RaumAnlegen", Box::new(|_| ClientFrame::RaumAnlegen {
-                name: "Neu".into(),
-            })),
-            ("RaumUmbenennen", Box::new(|w| ClientFrame::RaumUmbenennen {
-                raum: w.zweiter_raum,
-                name: "Anders".into(),
-            })),
-            ("RaumLoeschen", Box::new(|w| ClientFrame::RaumLoeschen {
-                raum: w.zweiter_raum,
-            })),
-            ("Stummschalten", Box::new(|w| ClientFrame::Stummschalten {
-                mitglied: w.bosse,
-                taub: false,
-                an: true,
-            })),
-            ("Verschieben", Box::new(|w| ClientFrame::Verschieben {
-                mitglied: w.bosse,
-                raum: w.zweiter_raum,
-            })),
-            ("AusRaumWerfen", Box::new(|w| ClientFrame::AusRaumWerfen {
-                mitglied: w.bosse,
-            })),
-            ("Trennen", Box::new(|w| ClientFrame::Trennen {
-                mitglied: w.bosse,
-                grund: "Test".into(),
-            })),
-            ("MitgliedSperren", Box::new(|w| ClientFrame::MitgliedSperren {
-                mitglied: w.bosse,
-                grund: "Test".into(),
-            })),
-            ("RolleSetzen", Box::new(|w| ClientFrame::RolleSetzen {
-                mitglied: w.bosse,
-                rolle: Role::Moderator,
-            })),
-            ("Sperren", Box::new(|_| ClientFrame::Sperren {
-                kennung: None,
-                adresse: Some("203.0.113.7".into()),
-                grund: "Test".into(),
-            })),
-            ("RaumVerschluesseln", Box::new(|w| ClientFrame::RaumVerschluesseln {
-                raum: w.zweiter_raum,
-                an: true,
-            })),
-            ("Schluesselpaket", Box::new(|w| ClientFrame::Schluesselpaket {
-                raum: w.zweiter_raum,
-                epoche: 1,
-                fuer: w.bosse,
-                daten: "00".into(),
-                unterschrift: "11".into(),
-            })),
-            ("SchluesselAnfrage", Box::new(|w| ClientFrame::SchluesselAnfrage {
-                raum: w.zweiter_raum,
-            })),
-            ("Protokoll", Box::new(|_| ClientFrame::Protokoll {
-                ab: 0,
-                anzahl: 10,
-            })),
+            (
+                "Text",
+                Box::new(|_| ClientFrame::Text {
+                    text: "hallo".into(),
+                }),
+            ),
+            (
+                "NachrichtLoeschen",
+                Box::new(|w| ClientFrame::NachrichtLoeschen {
+                    nachricht: w.fremde_nachricht,
+                }),
+            ),
+            (
+                "RaumAnlegen",
+                Box::new(|_| ClientFrame::RaumAnlegen { name: "Neu".into() }),
+            ),
+            (
+                "RaumUmbenennen",
+                Box::new(|w| ClientFrame::RaumUmbenennen {
+                    raum: w.zweiter_raum,
+                    name: "Anders".into(),
+                }),
+            ),
+            (
+                "RaumLoeschen",
+                Box::new(|w| ClientFrame::RaumLoeschen {
+                    raum: w.zweiter_raum,
+                }),
+            ),
+            (
+                "Stummschalten",
+                Box::new(|w| ClientFrame::Stummschalten {
+                    mitglied: w.bosse,
+                    taub: false,
+                    an: true,
+                }),
+            ),
+            (
+                "Verschieben",
+                Box::new(|w| ClientFrame::Verschieben {
+                    mitglied: w.bosse,
+                    raum: w.zweiter_raum,
+                }),
+            ),
+            (
+                "AusRaumWerfen",
+                Box::new(|w| ClientFrame::AusRaumWerfen { mitglied: w.bosse }),
+            ),
+            (
+                "Trennen",
+                Box::new(|w| ClientFrame::Trennen {
+                    mitglied: w.bosse,
+                    grund: "Test".into(),
+                }),
+            ),
+            (
+                "MitgliedSperren",
+                Box::new(|w| ClientFrame::MitgliedSperren {
+                    mitglied: w.bosse,
+                    grund: "Test".into(),
+                }),
+            ),
+            (
+                "RolleSetzen",
+                Box::new(|w| ClientFrame::RolleSetzen {
+                    mitglied: w.bosse,
+                    rolle: Role::Moderator,
+                }),
+            ),
+            (
+                "Sperren",
+                Box::new(|_| ClientFrame::Sperren {
+                    kennung: None,
+                    adresse: Some("203.0.113.7".into()),
+                    grund: "Test".into(),
+                }),
+            ),
+            (
+                "RaumVerschluesseln",
+                Box::new(|w| ClientFrame::RaumVerschluesseln {
+                    raum: w.zweiter_raum,
+                    an: true,
+                }),
+            ),
+            (
+                "Schluesselpaket",
+                Box::new(|w| ClientFrame::Schluesselpaket {
+                    raum: w.zweiter_raum,
+                    epoche: 1,
+                    fuer: w.bosse,
+                    daten: "00".into(),
+                    unterschrift: "11".into(),
+                }),
+            ),
+            (
+                "SchluesselAnfrage",
+                Box::new(|w| ClientFrame::SchluesselAnfrage {
+                    raum: w.zweiter_raum,
+                }),
+            ),
+            (
+                "Protokoll",
+                Box::new(|_| ClientFrame::Protokoll { ab: 0, anzahl: 10 }),
+            ),
         ];
 
         // Nachrichtenarten zählen — 22 laut `enum ClientFrame`. Absichtlich
@@ -1510,51 +1564,84 @@ mod protokollsweep {
         let fremder_raum = RoomId::neu();
         let fremde_nachricht = MessageId::neu();
 
-        let faelle: Vec<(&str, Box<dyn Fn(&mut super::rollenmatrix::Welt) -> ClientFrame>)> = vec![
-            ("Betreten", Box::new(move |_| ClientFrame::Betreten {
-                raum: fremder_raum,
-            })),
-            ("NachrichtLoeschen", Box::new(move |_| ClientFrame::NachrichtLoeschen {
-                nachricht: fremde_nachricht,
-            })),
-            ("RaumUmbenennen", Box::new(move |_| ClientFrame::RaumUmbenennen {
-                raum: fremder_raum,
-                name: "X".into(),
-            })),
-            ("RaumLoeschen", Box::new(move |_| ClientFrame::RaumLoeschen {
-                raum: fremder_raum,
-            })),
-            ("Stummschalten", Box::new(move |_| ClientFrame::Stummschalten {
-                mitglied: fremdes_mitglied,
-                taub: false,
-                an: true,
-            })),
-            ("Verschieben", Box::new(move |_| ClientFrame::Verschieben {
-                mitglied: fremdes_mitglied,
-                raum: RoomId::neu(),
-            })),
-            ("AusRaumWerfen", Box::new(move |_| ClientFrame::AusRaumWerfen {
-                mitglied: fremdes_mitglied,
-            })),
-            ("Trennen", Box::new(move |_| ClientFrame::Trennen {
-                mitglied: fremdes_mitglied,
-                grund: "Test".into(),
-            })),
-            ("MitgliedSperren", Box::new(move |_| ClientFrame::MitgliedSperren {
-                mitglied: fremdes_mitglied,
-                grund: "Test".into(),
-            })),
-            ("RolleSetzen", Box::new(move |_| ClientFrame::RolleSetzen {
-                mitglied: fremdes_mitglied,
-                rolle: Role::Gast,
-            })),
-            ("RaumVerschluesseln", Box::new(move |_| ClientFrame::RaumVerschluesseln {
-                raum: fremder_raum,
-                an: true,
-            })),
+        let faelle: Vec<Fall> = vec![
+            (
+                "Betreten",
+                Box::new(move |_| ClientFrame::Betreten { raum: fremder_raum }),
+            ),
+            (
+                "NachrichtLoeschen",
+                Box::new(move |_| ClientFrame::NachrichtLoeschen {
+                    nachricht: fremde_nachricht,
+                }),
+            ),
+            (
+                "RaumUmbenennen",
+                Box::new(move |_| ClientFrame::RaumUmbenennen {
+                    raum: fremder_raum,
+                    name: "X".into(),
+                }),
+            ),
+            (
+                "RaumLoeschen",
+                Box::new(move |_| ClientFrame::RaumLoeschen { raum: fremder_raum }),
+            ),
+            (
+                "Stummschalten",
+                Box::new(move |_| ClientFrame::Stummschalten {
+                    mitglied: fremdes_mitglied,
+                    taub: false,
+                    an: true,
+                }),
+            ),
+            (
+                "Verschieben",
+                Box::new(move |_| ClientFrame::Verschieben {
+                    mitglied: fremdes_mitglied,
+                    raum: RoomId::neu(),
+                }),
+            ),
+            (
+                "AusRaumWerfen",
+                Box::new(move |_| ClientFrame::AusRaumWerfen {
+                    mitglied: fremdes_mitglied,
+                }),
+            ),
+            (
+                "Trennen",
+                Box::new(move |_| ClientFrame::Trennen {
+                    mitglied: fremdes_mitglied,
+                    grund: "Test".into(),
+                }),
+            ),
+            (
+                "MitgliedSperren",
+                Box::new(move |_| ClientFrame::MitgliedSperren {
+                    mitglied: fremdes_mitglied,
+                    grund: "Test".into(),
+                }),
+            ),
+            (
+                "RolleSetzen",
+                Box::new(move |_| ClientFrame::RolleSetzen {
+                    mitglied: fremdes_mitglied,
+                    rolle: Role::Gast,
+                }),
+            ),
+            (
+                "RaumVerschluesseln",
+                Box::new(move |_| ClientFrame::RaumVerschluesseln {
+                    raum: fremder_raum,
+                    an: true,
+                }),
+            ),
         ];
 
-        assert_eq!(faelle.len(), 11, "Zahl der Kennungs-Befehle hat sich geändert");
+        assert_eq!(
+            faelle.len(),
+            11,
+            "Zahl der Kennungs-Befehle hat sich geändert"
+        );
 
         for (name, rahmen) in faelle {
             let antworten = frage(&format!("sweep-unbekannt-{}", name.to_lowercase()), rahmen);
@@ -1571,9 +1658,7 @@ mod protokollsweep {
     fn grenzwerte_werden_abgewiesen() {
         // Ein Zeichen zu viel.
         let zu_lang = "x".repeat(sprechwerk_domain::state::MAX_MESSAGE_LEN + 1);
-        let antworten = frage("sweep-text-lang", |_| ClientFrame::Text {
-            text: zu_lang,
-        });
+        let antworten = frage("sweep-text-lang", |_| ClientFrame::Text { text: zu_lang });
         assert!(
             meldet_fehler(&antworten),
             "Text über der Grenze muss abgewiesen werden: {antworten:?}"
@@ -1599,8 +1684,10 @@ mod protokollsweep {
 
         // Raumname: leer und viel zu lang.
         for (name, raumname) in [("leer", ""), ("lang", &"R".repeat(5_000))] {
-            let antworten = frage(&format!("sweep-raum-{name}"), |_| ClientFrame::RaumAnlegen {
-                name: raumname.to_string(),
+            let antworten = frage(&format!("sweep-raum-{name}"), |_| {
+                ClientFrame::RaumAnlegen {
+                    name: raumname.to_string(),
+                }
             });
             assert!(
                 meldet_fehler(&antworten),
@@ -1656,7 +1743,10 @@ mod protokollsweep {
             ("zu kurz", vec![2, 0, 0, 0, 0]),
             ("falsche Version", falsche_version),
             ("falscher Codec", falscher_codec),
-            ("zu groß", vec![0u8; sprechwerk_protocol::nachricht::MAX_SPRACHRAHMEN + 1]),
+            (
+                "zu groß",
+                vec![0u8; sprechwerk_protocol::nachricht::MAX_SPRACHRAHMEN + 1],
+            ),
         ];
         for (name, daten) in &ungueltig {
             let vorher = w.kern.zaehler().abgelehnt;

@@ -321,7 +321,7 @@ impl Schluesselverwaltung {
                 continue;
             };
             let Ok(umschlag) =
-                Umschlag::verpacken(&geheimnis, &oeffentlich, raum.text().as_str(), &schluessel)
+                Umschlag::verpacken(&geheimnis, &oeffentlich, raum.text().as_str(), schluessel)
             else {
                 continue;
             };
@@ -367,6 +367,17 @@ impl Schluesselverwaltung {
             .ok_or_else(|| "Absender unbekannt".to_string())?;
         if absender.kennung.is_empty() {
             return Err("Absender ohne Kennung".into());
+        }
+        // **Nur der Schlüsselwart darf Schlüssel verteilen.**
+        //
+        // Die Unterschrift beweist nur, *wer* das Paket geschickt hat — nicht,
+        // dass er es darf. Ohne diese Prüfung könnte jedes Mitglied im Raum
+        // seinen eigenen Schlüssel an alle schicken; wer ihn annähme, spräche
+        // danach mit dem Absender statt mit dem Raum (und der Absender läse
+        // mit). Alle Clients rechnen den Wart gleich aus, deshalb genügt der
+        // Vergleich mit der eigenen Mitgliederliste.
+        if !Self::bin_wart(von, mitglieder, raum) {
+            return Err("Schlüsselpaket von jemandem, der nicht der Wart ist".into());
         }
         let roh = hex::decode(daten).map_err(|_| "Paket ist kein Hex".to_string())?;
 
@@ -572,9 +583,13 @@ mod tests {
         .expect("verschlüsseln");
 
         // … wird vor dem Wechsel gelesen.
-        let klar = verwaltung.entschluesseln(raum, &alt_rahmen).expect("alt vor dem Wechsel");
+        let klar = verwaltung
+            .entschluesseln(raum, &alt_rahmen)
+            .expect("alt vor dem Wechsel");
         assert_eq!(
-            sprechwerk_protocol::Sprachkopf::lesen(&klar).expect("Kopf").1,
+            sprechwerk_protocol::Sprachkopf::lesen(&klar)
+                .expect("Kopf")
+                .1,
             b"alt",
             "der alte Rahmen wurde nicht richtig geöffnet"
         );
@@ -616,7 +631,6 @@ mod tests {
         let a = Schluessel::neu();
         let b = Schluessel::neu();
         let ich_a = MemberId::aus_roh(1);
-        let ich_b = MemberId::aus_roh(2);
         let ich_c = MemberId::aus_roh(3);
         let c = Schluessel::neu();
 
@@ -631,7 +645,9 @@ mod tests {
 
         // Keine Änderung: nichts erneut schicken.
         assert!(
-            verwaltung.sorge_fuer(raum, 5_000, ich_a, &a, &zu_zweit).is_empty(),
+            verwaltung
+                .sorge_fuer(raum, 5_000, ich_a, &a, &zu_zweit)
+                .is_empty(),
             "dieselbe Runde darf nicht erneut Pakete erzeugen"
         );
 
@@ -644,7 +660,9 @@ mod tests {
         let zweite = verwaltung.sorge_fuer(raum, 5_000, ich_a, &a, &zu_dritt);
         assert_eq!(zweite.len(), 2, "B und C müssen den Schlüssel bekommen");
         assert!(
-            zweite.iter().any(|p| matches!(p, ClientFrame::Schluesselpaket { fuer, .. } if *fuer == ich_c)),
+            zweite
+                .iter()
+                .any(|p| matches!(p, ClientFrame::Schluesselpaket { fuer, .. } if *fuer == ich_c)),
             "kein Paket für den Späterkommenden"
         );
 
@@ -681,6 +699,94 @@ mod tests {
             verwaltung_c.hole(raum).map(|s| s.epoche),
             Some(super::epoche_aus(5_000)),
             "der Späterkommende hat keinen Schlüssel"
+        );
+    }
+
+    /// Ein Mitglied, das **nicht** Wart ist, darf keinen Schlüssel verteilen.
+    ///
+    /// Die Unterschrift beweist nur den Absender. Ohne diese Prüfung könnte
+    /// jeder im Raum seinen eigenen Schlüssel an alle schicken — wer ihn
+    /// annähme, spräche danach mit dem Absender statt mit dem Raum.
+    #[test]
+    fn nur_der_wart_darf_schluessel_verteilen() {
+        let raum = RoomId::aus_roh(41);
+        let a = Schluessel::neu();
+        let boese = Schluessel::neu();
+        let ich_b = MemberId::aus_roh(2);
+        // A ist Wart (kleinere Id bei gleicher Anwesenheitszeit).
+        let mitglieder = vec![
+            mitglied(1, &a.kennung(), Some(raum)),
+            mitglied(2, &boese.kennung(), Some(raum)),
+        ];
+
+        // Der Böse verpackt seinen eigenen Schlüssel **für A** — so würde ein
+        // Angreifer es tun: den öffentlichen Schlüssel des Opfers nehmen.
+        let eigener = Raumschluessel::neu(super::epoche_aus(3_000));
+        let umschlag = Umschlag::verpacken(
+            &boese.austausch_geheimnis(),
+            &oeffentlich_aus_hex(&a.kennung()).expect("X25519"),
+            raum.text().as_str(),
+            &eigener,
+        )
+        .expect("verpacken");
+        let unterschrift = boese.unterschreibe(&zu_signieren(
+            raum.text().as_str(),
+            eigener.epoche,
+            &umschlag.bytes,
+        ));
+        let daten = hex::encode(&umschlag.bytes);
+
+        let verwaltung = Schluesselverwaltung::neu();
+        let ergebnis = verwaltung.nimm_paket(
+            Paket {
+                raum,
+                epoche: eigener.epoche,
+                von: ich_b,
+                daten: &daten,
+                unterschrift: &unterschrift,
+            },
+            &a,
+            &mitglieder,
+        );
+        assert!(
+            ergebnis.is_err(),
+            "ein Nicht-Wart durfte einen Schlüssel unterbringen"
+        );
+        assert!(
+            verwaltung.hole(raum).is_none(),
+            "der fremde Schlüssel wurde trotzdem gemerkt"
+        );
+
+        // Vom Wart kommt dasselbe Paket durch.
+        let umschlag = Umschlag::verpacken(
+            &a.austausch_geheimnis(),
+            &oeffentlich_aus_hex(&boese.kennung()).expect("X25519"),
+            raum.text().as_str(),
+            &eigener,
+        )
+        .expect("verpacken");
+        let unterschrift = a.unterschreibe(&zu_signieren(
+            raum.text().as_str(),
+            eigener.epoche,
+            &umschlag.bytes,
+        ));
+        let daten = hex::encode(&umschlag.bytes);
+        verwaltung
+            .nimm_paket(
+                Paket {
+                    raum,
+                    epoche: eigener.epoche,
+                    von: MemberId::aus_roh(1),
+                    daten: &daten,
+                    unterschrift: &unterschrift,
+                },
+                &boese,
+                &mitglieder,
+            )
+            .expect("der Wart darf verteilen");
+        assert_eq!(
+            verwaltung.hole(raum).map(|s| s.epoche),
+            Some(eigener.epoche)
         );
     }
 
@@ -905,18 +1011,15 @@ mod tests {
     /// Fehlt es, sagt der Test, was zu tun ist — statt still zu überspringen.
     fn server_starten(name: &str) -> Pruefserver {
         let sperre = E2E.lock().unwrap_or_else(|g| g.into_inner());
-        let programm = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/debug/sprechwerk");
+        let programm =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/sprechwerk");
         assert!(
             programm.exists(),
             "{} fehlt — vorher `cargo build -p sprechwerk-server` im Arbeitsbereich ausführen",
             programm.display()
         );
-        let verzeichnis = std::env::temp_dir().join(format!(
-            "sprechwerk-e2e-{}-{}",
-            std::process::id(),
-            name
-        ));
+        let verzeichnis =
+            std::env::temp_dir().join(format!("sprechwerk-e2e-{}-{}", std::process::id(), name));
         let _ = std::fs::remove_dir_all(&verzeichnis);
         std::fs::create_dir_all(&verzeichnis).expect("Verzeichnis");
         let port = freier_port();
@@ -989,11 +1092,10 @@ mod tests {
             name: &'static str,
             schluessel: Schluessel,
         ) -> Self {
-            let verbindung = sprechwerk_adapters::Verbindung::oeffnen(
-                adresse, &schluessel, name, None,
-            )
-            .await
-            .expect("Verbindung");
+            let verbindung =
+                sprechwerk_adapters::Verbindung::oeffnen(adresse, &schluessel, name, None)
+                    .await
+                    .expect("Verbindung");
             Self {
                 verbindung,
                 schluessel,
@@ -1005,10 +1107,6 @@ mod tests {
                 bitten_verlieren: std::cell::Cell::new(0),
                 bitten_verloren: std::cell::Cell::new(0),
             }
-        }
-
-        fn raum(&self) -> Option<RoomId> {
-            self.verbindung.raum
         }
 
         fn seit(&self, raum: RoomId) -> i64 {
@@ -1121,10 +1219,13 @@ mod tests {
                 }
             }
         }
-        panic!("Schlüssel der Epoche {erwartet} kamen nicht zustande: {:?}", teilnehmer
-            .iter()
-            .map(|t| (t.name, t.epoche(raum)))
-            .collect::<Vec<_>>());
+        panic!(
+            "Schlüssel der Epoche {erwartet} kamen nicht zustande: {:?}",
+            teilnehmer
+                .iter()
+                .map(|t| (t.name, t.epoche(raum)))
+                .collect::<Vec<_>>()
+        );
     }
 
     /// Wartet, bis die Raumliste eines Teilnehmers eine Bedingung erfüllt.
@@ -1133,20 +1234,12 @@ mod tests {
         F: Fn(&Raumansicht) -> bool,
     {
         for _ in 0..200 {
-            let treffer = t
-                .verbindung
-                .raeume
-                .iter()
-                .find(|r| passt(r))
-                .cloned();
+            let treffer = t.verbindung.raeume.iter().find(|r| passt(r)).cloned();
             if treffer.is_some() {
                 return;
             }
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(50),
-                t.verbindung.empfang(),
-            )
-            .await
+            match tokio::time::timeout(std::time::Duration::from_millis(50), t.verbindung.empfang())
+                .await
             {
                 Ok(Ok(Some(rahmen))) => t.nimm(&rahmen),
                 Ok(Ok(None)) => panic!("Verbindung wurde geschlossen"),
@@ -1160,7 +1253,12 @@ mod tests {
             t.verbindung
                 .raeume
                 .iter()
-                .map(|r| (r.name.clone(), r.verschluesselt, r.anwesend, r.verschluesselt_seit))
+                .map(|r| (
+                    r.name.clone(),
+                    r.verschluesselt,
+                    r.anwesend,
+                    r.verschluesselt_seit
+                ))
                 .collect::<Vec<_>>()
         );
     }
@@ -1223,7 +1321,11 @@ mod tests {
         let ist_wart = |t: &Teilnehmer| {
             Schluesselverwaltung::bin_wart(t.verbindung.ich, &t.verbindung.mitglieder, raum)
         };
-        let (wart, verlierer) = if ist_wart(&a) { ("Ada", 1) } else { ("Bosse", 0) };
+        let (wart, verlierer) = if ist_wart(&a) {
+            ("Ada", 1)
+        } else {
+            ("Bosse", 0)
+        };
 
         // Zähler zurücksetzen: geprüft wird nur, was **nach** dem Verlust
         // passiert.
@@ -1478,7 +1580,10 @@ mod tests {
 
         // Den Schlüssel der alten Epoche behalten — damit lässt sich nach dem
         // Wechsel prüfen, ob das Übergangsfenster greift.
-        let alter_schluessel = a.verwaltung.hole(raum).expect("Schlüssel der ersten Epoche");
+        let alter_schluessel = a
+            .verwaltung
+            .hole(raum)
+            .expect("Schlüssel der ersten Epoche");
 
         // C geht — die Epoche muss sich drehen. Seine Kennung behalten wir für
         // die Rückkehr.
@@ -1494,8 +1599,7 @@ mod tests {
         assert_ne!(neue_epoche, epoche, "Epoche blieb gleich");
 
         // Neuen Schlüssel aushandeln (A und B sind noch da).
-        let fenster =
-            bis_schluessel_stehen(&mut [&mut a, &mut b], raum, neue_epoche).await;
+        let fenster = bis_schluessel_stehen(&mut [&mut a, &mut b], raum, neue_epoche).await;
         let gemessen = beginn.elapsed();
 
         // Der alte Schlüssel ist wertlos: er öffnet den neuen Rahmen nicht.
@@ -1540,7 +1644,9 @@ mod tests {
             .entschluesseln(raum, &empfangen)
             .expect("B muss den Rahmen aus dem Wechselfenster noch öffnen können");
         assert_eq!(
-            sprechwerk_protocol::Sprachkopf::lesen(&offen).expect("Kopf").1,
+            sprechwerk_protocol::Sprachkopf::lesen(&offen)
+                .expect("Kopf")
+                .1,
             b"noch alt",
             "der Rahmen aus dem Wechselfenster kam nicht heil an"
         );
@@ -1563,7 +1669,9 @@ mod tests {
         )
         .expect("B entschlüsselt mit dem neuen Schlüssel");
         assert_eq!(
-            sprechwerk_protocol::Sprachkopf::lesen(&offen).expect("Kopf").1,
+            sprechwerk_protocol::Sprachkopf::lesen(&offen)
+                .expect("Kopf")
+                .1,
             klar
         );
 
@@ -1585,5 +1693,4 @@ mod tests {
             fenster.as_secs_f64() * 1000.0
         );
     }
-
 }

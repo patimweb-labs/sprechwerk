@@ -1203,9 +1203,7 @@ impl State {
         }
         // Eine Sperre muss wirken können — unsinnige Kennungen und Adressen
         // werden abgewiesen statt still als wirkungslose Zeile gespeichert.
-        let schluessel = schluessel
-            .map(|k| kennung_normalisieren(&k))
-            .transpose()?;
+        let schluessel = schluessel.map(|k| kennung_normalisieren(&k)).transpose()?;
         let adresse = adresse.map(|a| adresse_normalisieren(&a)).transpose()?;
         self.sperren.push(Ban {
             schluessel,

@@ -214,7 +214,8 @@ async fn lauf<F>(
                     }
                     // Jemand bittet um den Schlüssel: die Verteilung neu
                     // anstoßen, damit der nächste Durchlauf ihn bedient.
-                    if let sprechwerk_protocol::ServerFrame::SchluesselAnfrage { raum, .. } = &frame {
+                    if let sprechwerk_protocol::ServerFrame::SchluesselAnfrage { raum, .. } = &frame
+                    {
                         verwaltung.verteilung_erneuern(*raum);
                     }
                     let mut raum_wechsel = false;
