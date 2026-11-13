@@ -1,0 +1,184 @@
+# Prüfen: was vor dem Ausliefern stimmen muss.
+#
+# Drei Gründe, warum es diese Datei gibt:
+#   1. `cargo test` im Wurzelverzeichnis sammelt die Tests von `crates/desktop`
+#      **nicht** ein (Tauri hat eine eigene Sperrdatei, das Crate steht außerhalb
+#      des Arbeitsbereichs). Diese Tests liefen deshalb nie von selbst.
+#   2. `ui/` hatte lange überhaupt keine Prüfung.
+#   3. Zwei Werkzeuge, die das Projekt verlangt (`cargo fmt --check`,
+#      `cargo clippy -D warnings`), waren auf dem Commit-Stand nachweislich kaputt,
+#      ohne dass es jemandem auffiel.
+#
+# Dieselben Schritte laufen lokal mit `scripts/pruefen.sh`.
+
+name: prüfen
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+# Ein neuer Lauf ersetzt den alten: bei einem Tippfehler im Branch soll nicht
+# der vorige Lauf weiterrechnen.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Schnell scheitern statt minutenlang kompilieren, wenn etwas offensichtlich
+  # kaputt ist.
+  RUST_BACKTRACE: 1
+
+jobs:
+  arbeitsbereich:
+    name: Arbeitsbereich — Form, Werkzeuge, Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Form
+        run: cargo fmt --all --check
+
+      - name: Werkzeuge
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace
+
+  fenster:
+    name: Fenster — eigenes Crate, eigene Sperrdatei
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      # Tauri braucht die Systembibliotheken von GTK/WebKit. Ohne sie baut das
+      # Fenster-Crate nicht — und dann laufen auch seine Tests nicht.
+      - name: Systembibliotheken für Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev librsvg2-dev patchelf \
+            build-essential pkg-config libopus0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            crates/desktop -> crates/desktop/target
+
+      # Die Ende-zu-Ende-Tests im Fenster-Crate starten den **echten**
+      # Serverprozess; ohne dieses Binary sagen sie das und schlagen fehl.
+      - name: Server bauen (für die Ende-zu-Ende-Tests)
+        run: cargo build -p sprechwerk-server
+
+      - name: Form
+        run: cd crates/desktop && cargo fmt --check
+
+      - name: Werkzeuge
+        run: cd crates/desktop && cargo clippy --all-targets -- -D warnings
+
+      - name: Tests
+        run: cd crates/desktop && cargo test
+
+  oberflaeche:
+    name: Oberfläche — Typen und Ansichten
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # `ui/package.json` hängt über `file:../../weppelmann-ui/...` an der
+      # Komponentenbibliothek. Der Pfad zeigt **neben** dieses Repository —
+      # deshalb wird sie dorthin geholt.
+      #
+      # Ist sie nicht öffentlich, braucht dieser Schritt ein Secret
+      # `WEPPELMANN_UI_TOKEN` (fine-grained, nur Lesen). Fehlt es und der
+      # anonyme Zugriff scheitert, sagt der Job das deutlich, statt an einem
+      # unverständlichen `npm ci`-Fehler zu scheitern.
+      - name: Komponentenbibliothek holen
+        env:
+          TOKEN: ${{ secrets.WEPPELMANN_UI_TOKEN }}
+        run: |
+          ziel="${{ github.workspace }}/../weppelmann-ui"
+          url="https://github.com/Smotherer007/weppelmann-ui.git"
+          if [ -n "$TOKEN" ]; then
+            url="https://x-access-token:${TOKEN}@github.com/Smotherer007/weppelmann-ui.git"
+          fi
+          if ! git clone --depth 1 "$url" "$ziel"; then
+            echo "::error::weppelmann-ui nicht erreichbar. Secret WEPPELMANN_UI_TOKEN setzen (nur Leserechte)."
+            exit 1
+          fi
+
+      - name: Tokens bauen
+        run: |
+          cd "${{ github.workspace }}/../weppelmann-ui"
+          npm ci --no-audit --no-fund
+          npm run -s tokens
+
+      - name: Abhängigkeiten der Oberfläche
+        run: cd ui && npm ci --no-audit --no-fund
+
+      - name: Typen
+        run: cd ui && npm run --silent typecheck
+
+      - name: Ansichten und Texte
+        run: cd ui && npm test --silent
+
+  sprache:
+    name: Sprache — Messungen am laufenden Server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Opus wird zur **Laufzeit** geladen (libloading), deshalb genügt die
+      # Laufzeitbibliothek; ALSA braucht der Linux-Bau ohne das Feature `cpal`
+      # nicht.
+      - name: Laufzeitbibliothek Opus
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopus0
+
+      # Dieselben Proben wie lokal. Sie brauchen kein Mikrofon und keine zweite
+      # Person — nur einen freien Port und einen Serverprozess.
+      - name: Ton durch den Server
+        run: |
+          mkdir -p /tmp/sprachproben
+          ./scripts/sprechprobe.sh 2>&1 | tee /tmp/sprachproben/sprechprobe.log
+
+      - name: Vier Sprecher gleichzeitig
+        run: |
+          mkdir -p /tmp/sprachproben
+          ./scripts/lastprobe.sh 2>&1 | tee /tmp/sprachproben/lastprobe.log
+
+      - name: Verlust und Jitter
+        run: |
+          mkdir -p /tmp/sprachproben
+          ./scripts/verlustprobe.sh 2>&1 | tee /tmp/sprachproben/verlustprobe.log
+
+      - name: Messprotokolle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sprachproben
+          path: /tmp/sprachproben/*.log
+          if-no-files-found: ignore

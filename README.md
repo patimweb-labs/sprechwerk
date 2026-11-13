@@ -78,6 +78,19 @@ Server, Jitter-Puffer, Wiedergabe —, und der Mitschnitt wird ausgewertet:
 kommt der Ton in der richtigen Frequenz an, und kommt auch ein stimmähnliches
 Signal durch die Entrauschung? Alles auf einem Rechner.
 
+## Prüfen
+
+```bash
+scripts/pruefen.sh              # alles: Form, Werkzeuge, Tests, Ansichten, Sprachproben
+scripts/pruefen.sh --nur-tests  # schnell: nur kompilieren und testen
+```
+
+Dieselben Schritte laufen bei jedem Push auf GitHub (`.github/workflows/pruefen.yml`)
+— inklusive der Tests von `crates/desktop`, die `cargo test` im Wurzelverzeichnis
+sonst nicht einsammelt. Für die Oberfläche wird die Komponentenbibliothek
+`weppelmann-ui` neben das Repository geklont; ist sie nicht öffentlich, braucht
+der Job das Secret `WEPPELMANN_UI_TOKEN` (nur Leserechte).
+
 ## Was das Fenster zeigt (und TeamSpeak nicht)
 
 * **Prüfprotokoll** — wer hat was getan, und was wurde **abgelehnt**. Für
