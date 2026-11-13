@@ -231,7 +231,7 @@ mod tests {
         assert!(!e.nimm(&[]));
         assert!(!e.nimm(&[1, 2, 3]));
         assert!(!e.nimm(&[9, 0, 0, 1, 0, 0, 1, 2, 3]));
-        assert_eq!(e.zaehler().1 >= 3, true);
+        assert!(e.zaehler().1 >= 3);
         // Und der Ausgabeblock bleibt trotzdem gültig.
         assert_eq!(e.naechster_block().len(), RAHMEN_SAMPLES);
     }

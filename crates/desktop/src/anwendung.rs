@@ -364,15 +364,11 @@ async fn lauf<F>(
                         let quelle = verbindung.datagramm_quelle();
                         let (tx_sprache, rx_sprache) = mpsc::unbounded_channel::<Vec<u8>>();
                         tokio::spawn(async move {
-                            loop {
-                                match quelle.read_datagram().await {
-                                    Ok(d) => {
-                                        if tx_sprache.send(d.to_vec()).is_err() {
-                                            break;
-                                        }
-                                    }
-                                    // Verbindung zu: Aufgabe beenden.
-                                    Err(_) => break,
+                            // Verbindung zu (`Err`) beendet die Aufgabe, ebenso
+                            // ein geschlossener Empfänger.
+                            while let Ok(d) = quelle.read_datagram().await {
+                                if tx_sprache.send(d.to_vec()).is_err() {
+                                    break;
                                 }
                             }
                         });
@@ -559,15 +555,15 @@ fn verschluessle(
 ) -> Vec<u8> {
     let raum = aktueller.lock().ok().and_then(|r| *r);
     match (raum, raum.and_then(|r| verwaltung.hole(r).map(|k| (r, k)))) {
+        // Ohne Verschlüsselung geht der Rahmen **nicht** hinaus — ein
+        // Klartext-Rahmen in einem verschlüsselten Raum wäre ein Datenleck.
         (_, Some((raum, schluessel))) => {
-            match sprechwerk_adapters::verschluesselt::rahmen_verschluesseln(
+            sprechwerk_adapters::verschluesselt::rahmen_verschluesseln(
                 &datagramm,
                 &schluessel,
                 raum.text().as_str(),
-            ) {
-                Ok(geheim) => geheim,
-                Err(_) => Vec::new(),
-            }
+            )
+            .unwrap_or_default()
         }
         _ => {
             // Kein verschlüsselter Raum: unverändert hinaus.

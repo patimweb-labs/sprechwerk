@@ -124,6 +124,11 @@ pub struct Pfad {
     /// Läuft der Pfad noch?
     laeuft: Arc<AtomicBool>,
     /// Was gerade abgespielt wurde — Referenz für die Echounterdrückung.
+    ///
+    /// Der Feldwert wird nicht gelesen: er **hält den Puffer am Leben**, den die
+    /// Threads über ihre Klone benutzen. Fiele er weg, wäre der Puffer weg,
+    /// sobald der letzte Klon entsteht.
+    #[allow(dead_code)]
     gehoert: Arc<Mutex<std::collections::VecDeque<Vec<f32>>>>,
     /// Umstellen der Sendeseite.
     einstellungen: Kanal<Sendeeinstellungen>,

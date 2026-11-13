@@ -31,7 +31,7 @@ fn rms(b: &[f32]) -> f32 {
 }
 
 fn main() {
-    use sprechwerk_adapters::klang::{rms as _, Entrauscher};
+    use sprechwerk_adapters::klang::Entrauscher;
     let mut e = Entrauscher::neu(48_000);
     let mut r = rauschen(960, 0.05);
     let vor_r = rms(&r);

@@ -367,11 +367,8 @@ async fn schluesselpaket_verlaesst_den_raum_nicht() {
     );
 
     let beim_fremden = tokio::time::timeout(Duration::from_millis(400), fremd.empfang()).await;
-    match beim_fremden {
-        Ok(Ok(Some(ServerFrame::Schluesselpaket { .. }))) => {
-            panic!("Paket hat den Raum verlassen")
-        }
-        _ => {}
+    if let Ok(Ok(Some(ServerFrame::Schluesselpaket { .. }))) = beim_fremden {
+        panic!("Paket hat den Raum verlassen")
     }
 
     a.schliessen();

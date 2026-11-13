@@ -20,7 +20,7 @@ pub enum Fehler {
 }
 
 /// Die vollständige Konfiguration.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Konfig {
     pub server: Server,
@@ -74,15 +74,6 @@ pub struct Sicherung {
     pub behalten: usize,
     /// Zielverzeichnis; leer = `<daten>/sicherungen`.
     pub verzeichnis: PathBuf,
-}
-
-impl Default for Konfig {
-    fn default() -> Self {
-        Self {
-            server: Server::default(),
-            sicherung: Sicherung::default(),
-        }
-    }
 }
 
 impl Default for Server {

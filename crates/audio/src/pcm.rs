@@ -27,6 +27,9 @@ pub fn nach_i16(werte: &[f32]) -> Vec<i16> {
 
 /// Liest rohe 16-Bit-Mono-Bytes als Werte (kleine Ende, wie `parec` liefert).
 pub fn bytes_nach_i16(bytes: &[u8]) -> Vec<i16> {
+    // `as_chunks` (der Vorschlag des Lints) gibt es erst ab Rust 1.88; die
+    // Zusage in `Cargo.toml` ist 1.80.
+    #[allow(clippy::chunks_exact_to_as_chunks)]
     bytes
         .chunks_exact(2)
         .map(|p| i16::from_le_bytes([p[0], p[1]]))

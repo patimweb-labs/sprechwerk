@@ -172,7 +172,7 @@ async fn beitrittszeit_bis_zum_ersten_rahmen() {
     for i in 0..20 {
         let name = format!("K{i}");
         let start = Instant::now();
-        let mut v = Verbindung::oeffnen(server.adresse, &Schluessel::neu(), &name, None)
+        let v = Verbindung::oeffnen(server.adresse, &Schluessel::neu(), &name, None)
             .await
             .unwrap();
         zeiten.push(start.elapsed().as_micros());

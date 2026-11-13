@@ -282,6 +282,8 @@ pub fn pegel(geraet: &str, millisekunden: u64) -> Result<u8, Fehler> {
         }
         match empfangen.recv_timeout(frist - jetzt) {
             Ok(block) => {
+                // `as_chunks` gibt es erst ab Rust 1.88 (Zusage: 1.80).
+                #[allow(clippy::chunks_exact_to_as_chunks)]
                 for paar in block.chunks_exact(2) {
                     let wert = i16::from_le_bytes([paar[0], paar[1]]) as f64 / i16::MAX as f64;
                     summe += wert * wert;

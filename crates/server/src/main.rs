@@ -29,7 +29,7 @@ Konfiguration über Datei und Umgebungsvariablen (SPRECHWERK_*), siehe `beispiel
 
 fn konfig_laden() -> anyhow::Result<konfig::Konfig> {
     let pfad = std::env::var("SPRECHWERK_KONFIG").unwrap_or_else(|_| "sprechwerk.toml".to_string());
-    Ok(konfig::Konfig::laden(&pfad).with_context(|| format!("Konfiguration {pfad}"))?)
+    konfig::Konfig::laden(&pfad).with_context(|| format!("Konfiguration {pfad}"))
 }
 
 /// Lädt den Zustand für Betriebswerkzeuge. Eine Datenbank ohne Räume (frisch

@@ -32,69 +32,6 @@ pub struct Sprechbetrieb {
     geraete: Mutex<(String, String)>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn frischer_betrieb_laeuft_nicht_und_ist_nicht_stumm() {
-        let b = Sprechbetrieb::neu();
-        assert!(!b.laeuft());
-        assert!(!b.ist_stumm());
-        assert_eq!(b.pegel(), 0);
-        assert!(b.naechstes_datagramm().is_none());
-    }
-
-    #[test]
-    fn stumm_und_taste_gehen_auch_ohne_pfad() {
-        let b = Sprechbetrieb::neu();
-        b.stumm_setzen(true);
-        assert!(b.ist_stumm());
-        b.stumm_setzen(false);
-        assert!(!b.ist_stumm());
-        // Taste drücken ohne Pfad darf nicht panisch werden.
-        b.taste_setzen(true);
-        b.taste_setzen(false);
-        b.hoeren(vec![1, 2, 3]);
-        assert!(b.naechstes_datagramm().is_none());
-    }
-
-    #[test]
-    fn stoppen_ist_wiederholbar() {
-        let b = Sprechbetrieb::neu();
-        b.stoppen();
-        b.stoppen();
-        assert!(!b.laeuft());
-    }
-
-    #[test]
-    fn monitor_als_mikrofon_wird_abgelehnt() {
-        let b = Sprechbetrieb::neu();
-        let fehler = b
-            .starten(
-                Some("alsa_output.kopfhoerer.monitor".to_string()),
-                None,
-                Sendeeinstellungen::default(),
-            )
-            .err()
-            .expect("Monitor muss abgelehnt werden");
-        assert!(fehler.contains("Monitor"), "{fehler}");
-        assert!(!b.laeuft(), "nach dem Fehler läuft nichts");
-    }
-
-    #[test]
-    fn ohne_geraet_wird_ein_fehler_gemeldet_statt_zu_panisch() {
-        // Es gibt in dieser Umgebung kein Aufnahmegerät (CI/Container) oder
-        // eines — beides darf nicht abstürzen.
-        let b = Sprechbetrieb::neu();
-        let ergebnis = b.starten(None, None, Sendeeinstellungen::default());
-        match ergebnis {
-            Ok(()) => b.stoppen(),
-            Err(text) => assert!(!text.is_empty()),
-        }
-    }
-}
-
 impl Sprechbetrieb {
     pub fn neu() -> Self {
         Self {
@@ -241,6 +178,68 @@ impl Sprechbetrieb {
             if let Some(pfad) = p.as_ref() {
                 pfad.hoeren(datagramm);
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frischer_betrieb_laeuft_nicht_und_ist_nicht_stumm() {
+        let b = Sprechbetrieb::neu();
+        assert!(!b.laeuft());
+        assert!(!b.ist_stumm());
+        assert_eq!(b.pegel(), 0);
+        assert!(b.naechstes_datagramm().is_none());
+    }
+
+    #[test]
+    fn stumm_und_taste_gehen_auch_ohne_pfad() {
+        let b = Sprechbetrieb::neu();
+        b.stumm_setzen(true);
+        assert!(b.ist_stumm());
+        b.stumm_setzen(false);
+        assert!(!b.ist_stumm());
+        // Taste drücken ohne Pfad darf nicht panisch werden.
+        b.taste_setzen(true);
+        b.taste_setzen(false);
+        b.hoeren(vec![1, 2, 3]);
+        assert!(b.naechstes_datagramm().is_none());
+    }
+
+    #[test]
+    fn stoppen_ist_wiederholbar() {
+        let b = Sprechbetrieb::neu();
+        b.stoppen();
+        b.stoppen();
+        assert!(!b.laeuft());
+    }
+
+    #[test]
+    fn monitor_als_mikrofon_wird_abgelehnt() {
+        let b = Sprechbetrieb::neu();
+        let fehler = b
+            .starten(
+                Some("alsa_output.kopfhoerer.monitor".to_string()),
+                None,
+                Sendeeinstellungen::default(),
+            )
+            .expect_err("Monitor muss abgelehnt werden");
+        assert!(fehler.contains("Monitor"), "{fehler}");
+        assert!(!b.laeuft(), "nach dem Fehler läuft nichts");
+    }
+
+    #[test]
+    fn ohne_geraet_wird_ein_fehler_gemeldet_statt_zu_panisch() {
+        // Es gibt in dieser Umgebung kein Aufnahmegerät (CI/Container) oder
+        // eines — beides darf nicht abstürzen.
+        let b = Sprechbetrieb::neu();
+        let ergebnis = b.starten(None, None, Sendeeinstellungen::default());
+        match ergebnis {
+            Ok(()) => b.stoppen(),
+            Err(text) => assert!(!text.is_empty()),
         }
     }
 }

@@ -159,9 +159,11 @@ mod tests {
         let verzeichnis =
             std::env::temp_dir().join(format!("sprechwerk-desktop-{}", std::process::id()));
         let pfad = verzeichnis.join("einstellungen.json");
-        let mut e = Einstellungen::default();
-        e.name = "Ada".into();
-        e.thema = "light".into();
+        let e = Einstellungen {
+            name: "Ada".into(),
+            thema: "light".into(),
+            ..Default::default()
+        };
         e.speichern(&pfad).unwrap();
         let geladen = Einstellungen::laden(&pfad);
         assert_eq!(geladen, e);

@@ -274,10 +274,7 @@ impl Wiederhersteller {
     /// Gibt entschiedene Gruppen in Reihenfolge aus.
     fn abgeben(&mut self) -> Vec<(u16, Vec<u8>)> {
         let mut raus = Vec::new();
-        loop {
-            let Some(&unterste) = self.offen.keys().next() else {
-                break;
-            };
+        while let Some(&unterste) = self.offen.keys().next() {
             let g = gruppe_von(unterste);
             if !self.entschieden.contains(&g) {
                 break;

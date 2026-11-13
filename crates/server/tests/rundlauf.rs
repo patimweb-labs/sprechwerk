@@ -280,7 +280,7 @@ async fn kennung_bleibt_ueber_verbindungen_und_rollen_haften_daran() {
 
     // Zweiter Client mit eigener Kennung wird Moderator von Ada gemacht.
     let bosse_schluessel = Schluessel::neu();
-    let mut bosse = Verbindung::oeffnen(server.adresse, &bosse_schluessel, "Bosse", None)
+    let bosse = Verbindung::oeffnen(server.adresse, &bosse_schluessel, "Bosse", None)
         .await
         .unwrap();
     let _ = &kennung;

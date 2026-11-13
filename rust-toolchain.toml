@@ -1,0 +1,13 @@
+# Die Rust-Version ist **festgelegt**, nicht „halt das Neueste".
+#
+# Grund: `cargo fmt --check` und `cargo clippy -D warnings` sind Teil der
+# Prüfung — und beide ändern ihr Urteil mit der Version. Ohne Festlegung ist die
+# CI an einem Dienstag grün und am Mittwoch rot, ohne dass sich eine Zeile
+# geändert hat.
+#
+# Anheben: Version hier ändern, `cargo fmt --all` laufen lassen, Clippy-Befunde
+# beheben, beides committen. CI und lokal nehmen dieselbe Version aus dieser
+# Datei (rustup liest sie im Verzeichnisbaum).
+[toolchain]
+channel = "1.100.0"
+components = ["rustfmt", "clippy"]
