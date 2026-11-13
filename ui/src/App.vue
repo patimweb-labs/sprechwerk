@@ -156,6 +156,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  if (zaehlerTakt !== null) clearInterval(zaehlerTakt);
   window.removeEventListener("keydown", beimTastendruck);
   window.removeEventListener("keyup", beimTastenloslassen);
   window.removeEventListener("mousedown", beimMausdruck);

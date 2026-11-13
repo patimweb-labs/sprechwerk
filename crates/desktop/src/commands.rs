@@ -76,10 +76,7 @@ pub async fn betreten(
 
 /// Schreibt einen Text in den aktuellen Raum.
 #[tauri::command]
-pub async fn text_senden(
-    anwendung: State<'_, Arc<Anwendung>>,
-    text: String,
-) -> Result<(), String> {
+pub async fn text_senden(anwendung: State<'_, Arc<Anwendung>>, text: String) -> Result<(), String> {
     match anwendung
         .befehl(sprechwerk_ipc::Befehl::Text { text })
         .await
