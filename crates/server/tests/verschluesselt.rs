@@ -443,3 +443,77 @@ fn kennung_ist_gueltiges_ed25519() {
     };
     let _ = Signer::sign(&ed25519_dalek::SigningKey::from_bytes(&[1u8; 32]), b"x");
 }
+
+/// Wer einen verschlüsselten Raum verlässt, nimmt den Schlüssel nicht mit —
+/// und die Verbliebenen **erfahren** davon, sonst tauschen sie nichts aus.
+///
+/// Geprüft über echte Verbindungen: nach dem Verlassen muss die Raumliste mit
+/// einer höheren Epoche ankommen (`verschluesselt_seit`), aus der die Clients
+/// ihren Schlüssel bilden.
+#[tokio::test]
+async fn epoche_dreht_sich_wenn_jemand_geht() {
+    let (_server, adresse) = starte_server().await;
+
+    let mut a = verbinde(adresse, &Schluessel::neu(), "Ada").await;
+    let mut b = verbinde(adresse, &Schluessel::neu(), "Bosse").await;
+
+    a.sende(ClientFrame::RaumAnlegen {
+        name: "Geheim".into(),
+    })
+    .await
+    .unwrap();
+    let raum = match warte_auf(&mut a, |f| matches!(f, ServerFrame::Raeume { .. })).await {
+        ServerFrame::Raeume { raeume } => raeume
+            .iter()
+            .find(|r| r.name == "Geheim")
+            .expect("neuer Raum")
+            .id,
+        _ => unreachable!(),
+    };
+    for v in [&mut a, &mut b] {
+        v.sende(ClientFrame::Betreten { raum }).await.unwrap();
+        warte_auf(v, |f| matches!(f, ServerFrame::Betreten { .. })).await;
+    }
+
+    // A schaltet die Verschlüsselung ein; B bekommt die Raumliste.
+    a.sende(ClientFrame::RaumVerschluesseln { raum, an: true })
+        .await
+        .unwrap();
+    let seit = match warte_auf(&mut b, |f| {
+        matches!(f, ServerFrame::Raeume { raeume }
+            if raeume.iter().any(|r| r.id == raum && r.verschluesselt))
+    })
+    .await
+    {
+        ServerFrame::Raeume { raeume } => raeume
+            .iter()
+            .find(|r| r.id == raum)
+            .expect("Raum")
+            .verschluesselt_seit,
+        _ => unreachable!(),
+    };
+    assert!(seit > 0, "verschlüsselter Raum ohne Zeitstempel");
+
+    // B geht. A muss die neue Epoche erfahren — sonst behielte B den Schlüssel.
+    b.sende(ClientFrame::Verlassen).await.unwrap();
+    // Nur eine **neuere** Epoche zählt: die Meldungen vom Einschalten liegen
+    // noch in der Warteschlange.
+    let nachher = match warte_auf(&mut a, |f| {
+        matches!(f, ServerFrame::Raeume { raeume }
+            if raeume.iter().any(|r| r.id == raum && r.verschluesselt_seit > seit))
+    })
+    .await
+    {
+        ServerFrame::Raeume { raeume } => raeume
+            .iter()
+            .find(|r| r.id == raum)
+            .expect("Raum")
+            .verschluesselt_seit,
+        _ => unreachable!(),
+    };
+    assert!(
+        nachher > seit,
+        "Epoche blieb gleich ({seit} -> {nachher}): der Schlüssel bliebe gültig und \
+         niemand würde einen neuen aushandeln"
+    );
+}

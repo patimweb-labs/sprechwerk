@@ -297,8 +297,22 @@ impl Kern {
                                 },
                             );
                         }
+                        // Die Epoche der Ende-zu-Ende-Verschlüsselung kann sich
+                        // gedreht haben (wer geht, nimmt den Schlüssel nicht
+                        // mit). Ohne diese Meldung erführe es niemand, und der
+                        // Schlüsselwechsel unterbliebe.
+                        let raeume = self.raeume();
+                        // Der Absender bekommt sie als Antwort (unten), die
+                        // anderen per Rundruf — nicht doppelt.
+                        self.rundruf(
+                            Some(ich),
+                            None,
+                            ServerFrame::Raeume {
+                                raeume: raeume.clone(),
+                            },
+                        );
                         let _ = self.speichern();
-                        vec![ServerFrame::Ok]
+                        vec![ServerFrame::Ok, ServerFrame::Raeume { raeume }]
                     }
                     Err(_) => vec![Kern::fehler(Fehlercode::Unbekannt)],
                 }
@@ -898,6 +912,16 @@ impl Kern {
                 },
             );
         }
+        // Auch ein Verbindungsabbruch dreht die Epoche — die Verbliebenen
+        // müssen es erfahren, sonst tauschen sie keinen neuen Schlüssel aus.
+        let raeume = self.raeume();
+        self.rundruf(
+            None,
+            None,
+            ServerFrame::Raeume {
+                raeume: raeume.clone(),
+            },
+        );
         let _ = self.speichern();
     }
 }
