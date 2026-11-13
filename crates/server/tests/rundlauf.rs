@@ -180,7 +180,13 @@ async fn protokoll_ist_lesbar_und_rechte_werden_geprueft() {
     })
     .await
     .unwrap();
-    let liste = warte_auf(&mut ada, |f| matches!(f, ServerFrame::Raeume { .. })).await;
+    // Gezielt auf die Liste mit dem neuen Raum warten: Raumlisten kommen auch
+    // bei jedem Betreten.
+    let liste = warte_auf(&mut ada, |f| {
+        matches!(f, ServerFrame::Raeume { raeume }
+            if raeume.iter().any(|r| r.name == "Vorstand"))
+    })
+    .await;
     match liste {
         ServerFrame::Raeume { raeume } => {
             assert!(raeume.iter().any(|r| r.name == "Vorstand"), "{raeume:?}");

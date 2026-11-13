@@ -268,12 +268,26 @@ impl Kern {
                             },
                         );
                     }
+                    // Die Raumliste enthält `anwesend` — sie muss nach einem
+                    // Betreten mitgehen, sonst zeigt sie den anderen eine
+                    // falsche Zahl, bis irgendwann etwas anderes passiert.
+                    let raeume = self.raeume();
+                    self.rundruf(
+                        Some(ich),
+                        None,
+                        ServerFrame::Raeume {
+                            raeume: raeume.clone(),
+                        },
+                    );
                     let _ = self.speichern();
-                    vec![ServerFrame::Betreten {
-                        raum,
-                        verlauf,
-                        anwesend,
-                    }]
+                    vec![
+                        ServerFrame::Betreten {
+                            raum,
+                            verlauf,
+                            anwesend,
+                        },
+                        ServerFrame::Raeume { raeume },
+                    ]
                 }
                 Err(e) => vec![Kern::fehler(match e {
                     sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,

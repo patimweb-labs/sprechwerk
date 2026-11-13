@@ -192,7 +192,14 @@ async fn verschluesselte_sprache_geht_durch_den_server() {
     a.sende(ClientFrame::RaumVerschluesseln { raum, an: true })
         .await
         .unwrap();
-    let verschluesselt = match warte_auf(&mut a, |f| matches!(f, ServerFrame::Raeume { .. })).await {
+    // Gezielt auf die Meldung warten, die den Raum als verschlüsselt zeigt —
+    // seit dem Betreten kommen Raumlisten auch ohne Verschlüsselung.
+    let verschluesselt = match warte_auf(&mut a, |f| {
+        matches!(f, ServerFrame::Raeume { raeume }
+            if raeume.iter().any(|r| r.id == raum && r.verschluesselt))
+    })
+    .await
+    {
         ServerFrame::Raeume { raeume } => raeume
             .iter()
             .find(|r| r.id == raum)
@@ -515,5 +522,117 @@ async fn epoche_dreht_sich_wenn_jemand_geht() {
         nachher > seit,
         "Epoche blieb gleich ({seit} -> {nachher}): der Schlüssel bliebe gültig und \
          niemand würde einen neuen aushandeln"
+    );
+}
+
+/// Verbindungsabbruch mitten im Gespräch: keine Verabschiedung, kein
+/// `Verlassen` — die Leitung ist einfach weg (WLAN, Akku, Zug).
+///
+/// Der Server muss das wie ein Gehen behandeln: Anwesenheit weg, Epoche
+/// gedreht, Zähler stimmt. Und die Person muss mit **derselben Kennung**
+/// zurückkommen können, ohne Geistermitglied zu bleiben.
+#[tokio::test]
+async fn abbruch_mitten_im_gespraech_raeumt_auf_und_dreht_die_epoche() {
+    let (_server, adresse) = starte_server().await;
+
+    let schluessel_b = Schluessel::neu();
+    let mut a = verbinde(adresse, &Schluessel::neu(), "Ada").await;
+    let mut b = verbinde(adresse, &schluessel_b, "Bosse").await;
+    let b_id = b.ich;
+
+    a.sende(ClientFrame::RaumAnlegen {
+        name: "Geheim".into(),
+    })
+    .await
+    .unwrap();
+    let raum = match warte_auf(&mut a, |f| matches!(f, ServerFrame::Raeume { .. })).await {
+        ServerFrame::Raeume { raeume } => raeume
+            .iter()
+            .find(|r| r.name == "Geheim")
+            .expect("neuer Raum")
+            .id,
+        _ => unreachable!(),
+    };
+    for v in [&mut a, &mut b] {
+        v.sende(ClientFrame::Betreten { raum }).await.unwrap();
+        warte_auf(v, |f| matches!(f, ServerFrame::Betreten { .. })).await;
+    }
+
+    a.sende(ClientFrame::RaumVerschluesseln { raum, an: true })
+        .await
+        .unwrap();
+    let seit = match warte_auf(&mut b, |f| {
+        matches!(f, ServerFrame::Raeume { raeume }
+            if raeume.iter().any(|r| r.id == raum && r.verschluesselt))
+    })
+    .await
+    {
+        ServerFrame::Raeume { raeume } => raeume
+            .iter()
+            .find(|r| r.id == raum)
+            .expect("Raum")
+            .verschluesselt_seit,
+        _ => unreachable!(),
+    };
+
+    // **Abbruch.** `schliessen` schickt kein `Verlassen`, sondern beendet nur
+    // die QUIC-Verbindung — für den Server dasselbe wie ein Stromausfall.
+    b.schliessen();
+    drop(b);
+
+    let mut abwesend = false;
+    let mut neue_epoche = false;
+    let mut anwesend_richtig = false;
+    for _ in 0..40 {
+        match tokio::time::timeout(Duration::from_millis(500), a.empfang()).await {
+            Ok(Ok(Some(ServerFrame::Anwesenheit {
+                mitglied, anwesend, ..
+            }))) if mitglied.id == b_id && !anwesend => abwesend = true,
+            Ok(Ok(Some(ServerFrame::Raeume { raeume }))) => {
+                if let Some(r) = raeume.iter().find(|r| r.id == raum) {
+                    if r.verschluesselt_seit > seit {
+                        neue_epoche = true;
+                        // Niemand soll als „anwesend" gezählt bleiben.
+                        anwesend_richtig = r.anwesend == 1;
+                    }
+                }
+            }
+            Ok(Ok(Some(_))) => continue,
+            Ok(Ok(None)) => panic!("Verbindung von Ada wurde geschlossen"),
+            Ok(Err(fehler)) => panic!("Fehler bei Ada: {fehler}"),
+            Err(_) => continue,
+        }
+        if abwesend && neue_epoche && anwesend_richtig {
+            break;
+        }
+    }
+    assert!(abwesend, "der Abbruch wurde den anderen nicht gemeldet");
+    assert!(
+        neue_epoche,
+        "Epoche blieb bei {seit}: der Schlüssel des Abgebrochenen bliebe gültig"
+    );
+    assert!(
+        anwesend_richtig,
+        "Raum zählt weiter ein anwesendes Mitglied, das gar nicht mehr da ist"
+    );
+
+    // Zurück mit derselben Kennung: Rolle bleibt, kein doppelter Eintrag.
+    let mut wieder = verbinde(adresse, &schluessel_b, "Bosse").await;
+    assert_eq!(wieder.ich, b_id, "dieselbe Kennung ergibt ein neues Mitglied");
+    assert_eq!(
+        wieder.rolle,
+        sprechwerk_domain::Role::Mitglied,
+        "die Rolle ging beim Abbruch verloren"
+    );
+    wieder.sende(ClientFrame::Betreten { raum }).await.unwrap();
+    warte_auf(&mut wieder, |f| matches!(f, ServerFrame::Betreten { .. })).await;
+    let liste = warte_auf(&mut a, |f| {
+        matches!(f, ServerFrame::Raeume { raeume }
+            if raeume.iter().any(|r| r.id == raum && r.anwesend == 2))
+    })
+    .await;
+    assert!(
+        matches!(liste, ServerFrame::Raeume { .. }),
+        "nach dem Wiederkommen stimmt die Zahl der Anwesenden nicht"
     );
 }
