@@ -178,3 +178,19 @@ Zustand ändert und dass jeder Text in allen vier Sprachen vorhanden ist.
 Der Ablauf meldet je Prüfung „bestanden" oder „FEHLGESCHLAGEN" und gibt am Ende
 einen Rückgabewert — geeignet für einen Wächter vor dem Ausliefern. Die
 Protokolle der Messungen liegen unter `/tmp/sprechwerk-pruefung-*.log`.
+
+## 5. Grenzen gegen Fluten
+
+Ein Client kann den Server mit Steuerrahmen zuschütten: jeder Rahmen kostet
+eine Sperre, eine Zustandsänderung oder einen Rundruf an alle. Sprache läuft
+als Datagramm daneben und hat ihre eigene Grenze (Sendepuffer,
+`MAX_SPRACHRAHMEN`).
+
+Einstellung: `rahmen_je_sekunde` (Vorgabe **100**, `0` = aus) — ein Mensch
+erzeugt wenige Rahmen je Sekunde. Wer die Grenze überschreitet, bekommt einmal
+die Antwort „später nochmal" und wird dann getrennt; die Protokollzeile nennt
+Mitglied, Grenze und Zahl der Abweisungen.
+
+Geprüft: `crates/server/src/netz.rs` (Fenster je Sekunde, Stille öffnet wieder,
+`0` = unbegrenzt) und `crates/server/tests/rundlauf.rs` (echter Server mit
+Grenze 5: der sechste Rahmen wird abgewiesen).

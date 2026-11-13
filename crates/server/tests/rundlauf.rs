@@ -401,3 +401,50 @@ async fn sprache_wird_nur_im_eigenen_raum_verteilt() {
         "Sprache darf den Raum nicht verlassen"
     );
 }
+
+/// Wer den Server mit Steuerrahmen zuschüttet, wird getrennt — mit einer
+/// Erklärung, nicht mit Stille.
+///
+/// Die Grenze steht in der Konfiguration (`rahmen_je_sekunde`); hier wird sie
+/// klein gesetzt, damit der Test nicht tausende Rahmen schicken muss.
+#[tokio::test]
+async fn zu_viele_rahmen_werden_abgewiesen() {
+    let server = Testserver::starten("drossel", &[("SPRECHWERK_RAHMEN_JE_SEKUNDE", "5")]);
+    server.bereit().await;
+
+    let mut v = Verbindung::oeffnen(server.adresse, &Schluessel::neu(), "Fluter", None)
+        .await
+        .unwrap();
+
+    // 5 gehen durch, die nächsten werden abgewiesen (Fehler `spaeter`).
+    let mut abgewiesen = false;
+    for _ in 0..40 {
+        if v.sende(ClientFrame::Ping).await.is_err() {
+            // Verbindung ist schon zu — das ist das erwartete Ende.
+            abgewiesen = true;
+            break;
+        }
+        match tokio::time::timeout(Duration::from_millis(200), v.empfang()).await {
+            Ok(Ok(Some(ServerFrame::Pong))) => continue,
+            Ok(Ok(Some(ServerFrame::Fehler { code, .. }))) => {
+                assert_eq!(
+                    code,
+                    sprechwerk_protocol::Fehlercode::Spaeter,
+                    "die Absage muss „später nochmal“ sein, nicht etwas anderes"
+                );
+                abgewiesen = true;
+                break;
+            }
+            Ok(Ok(Some(_))) => continue,
+            Ok(Ok(None)) | Ok(Err(_)) => {
+                abgewiesen = true;
+                break;
+            }
+            Err(_) => continue,
+        }
+    }
+    assert!(
+        abgewiesen,
+        "der Server hat 40 Rahmen in einer Sekunde hingenommen"
+    );
+}

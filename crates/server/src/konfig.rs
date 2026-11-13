@@ -44,6 +44,12 @@ pub struct Server {
     pub daten: PathBuf,
     /// Wie viele Verbindungen je Adresse gleichzeitig erlaubt sind.
     pub verbindungen_je_adresse: usize,
+    /// Wie viele **Steuerrahmen** eine Verbindung je Sekunde schicken darf.
+    ///
+    /// Sprache läuft als Datagramm daneben und zählt nicht mit. Der Wert ist
+    /// großzügig: ein Mensch erzeugt wenige Rahmen je Sekunde (Text, Raumwechsel,
+    /// Ping). Wer mehr schickt, programmiert — oder greift an. 0 = unbegrenzt.
+    pub rahmen_je_sekunde: u32,
     /// Aufbewahrung von Nachrichten in Tagen; 0 = unbegrenzt.
     pub aufbewahrung_tage: u64,
     /// Staukontrolle für die Sprachverbindung: `bbr` oder `cubic`.
@@ -89,6 +95,7 @@ impl Default for Server {
             standard_rolle: "mitglied".to_string(),
             daten: PathBuf::from("/data"),
             verbindungen_je_adresse: 8,
+            rahmen_je_sekunde: 100,
             aufbewahrung_tage: 0,
             staukontrolle: "bbr".to_string(),
             sprachpuffer_kib: 64,
@@ -162,6 +169,9 @@ impl Konfig {
         }
         if let Some(w) = text("SPRECHWERK_STAUKONTROLLE") {
             self.server.staukontrolle = w;
+        }
+        if let Some(w) = zahl::<u32>("SPRECHWERK_RAHMEN_JE_SEKUNDE")? {
+            self.server.rahmen_je_sekunde = w;
         }
         if let Some(w) = zahl("SPRECHWERK_SPRACHPUFFER_KIB")? {
             self.server.sprachpuffer_kib = w;
@@ -251,6 +261,7 @@ passwort = ""            # leer = offen, wie TeamSpeak ohne Serverpasswort
 standard_rolle = "mitglied"   # administrator | moderator | mitglied | gast
 daten = "/data"
 verbindungen_je_adresse = 8
+rahmen_je_sekunde = 100  # Steuerrahmen je Verbindung (Sprache zählt nicht); 0 = aus
 aufbewahrung_tage = 0    # 0 = unbegrenzt
 staukontrolle = "bbr"    # bbr | cubic — bbr ist für Sprache gleichmäßiger
 sprachpuffer_kib = 64    # klein halten: verwerfen statt anstauen

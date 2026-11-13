@@ -142,6 +142,57 @@ async fn lese<R: AsyncRead + Unpin>(
     }
 }
 
+/// Begrenzt, wie viele Steuerrahmen eine Verbindung je Sekunde schicken darf.
+///
+/// **Warum überhaupt:** ohne Grenze kann ein Client den Server mit Rahmen
+/// zuschütten (jeder Rahmen kostet eine Sperre, eine Zustandsänderung oder
+/// einen Rundruf an alle). Sprache läuft als Datagramm daneben und wird hier
+/// nicht gezählt — sie hat ihre eigene Grenze (Sendepuffer, `MAX_SPRACHRAHMEN`).
+///
+/// Ein einfaches Fenster je Sekunde, keine Gleitkommarechnung: der Zähler
+/// beginnt neu, sobald eine Sekunde um ist. Damit ist die Grenze im
+/// schlechtesten Fall doppelt so hoch (zwei Fenster hintereinander) — für einen
+/// Schutz gegen Fluten reicht das, und es ist ohne Tabellen prüfbar.
+struct Rahmendrossel {
+    /// Erlaubte Rahmen je Sekunde; 0 = unbegrenzt.
+    grenze: u32,
+    /// Beginn des laufenden Fensters.
+    fenster: std::time::Instant,
+    /// Im laufenden Fenster gezählte Rahmen.
+    gezaehlt: u32,
+    /// Wie oft die Grenze schon erreicht wurde (für die Protokollzeile).
+    abgewiesen: u64,
+}
+
+impl Rahmendrossel {
+    fn neu(grenze: u32) -> Self {
+        Self {
+            grenze,
+            fenster: std::time::Instant::now(),
+            gezaehlt: 0,
+            abgewiesen: 0,
+        }
+    }
+
+    /// Darf jetzt ein weiterer Rahmen verarbeitet werden?
+    fn erlaubt(&mut self, jetzt: std::time::Instant) -> bool {
+        if self.grenze == 0 {
+            return true;
+        }
+        if jetzt.duration_since(self.fenster) >= std::time::Duration::from_secs(1) {
+            self.fenster = jetzt;
+            self.gezaehlt = 0;
+        }
+        if self.gezaehlt < self.grenze {
+            self.gezaehlt += 1;
+            true
+        } else {
+            self.abgewiesen += 1;
+            false
+        }
+    }
+}
+
 async fn bediene(verbindung: quinn::Connection, kern: Arc<Mutex<Kern>>) -> anyhow::Result<()> {
     let adresse = verbindung.remote_address().ip().to_string();
     tracing::debug!(%adresse, "Verbindung angenommen");
@@ -248,11 +299,30 @@ async fn bediene(verbindung: quinn::Connection, kern: Arc<Mutex<Kern>>) -> anyho
     });
 
     // 5. Leseschleife: Rahmen und Sprach-Datagramme.
+    let mut drossel =
+        Rahmendrossel::neu(kern.lock().expect("Sperre").konfig.server.rahmen_je_sekunde);
     let ergebnis = loop {
         tokio::select! {
             gelesen = lese(&mut recv, &mut puffer) => {
                 match gelesen {
                     Ok(Some(frame)) => {
+                        if !drossel.erlaubt(std::time::Instant::now()) {
+                            // Zu viel in einer Sekunde: einmal sagen, dann trennen.
+                            tracing::warn!(
+                                mitglied = %ich,
+                                grenze = drossel.grenze,
+                                abgewiesen = drossel.abgewiesen,
+                                "Rahmengrenze überschritten — Verbindung wird getrennt"
+                            );
+                            let k = kern.lock().expect("Sperre");
+                            k.senden(ich, Kern::fehler(Fehlercode::Spaeter));
+                            drop(k);
+                            // Der Schreibstrom gehört der Schreibaufgabe; die
+                            // Verbindung zu schließen genügt, damit die letzte
+                            // Meldung noch hinausgeht.
+                            verbindung.close(4u32.into(), b"zu viele Rahmen");
+                            break Ok(());
+                        }
                         let antworten = {
                             let mut k = kern.lock().expect("Sperre");
                             k.befehle(ich, frame)
@@ -329,5 +399,60 @@ mod tests {
         // kaputte Eingaben → falsch, kein Absturz
         assert!(!beweis_passt("nicht-hex", nonce, &beweis));
         assert!(!beweis_passt(&kennung, nonce, "00"));
+    }
+}
+
+#[cfg(test)]
+mod drosseltests {
+    use super::Rahmendrossel;
+    use std::time::{Duration, Instant};
+
+    /// Die Grenze gilt je Sekunde — und öffnet sich danach wieder.
+    #[test]
+    fn grenze_gilt_je_sekunde() {
+        let start = Instant::now();
+        let mut d = Rahmendrossel::neu(3);
+        // Genau die Grenze geht durch.
+        for i in 0..3 {
+            assert!(
+                d.erlaubt(start + Duration::from_millis(i * 10)),
+                "Rahmen {i}"
+            );
+        }
+        // Der vierte nicht.
+        assert!(!d.erlaubt(start + Duration::from_millis(40)));
+        assert!(!d.erlaubt(start + Duration::from_millis(900)));
+        assert_eq!(d.abgewiesen, 2, "die Ablehnungen müssen gezählt werden");
+
+        // Neue Sekunde: wieder drei.
+        let spaeter = start + Duration::from_millis(1_001);
+        assert!(d.erlaubt(spaeter));
+        assert!(d.erlaubt(spaeter + Duration::from_millis(1)));
+        assert!(d.erlaubt(spaeter + Duration::from_millis(2)));
+        assert!(!d.erlaubt(spaeter + Duration::from_millis(3)));
+    }
+
+    /// 0 heißt unbegrenzt (für Prüfungen und Notfälle).
+    #[test]
+    fn null_ist_unbegrenzt() {
+        let start = Instant::now();
+        let mut d = Rahmendrossel::neu(0);
+        for i in 0..10_000 {
+            assert!(d.erlaubt(start + Duration::from_micros(i)));
+        }
+        assert_eq!(d.abgewiesen, 0);
+    }
+
+    /// Ein Fenster ohne Verkehr öffnet sich ebenfalls (kein Nachholen).
+    #[test]
+    fn stille_oeffnet_wieder() {
+        let start = Instant::now();
+        let mut d = Rahmendrossel::neu(1);
+        assert!(d.erlaubt(start));
+        assert!(!d.erlaubt(start + Duration::from_millis(500)));
+        assert!(
+            d.erlaubt(start + Duration::from_millis(2_000)),
+            "nach einer Sekunde Stille muss wieder etwas durchgehen"
+        );
     }
 }
