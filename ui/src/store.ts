@@ -1,6 +1,6 @@
 // Ein Ort für den Zustand. Die Ansichten lesen hier und rufen Aktionen auf —
 // keine Ansicht hält eigene Kopien der Wahrheit (AGENTS.md §2.1).
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { api, istDummy, type Einstellungen, type Zustand } from "./api";
 import { abonnieren } from "./mock";
@@ -137,6 +137,42 @@ export async function verbindeEreignisse() {
     });
   } catch (fehler) {
     modell.meldung = `Ereignisse nicht abonnierbar: ${String(fehler)}`;
+  }
+}
+
+/**
+ * Meldet, wenn die Verschlüsselung des **eigenen** Raums umschaltet.
+ *
+ * Das Schloss in der Raumliste ist klein und leicht zu übersehen. Wer gerade
+ * spricht, soll erfahren, dass ab jetzt Ende zu Ende verschlüsselt wird (oder
+ * nicht mehr) — sonst ändert sich das Verhalten, ohne dass es jemand merkt.
+ */
+export function beobachteVerschluesselung() {
+  watch(
+    () => modell.raeume.find((r) => r.hier)?.verschluesselt ?? null,
+    (neu, alt) => {
+      // `null` heißt: noch kein Raum bekannt (erster Aufbau).
+      if (neu === null || alt === null || neu === alt) return;
+      modell.meldung = neu ? t("room.encrypted_now") : t("room.unencrypted_now");
+    },
+  );
+}
+
+/** Führt einen Befehl aus und macht einen Fehler sichtbar.
+ *
+ * Ohne das bliebe eine abgelehnte Anfrage (kein Recht, zu langer Text, Server
+ * weg) unsichtbar: das Versprechen endete als unbehandelter Fehler, und die
+ * Oberfläche zeigte weiter den alten Stand. Jeder Befehl geht deshalb hier
+ * durch — ein Ort, eine Meldung.
+ */
+async function befehl<T>(ruf: () => Promise<T>): Promise<T | null> {
+  try {
+    const ergebnis = await ruf();
+    if (modell.meldung) modell.meldung = null;
+    return ergebnis;
+  } catch (fehler) {
+    modell.meldung = String(fehler);
+    return null;
   }
 }
 

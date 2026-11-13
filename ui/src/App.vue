@@ -18,6 +18,7 @@ import {
   IconUnplug,
 } from "@weppelmann/icons";
 import {
+  beobachteVerschluesselung,
   holeZaehler,
   latenzText,
   messeLatenz,
@@ -141,6 +142,7 @@ function beimMausloslassen(e: MouseEvent) {
 let zaehlerTakt: ReturnType<typeof setInterval> | null = null;
 
 onMounted(() => {
+  beobachteVerschluesselung();
   void holeZaehler();
   void messeLatenz();
   zaehlerTakt = setInterval(() => {

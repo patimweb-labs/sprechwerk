@@ -78,6 +78,20 @@ Server, Jitter-Puffer, Wiedergabe —, und der Mitschnitt wird ausgewertet:
 kommt der Ton in der richtigen Frequenz an, und kommt auch ein stimmähnliches
 Signal durch die Entrauschung? Alles auf einem Rechner.
 
+## Was das Fenster zeigt (und TeamSpeak nicht)
+
+* **Prüfprotokoll** — wer hat was getan, und was wurde **abgelehnt**. Für
+  Administrator und Moderator, weil sie das Recht dazu haben.
+* **Sperrliste** — wer gesperrt ist, warum, von wem, mit einem Knopf zum
+  Aufheben.
+* **Qualität in der Statuszeile** — „keine Rahmen verloren" (oder die Zahl) und
+  die Umlaufzeit zum Server, statt eines Symbols ohne Zahl.
+* **Schlüsselstand je Raum** — ist der Ende-zu-Ende-Schlüssel da? Wenn nicht,
+  steht dort „du hörst nichts" mit einem Knopf zum Nachfordern.
+* **Eigene Kennung** — der öffentliche Schlüssel in Vierergruppen, mit dem
+  Hinweis, was man weitergeben darf und was nicht.
+* **Zuletzt verbunden je Server** — nicht nur beim letzten Eintrag.
+
 ## Schnellstart
 
 ```bash
@@ -150,9 +164,11 @@ prüfbar.
 ## Prüfen
 
 ```bash
-cargo test --workspace     # 68 Tests: Zustand, Rahmen, Vertrag, Datenbank, Rundlauf
+cargo test --workspace     # 148 Tests: Zustand, Rahmen, Vertrag, Datenbank, Rundlauf
 npm --prefix ui run typecheck
 scripts/rundlauf.sh        # Server + zwei Clients von Hand
+scripts/latenz.sh          # Latenz messen (p50/p95/p99)
+scripts/audio-ende-zu-ende.sh   # Sprache über den echten Pfad, ein Rechner
 ```
 
 Der Rundlauf startet das **echte Programm** und verbindet zwei echte Clients
@@ -168,7 +184,7 @@ Client                                  Server
   ── Hallo { kennung, beweis, name } ──►  Ed25519-Signatur über den Nonce
   ◄── Willkommen { Räume, Mitglieder }    oder Fehler
   ◄──► Rahmen (4 Byte Länge + JSON)       Text, Befehle, Antworten
-  ◄──► Datagramme (Kopf 8 Byte + Opus)    Sprache, unzuverlässig
+  ◄──► Datagramme (Kopf 6 Byte + Opus)    Sprache, unzuverlässig
 ```
 
 Der Server öffnet den Steuerstrom, weil ein QUIC-Strom der Gegenstelle erst

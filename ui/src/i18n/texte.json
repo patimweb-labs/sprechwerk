@@ -1174,5 +1174,17 @@
   "en": "{} years ago",
   "es": "hace {} años",
   "fr": "il y a {} ans"
+ },
+ "room.encrypted_now": {
+  "de": "Sprache jetzt Ende zu Ende verschlüsselt — der Schlüssel wird ausgehandelt.",
+  "en": "Voice is now end-to-end encrypted — the key is being exchanged.",
+  "es": "Ahora la voz va cifrada de extremo a extremo: se está negociando la clave.",
+  "fr": "La voix est désormais chiffrée de bout en bout — la clé est en cours d'échange."
+ },
+ "room.unencrypted_now": {
+  "de": "Verschlüsselung aus — Sprache geht wieder lesbar über den Server.",
+  "en": "Encryption off — voice travels readable through the server again.",
+  "es": "Cifrado desactivado: la voz vuelve a pasar legible por el servidor.",
+  "fr": "Chiffrement désactivé — la voix repasse en clair par le serveur."
  }
 }

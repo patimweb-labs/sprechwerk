@@ -58,6 +58,14 @@ migriert, vorher automatisch eine Sicherung geschrieben. Rückweg: Sicherung
 einspielen. Ein echtes Downgrade (Rückwärtsmigration) gibt es nicht — das ist
 der bewusst gewählte Preis.
 
+**Umgesetzt 2026-11-13** (`crates/store/src/lib.rs`): vor der Migration wird die
+Datei nach `<name>.vor-v<alte Version>.sqlite` kopiert (WAL vorher geleert, sonst
+fehlt der letzte Stand); danach läuft jeder Schritt idempotent, und die Version
+wird **nach** dem Schritt geschrieben — ein Absturz dazwischen führt beim
+nächsten Start zum selben Schritt, nicht zu halben Daten. Ein **neueres** Format
+wird abgelehnt statt halb gelesen. Getestet mit einer Datenbank im alten Stand:
+Version steigt, Daten bleiben, Kopie liegt daneben.
+
 **[A] Ausfall beim Update:** kurz erlaubt (Container stoppen, starten).
 Übergangsfreie Updates sind erst nötig, wenn mehrere Instanzen im Spiel sind.
 
@@ -184,7 +192,7 @@ desktop  Fensteranwendung (Tauri 2, eigene Workspace) + ui/ (Vue 3 + TS)
 
 **[A] Sprache auf der Leitung:** JSON-Frames, längenpräfixiert (4 Byte,
 big-endian), über einen bidirektionalen QUIC-Strom. Sprache als QUIC-Datagramm
-mit eigenem, kleinem Kopf.
+mit eigenem, kleinem Kopf (6 Byte: Version, Codec, Folge, Sprecher).
 
 **[A] Verschlüsselung:** nur TLS 1.3 aus QUIC. Kein eigenes Krypto, keine
  eigene Schlüsselableitung. Für den Besitznachweis der Kennung Ed25519.
