@@ -233,29 +233,19 @@ impl State {
 
     // ---- Prüfprotokoll -------------------------------------------------
 
-    fn protokolliere(
-        &mut self,
-        zeit: i64,
-        handelnder: Option<MemberId>,
-        handelnder_name: &str,
-        aktion: &str,
-        ziel: impl Into<String>,
-        vorher: Option<String>,
-        nachher: Option<String>,
-        ergebnis: String,
-    ) {
+    fn protokolliere(&mut self, zeile: Protokollzeile<'_>) {
         let laufnummer = self.naechste_laufnummer;
         self.naechste_laufnummer += 1;
         self.protokoll.push(AuditEntry {
             laufnummer,
-            zeit,
-            handelnder,
-            handelnder_name: handelnder_name.to_string(),
-            aktion: aktion.to_string(),
-            ziel: ziel.into(),
-            vorher,
-            nachher,
-            ergebnis,
+            zeit: zeile.zeit,
+            handelnder: zeile.handelnder,
+            handelnder_name: zeile.handelnder_name.to_string(),
+            aktion: zeile.aktion.to_string(),
+            ziel: zeile.ziel,
+            vorher: zeile.vorher,
+            nachher: zeile.nachher,
+            ergebnis: zeile.ergebnis,
         });
     }
 
@@ -286,31 +276,36 @@ impl State {
         name: &str,
         jetzt_ms: i64,
     ) -> Result<MemberId, Error> {
+        // Die Kennung kommt hier **kanonisch** an: die Transportschicht prüft
+        // die Signatur und normalisiert die Schreibweise (`Kern::anmelden`).
+        // In der Domain ist sie ein undurchsichtiger Identitätswert — so bleiben
+        // Tests und Werkzeuge einfach, und es gibt nur *eine* Stelle, an der
+        // über die Form eines Schlüssels entschieden wird.
         let name = name.trim();
         if name.is_empty() || name.chars().count() > 64 {
-            self.protokolliere(
-                jetzt_ms,
-                None,
-                "",
-                "anmeldung",
-                schluessel.to_string(),
-                None,
-                None,
-                "abgelehnt: ungültiger Name".into(),
-            );
+            self.protokolliere(Protokollzeile {
+                zeit: jetzt_ms,
+                handelnder: None,
+                handelnder_name: "",
+                aktion: "anmeldung",
+                ziel: schluessel.to_string(),
+                vorher: None,
+                nachher: None,
+                ergebnis: "abgelehnt: ungültiger Name".into(),
+            });
             return Err(Error::NameUngueltig);
         }
         if let Some(grund) = self.sperre_fuer(schluessel, None).map(|b| b.grund.clone()) {
-            self.protokolliere(
-                jetzt_ms,
-                None,
-                name,
-                "anmeldung",
-                schluessel.to_string(),
-                None,
-                None,
-                format!("abgelehnt: gesperrt ({grund})"),
-            );
+            self.protokolliere(Protokollzeile {
+                zeit: jetzt_ms,
+                handelnder: None,
+                handelnder_name: name,
+                aktion: "anmeldung",
+                ziel: schluessel.to_string(),
+                vorher: None,
+                nachher: None,
+                ergebnis: format!("abgelehnt: gesperrt ({grund})"),
+            });
             return Err(Error::Gesperrt(grund));
         }
 
@@ -329,16 +324,16 @@ impl State {
                 m.raum_seit = Some(jetzt_ms);
             }
             if alter_name != name {
-                self.protokolliere(
-                    jetzt_ms,
-                    Some(id),
-                    name,
-                    "mitglied_umbenannt",
-                    id.text(),
-                    Some(alter_name),
-                    Some(name.to_string()),
-                    "erlaubt".into(),
-                );
+                self.protokolliere(Protokollzeile {
+                    zeit: jetzt_ms,
+                    handelnder: Some(id),
+                    handelnder_name: name,
+                    aktion: "mitglied_umbenannt",
+                    ziel: id.text(),
+                    vorher: Some(alter_name),
+                    nachher: Some(name.to_string()),
+                    ergebnis: "erlaubt".into(),
+                });
             }
             let _ = alte_rolle;
             return Ok(id);
@@ -368,20 +363,20 @@ impl State {
                 taub: false,
             },
         );
-        self.protokolliere(
-            jetzt_ms,
-            Some(id),
-            name,
-            if erste {
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(id),
+            handelnder_name: name,
+            aktion: if erste {
                 "erster_beitritt"
             } else {
                 "mitglied_angelegt"
             },
-            id.text(),
-            None,
-            Some(rolle.text().to_string()),
-            "erlaubt".into(),
-        );
+            ziel: id.text(),
+            nachher: Some(rolle.text().to_string()),
+            ergebnis: "erlaubt".into(),
+            ..Default::default()
+        });
         Ok(id)
     }
 
@@ -414,21 +409,19 @@ impl State {
             "raum_angelegt",
             name,
         );
-        if let Err(e) = ergebnis {
-            return Err(e);
-        }
+        ergebnis?;
         let name = name.trim().to_string();
         if name.is_empty() || name.chars().count() > 64 {
-            self.protokolliere(
-                jetzt_ms,
-                Some(wer),
-                &handelnder_name,
-                "raum_angelegt",
-                name,
-                None,
-                None,
-                "abgelehnt: ungültiger Name".into(),
-            );
+            self.protokolliere(Protokollzeile {
+                zeit: jetzt_ms,
+                handelnder: Some(wer),
+                handelnder_name: &handelnder_name,
+                aktion: "raum_angelegt",
+                ziel: name,
+                vorher: None,
+                nachher: None,
+                ergebnis: "abgelehnt: ungültiger Name".into(),
+            });
             return Err(Error::NameUngueltig);
         }
         let id = RoomId::neu();
@@ -449,16 +442,16 @@ impl State {
                 verschluesselt_seit: 0,
             },
         );
-        self.protokolliere(
-            jetzt_ms,
-            Some(wer),
-            &handelnder_name,
-            "raum_angelegt",
-            id.text(),
-            None,
-            Some(name),
-            "erlaubt".into(),
-        );
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(wer),
+            handelnder_name: &handelnder_name,
+            aktion: "raum_angelegt",
+            ziel: id.text(),
+            vorher: None,
+            nachher: Some(name),
+            ergebnis: "erlaubt".into(),
+        });
         Ok(id)
     }
 
@@ -492,16 +485,16 @@ impl State {
         let vorher = Some(if r.verschluesselt { "an" } else { "aus" }.to_string());
         r.verschluesselt = an;
         r.verschluesselt_seit = if an { jetzt_ms } else { 0 };
-        self.protokolliere(
-            jetzt_ms,
-            Some(wer),
-            &handelnder_name,
-            "raum_verschluesselt",
-            raum.text(),
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(wer),
+            handelnder_name: &handelnder_name,
+            aktion: "raum_verschluesselt",
+            ziel: raum.text(),
             vorher,
-            Some(if an { "an" } else { "aus" }.to_string()),
-            String::new(),
-        );
+            nachher: Some(if an { "an" } else { "aus" }.to_string()),
+            ergebnis: String::new(),
+        });
         Ok(())
     }
 
@@ -522,16 +515,16 @@ impl State {
         ergebnis?;
         let name = name.trim().to_string();
         if name.is_empty() || name.chars().count() > 64 {
-            self.protokolliere(
-                jetzt_ms,
-                Some(wer),
-                &handelnder_name,
-                "raum_umbenannt",
-                raum.text(),
-                None,
-                None,
-                "abgelehnt: ungültiger Name".into(),
-            );
+            self.protokolliere(Protokollzeile {
+                zeit: jetzt_ms,
+                handelnder: Some(wer),
+                handelnder_name: &handelnder_name,
+                aktion: "raum_umbenannt",
+                ziel: raum.text(),
+                vorher: None,
+                nachher: None,
+                ergebnis: "abgelehnt: ungültiger Name".into(),
+            });
             return Err(Error::NameUngueltig);
         }
         let alt;
@@ -540,16 +533,16 @@ impl State {
             alt = r.name.clone();
             r.name = name.clone();
         }
-        self.protokolliere(
-            jetzt_ms,
-            Some(wer),
-            &handelnder_name,
-            "raum_umbenannt",
-            raum.text(),
-            Some(alt),
-            Some(name),
-            "erlaubt".into(),
-        );
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(wer),
+            handelnder_name: &handelnder_name,
+            aktion: "raum_umbenannt",
+            ziel: raum.text(),
+            vorher: Some(alt),
+            nachher: Some(name),
+            ergebnis: "erlaubt".into(),
+        });
         Ok(())
     }
 
@@ -588,16 +581,16 @@ impl State {
         let vorher = self.nachrichten.len();
         self.nachrichten.retain(|n| n.raum != raum);
         let entfernt = vorher - self.nachrichten.len();
-        self.protokolliere(
-            jetzt_ms,
-            Some(wer),
-            &handelnder_name,
-            "raum_geloescht",
-            raum.text(),
-            Some(name),
-            Some(format!("{entfernt} Nachrichten entfernt")),
-            "erlaubt".into(),
-        );
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(wer),
+            handelnder_name: &handelnder_name,
+            aktion: "raum_geloescht",
+            ziel: raum.text(),
+            vorher: Some(name),
+            nachher: Some(format!("{entfernt} Nachrichten entfernt")),
+            ergebnis: "erlaubt".into(),
+        });
         Ok(())
     }
 
@@ -642,16 +635,16 @@ impl State {
         );
         ergebnis?;
         if !self.raeume.contains_key(&raum) {
-            self.protokolliere(
-                jetzt_ms,
-                Some(wer),
-                &handelnder_name,
-                "raum_betreten",
-                raum.text(),
-                None,
-                None,
-                "abgelehnt: Raum unbekannt".into(),
-            );
+            self.protokolliere(Protokollzeile {
+                zeit: jetzt_ms,
+                handelnder: Some(wer),
+                handelnder_name: &handelnder_name,
+                aktion: "raum_betreten",
+                ziel: raum.text(),
+                vorher: None,
+                nachher: None,
+                ergebnis: "abgelehnt: Raum unbekannt".into(),
+            });
             return Err(Error::RaumUnbekannt);
         }
         {
@@ -661,16 +654,16 @@ impl State {
             m.zuletzt_gesehen = jetzt_ms;
         }
         let verlauf = self.verlauf(wer, raum, jetzt_ms)?;
-        self.protokolliere(
-            jetzt_ms,
-            Some(wer),
-            &handelnder_name,
-            "raum_betreten",
-            raum.text(),
-            None,
-            None,
-            "erlaubt".into(),
-        );
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(wer),
+            handelnder_name: &handelnder_name,
+            aktion: "raum_betreten",
+            ziel: raum.text(),
+            vorher: None,
+            nachher: None,
+            ergebnis: "erlaubt".into(),
+        });
         Ok(verlauf)
     }
 
@@ -681,23 +674,22 @@ impl State {
                 .mitglieder
                 .get_mut(&wer)
                 .ok_or(Error::MitgliedUnbekannt)?;
-            let raum = m.raum;
-            m.raum = None;
+            let raum = m.raum.take();
             m.raum_seit = None;
             m.zuletzt_gesehen = jetzt_ms;
             (m.name.clone(), raum)
         };
         self.epoche_weiter(raum, jetzt_ms);
-        self.protokolliere(
-            jetzt_ms,
-            Some(wer),
-            &handelnder_name,
-            "raum_verlassen",
-            raum.map(|r| r.text()).unwrap_or_default(),
-            None,
-            None,
-            "erlaubt".into(),
-        );
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(wer),
+            handelnder_name: &handelnder_name,
+            aktion: "raum_verlassen",
+            ziel: raum.map(|r| r.text()).unwrap_or_default(),
+            vorher: None,
+            nachher: None,
+            ergebnis: "erlaubt".into(),
+        });
         Ok(())
     }
 
@@ -708,7 +700,7 @@ impl State {
     /// mitgeschnittene Sprachrahmen aufbewahren und in Ruhe entschlüsseln. Die
     /// Clients bilden die Epoche aus `verschluesselt_seit` (Sekunden); ändert
     /// sie sich, erzeugt der „Wart" des Raums einen neuen Schlüssel und verteilt
-    /// ihn (`verschluesselung::Verwaltung::sorge_fuer`).
+    /// ihn (`verschluesselt::Verwaltung::sorge_fuer`).
     ///
     /// Mindestens **eine Sekunde** Schritt, weil die Epoche Sekunden zählt: zwei
     /// Drehungen in derselben Sekunde ergäben sonst dieselbe Zahl, und der alte
@@ -729,7 +721,7 @@ impl State {
             .values()
             .filter(|m| m.raum == Some(raum))
             .collect();
-        aus.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        aus.sort_by_key(|m| m.name.to_lowercase());
         aus
     }
 
@@ -769,16 +761,16 @@ impl State {
             (m.name.clone(), m.raum)
         };
         let Some(raum) = raum else {
-            self.protokolliere(
-                jetzt_ms,
-                Some(wer),
-                &handelnder_name,
-                "text_gesendet",
-                "",
-                None,
-                None,
-                "abgelehnt: in keinem Raum".into(),
-            );
+            self.protokolliere(Protokollzeile {
+                zeit: jetzt_ms,
+                handelnder: Some(wer),
+                handelnder_name: &handelnder_name,
+                aktion: "text_gesendet",
+                ziel: String::new(),
+                vorher: None,
+                nachher: None,
+                ergebnis: "abgelehnt: in keinem Raum".into(),
+            });
             return Err(Error::RaumUnbekannt);
         };
         let (_, ergebnis) = self.vorpruefung_person(
@@ -794,16 +786,16 @@ impl State {
             return Err(Error::NameUngueltig);
         }
         if text.chars().count() > MAX_MESSAGE_LEN {
-            self.protokolliere(
-                jetzt_ms,
-                Some(wer),
-                &handelnder_name,
-                "text_gesendet",
-                raum.text(),
-                None,
-                None,
-                "abgelehnt: zu lang".into(),
-            );
+            self.protokolliere(Protokollzeile {
+                zeit: jetzt_ms,
+                handelnder: Some(wer),
+                handelnder_name: &handelnder_name,
+                aktion: "text_gesendet",
+                ziel: raum.text(),
+                vorher: None,
+                nachher: None,
+                ergebnis: "abgelehnt: zu lang".into(),
+            });
             return Err(Error::NachrichtZuLang);
         }
         let nachricht = Message {
@@ -816,16 +808,16 @@ impl State {
             geloescht: false,
         };
         self.nachrichten.push(nachricht.clone());
-        self.protokolliere(
-            jetzt_ms,
-            Some(wer),
-            &handelnder_name,
-            "text_gesendet",
-            nachricht.id.text(),
-            None,
-            None,
-            "erlaubt".into(),
-        );
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(wer),
+            handelnder_name: &handelnder_name,
+            aktion: "text_gesendet",
+            ziel: nachricht.id.text(),
+            vorher: None,
+            nachher: None,
+            ergebnis: "erlaubt".into(),
+        });
         Ok(nachricht)
     }
 
@@ -849,16 +841,16 @@ impl State {
         let ist_verfasser = self.nachrichten[index].verfasser == wer;
         let darf_hart = darf(rolle, Capability::PersonEingreifen);
         if !ist_verfasser && !darf_hart {
-            self.protokolliere(
-                jetzt_ms,
-                Some(wer),
-                &handelnder_name,
-                "text_geloescht",
-                id.text(),
-                None,
-                None,
-                "abgelehnt: kein Recht".into(),
-            );
+            self.protokolliere(Protokollzeile {
+                zeit: jetzt_ms,
+                handelnder: Some(wer),
+                handelnder_name: &handelnder_name,
+                aktion: "text_geloescht",
+                ziel: id.text(),
+                vorher: None,
+                nachher: None,
+                ergebnis: "abgelehnt: kein Recht".into(),
+            });
             return Err(Error::RechtFehlt(Capability::PersonEingreifen));
         }
         // Der Verfasser löscht **immer** weich: der Verlauf bleibt lesbar, und
@@ -867,30 +859,30 @@ impl State {
             let n = &mut self.nachrichten[index];
             n.geloescht = true;
             n.text = String::new();
-            self.protokolliere(
-                jetzt_ms,
-                Some(wer),
-                &handelnder_name,
-                "text_geloescht",
-                id.text(),
-                None,
-                Some("Platzhalter".into()),
-                "erlaubt: weich".into(),
-            );
+            self.protokolliere(Protokollzeile {
+                zeit: jetzt_ms,
+                handelnder: Some(wer),
+                handelnder_name: &handelnder_name,
+                aktion: "text_geloescht",
+                ziel: id.text(),
+                vorher: None,
+                nachher: Some("Platzhalter".into()),
+                ergebnis: "erlaubt: weich".into(),
+            });
             return Ok(false);
         }
         // Fremde Nachricht: nur mit Eingriffsrecht, dann hart.
         let n = self.nachrichten.remove(index);
-        self.protokolliere(
-            jetzt_ms,
-            Some(wer),
-            &handelnder_name,
-            "text_geloescht",
-            id.text(),
-            Some(n.text),
-            None,
-            "erlaubt: hart".into(),
-        );
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(wer),
+            handelnder_name: &handelnder_name,
+            aktion: "text_geloescht",
+            ziel: id.text(),
+            vorher: Some(n.text),
+            nachher: None,
+            ergebnis: "erlaubt: hart".into(),
+        });
         Ok(true)
     }
 
@@ -925,16 +917,16 @@ impl State {
                 .filter(|m| m.rolle == Role::Administrator && m.id != ziel)
                 .count();
             if weitere == 0 {
-                self.protokolliere(
-                    jetzt_ms,
-                    Some(wer),
-                    &handelnder_name,
-                    "rolle_gesetzt",
-                    ziel.text(),
-                    Some(alt.text().into()),
-                    Some(rolle.text().into()),
-                    "abgelehnt: letzter Administrator".into(),
-                );
+                self.protokolliere(Protokollzeile {
+                    zeit: jetzt_ms,
+                    handelnder: Some(wer),
+                    handelnder_name: &handelnder_name,
+                    aktion: "rolle_gesetzt",
+                    ziel: ziel.text(),
+                    vorher: Some(alt.text().into()),
+                    nachher: Some(rolle.text().into()),
+                    ergebnis: "abgelehnt: letzter Administrator".into(),
+                });
                 return Err(Error::LetzterAdministrator);
             }
         }
@@ -942,16 +934,16 @@ impl State {
             .get_mut(&ziel)
             .expect("vorher geprüft")
             .rolle = rolle;
-        self.protokolliere(
-            jetzt_ms,
-            Some(wer),
-            &handelnder_name,
-            "rolle_gesetzt",
-            ziel.text(),
-            Some(alt.text().into()),
-            Some(rolle.text().into()),
-            "erlaubt".into(),
-        );
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(wer),
+            handelnder_name: &handelnder_name,
+            aktion: "rolle_gesetzt",
+            ziel: ziel.text(),
+            vorher: Some(alt.text().into()),
+            nachher: Some(rolle.text().into()),
+            ergebnis: "erlaubt".into(),
+        });
         Ok(())
     }
 
@@ -970,7 +962,15 @@ impl State {
         jetzt_ms: i64,
     ) {
         let ergebnis = ergebnis.to_string();
-        self.protokolliere(jetzt_ms, wer, name, aktion, ziel, None, None, ergebnis);
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: wer,
+            handelnder_name: name,
+            aktion,
+            ziel: ziel.to_string(),
+            ergebnis,
+            ..Default::default()
+        });
     }
 
     /// Darf dieses Mitglied Eingriffe an Personen vornehmen?
@@ -1047,16 +1047,16 @@ impl State {
                 }
             }
         }
-        self.protokolliere(
-            jetzt_ms,
-            Some(wer),
-            &handelnder_name,
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(wer),
+            handelnder_name: &handelnder_name,
             aktion,
-            ziel.text(),
-            Some(if vorher { "an" } else { "aus" }.to_string()),
-            Some(if an { "an" } else { "aus" }.to_string()),
-            "erlaubt".into(),
-        );
+            ziel: ziel.text(),
+            vorher: Some(if vorher { "an" } else { "aus" }.to_string()),
+            nachher: Some(if an { "an" } else { "aus" }.to_string()),
+            ergebnis: "erlaubt".into(),
+        });
         Ok(())
     }
 
@@ -1088,16 +1088,16 @@ impl State {
         );
         ergebnis?;
         if !self.raeume.contains_key(&raum) {
-            self.protokolliere(
-                jetzt_ms,
-                Some(wer),
-                &handelnder_name,
-                "verschoben",
-                ziel.text(),
-                None,
-                None,
-                "abgelehnt: Raum unbekannt".into(),
-            );
+            self.protokolliere(Protokollzeile {
+                zeit: jetzt_ms,
+                handelnder: Some(wer),
+                handelnder_name: &handelnder_name,
+                aktion: "verschoben",
+                ziel: ziel.text(),
+                vorher: None,
+                nachher: None,
+                ergebnis: "abgelehnt: Raum unbekannt".into(),
+            });
             return Err(Error::RaumUnbekannt);
         }
         if !self.mitglieder.contains_key(&ziel) {
@@ -1116,16 +1116,16 @@ impl State {
         if alter_raum != Some(raum) {
             self.epoche_weiter(alter_raum, jetzt_ms);
         }
-        self.protokolliere(
-            jetzt_ms,
-            Some(wer),
-            &handelnder_name,
-            "verschoben",
-            ziel.text(),
-            alt,
-            Some(raum.text()),
-            "erlaubt".into(),
-        );
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(wer),
+            handelnder_name: &handelnder_name,
+            aktion: "verschoben",
+            ziel: ziel.text(),
+            vorher: alt,
+            nachher: Some(raum.text()),
+            ergebnis: "erlaubt".into(),
+        });
         Ok(())
     }
 
@@ -1164,16 +1164,16 @@ impl State {
             m.raum_seit = Some(jetzt_ms);
         }
         self.epoche_weiter(alter_raum, jetzt_ms);
-        self.protokolliere(
-            jetzt_ms,
-            Some(wer),
-            &handelnder_name,
-            "aus_raum_geworfen",
-            ziel.text(),
-            alt,
-            wurzel.map(|r| r.text()),
-            "erlaubt".into(),
-        );
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(wer),
+            handelnder_name: &handelnder_name,
+            aktion: "aus_raum_geworfen",
+            ziel: ziel.text(),
+            vorher: alt,
+            nachher: wurzel.map(|r| r.text()),
+            ergebnis: "erlaubt".into(),
+        });
         Ok(())
     }
 
@@ -1212,16 +1212,16 @@ impl State {
             zeit: jetzt_ms,
             handelnder_name: handelnder_name.clone(),
         });
-        self.protokolliere(
-            jetzt_ms,
-            Some(wer),
-            &handelnder_name,
-            "sperre_verhaengt",
-            grund.to_string(),
-            None,
-            None,
-            "erlaubt".into(),
-        );
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(wer),
+            handelnder_name: &handelnder_name,
+            aktion: "sperre_verhaengt",
+            ziel: grund.to_string(),
+            vorher: None,
+            nachher: None,
+            ergebnis: "erlaubt".into(),
+        });
         Ok(())
     }
 
@@ -1249,16 +1249,16 @@ impl State {
             !(trifft_schluessel || trifft_adresse)
         });
         let anzahl = vorher - self.sperren.len();
-        self.protokolliere(
-            jetzt_ms,
-            Some(wer),
-            &handelnder_name,
-            "sperre_aufgehoben",
-            format!("{anzahl} Einträge"),
-            None,
-            None,
-            "erlaubt".into(),
-        );
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(wer),
+            handelnder_name: &handelnder_name,
+            aktion: "sperre_aufgehoben",
+            ziel: format!("{anzahl} Einträge"),
+            vorher: None,
+            nachher: None,
+            ergebnis: "erlaubt".into(),
+        });
         Ok(anzahl)
     }
 
@@ -1290,16 +1290,16 @@ impl State {
             (name, Ok(()))
         } else {
             let ziel = ziel.into();
-            self.protokolliere(
-                jetzt_ms,
-                Some(wer),
-                &name,
+            self.protokolliere(Protokollzeile {
+                zeit: jetzt_ms,
+                handelnder: Some(wer),
+                handelnder_name: &name,
                 aktion,
                 ziel,
-                None,
-                None,
-                format!("abgelehnt: Recht fehlt ({recht:?})"),
-            );
+                vorher: None,
+                nachher: None,
+                ergebnis: format!("abgelehnt: Recht fehlt ({recht:?})"),
+            });
             (name, Err(Error::RechtFehlt(recht)))
         }
     }
@@ -1345,7 +1345,7 @@ mod tests {
         let wieder = s.anmelden("k1", "Ada", 2_000).unwrap();
         assert_eq!(a, wieder);
         assert_eq!(s.mitglieder.len(), 1);
-        assert!(s.protokoll.iter().any(|e| e.aktion == "mitglied_umbenannt") == false);
+        assert!(!s.protokoll.iter().any(|e| e.aktion == "mitglied_umbenannt"));
     }
 
     #[test]
@@ -1535,6 +1535,50 @@ mod tests {
         s.entsperren(a, Some(&k2), None, 1_004).unwrap();
         let wieder = s.anmelden(&k2, "Bosse", 1_005).unwrap();
         assert_eq!(wieder, b);
+    }
+
+    /// Wer einen verschlüsselten Raum verlässt, nimmt den Schlüssel nicht mit:
+    /// die Epoche zählt hoch, damit die Verbliebenen neu aushandeln.
+    #[test]
+    fn verlassen_dreht_die_epoche() {
+        let mut s = zustand();
+        let a = admin(&mut s);
+        let raum = s.raum_anlegen(a, "Geheim", 1_010).unwrap();
+        s.raum_verschluesseln(a, raum, true, 1_020).unwrap();
+        let seit = s.raeume.get(&raum).unwrap().verschluesselt_seit;
+        assert_eq!(seit, 1_020);
+
+        let b = s.anmelden(&kennung("k2"), "Bosse", 1_020).unwrap();
+        s.betreten(b, raum, 1_030).unwrap();
+        assert_eq!(
+            s.raeume.get(&raum).unwrap().verschluesselt_seit,
+            seit,
+            "Betreten allein darf die Epoche nicht drehen — sonst würde bei jedem              Kommen ein neuer Schlüssel fällig"
+        );
+
+        s.verlassen(b, 1_040).unwrap();
+        let nachher = s.raeume.get(&raum).unwrap().verschluesselt_seit;
+        assert!(
+            nachher >= seit + 1_000,
+            "Epoche muss um mindestens eine Sekunde steigen (war {seit}, ist {nachher})"
+        );
+
+        // Zweimal kurz hintereinander: die Zahl muss trotzdem steigen, sonst
+        // bliebe die Epoche gleich und der alte Schlüssel gültig.
+        let c = s.anmelden(&kennung("k3"), "Clemens", 1_040).unwrap();
+        s.betreten(c, raum, 1_040).unwrap();
+        let vorher = s.raeume.get(&raum).unwrap().verschluesselt_seit;
+        s.verlassen(c, vorher).unwrap();
+        assert!(
+            s.raeume.get(&raum).unwrap().verschluesselt_seit > vorher,
+            "zwei Drehungen in derselben Millisekunde müssen trotzdem steigen"
+        );
+
+        // Ohne Verschlüsselung wird nichts gedreht.
+        let offen = s.raum_anlegen(a, "Offen", 2_000).unwrap();
+        s.betreten(c, offen, 2_000).unwrap();
+        s.verlassen(c, 2_100).unwrap();
+        assert_eq!(s.raeume.get(&offen).unwrap().verschluesselt_seit, 0);
     }
 
     /// Eine Sperre mit unsinniger Kennung oder Adresse wird abgewiesen: sie
@@ -1772,48 +1816,4 @@ mod tests {
         assert!(st.raum_verschluesseln(mitglied, raum, true, 1_000).is_err());
         assert!(!st.raeume[&raum].verschluesselt);
     }
-    /// Wer einen verschlüsselten Raum verlässt, nimmt den Schlüssel nicht mit:
-    /// die Epoche zählt hoch, damit die Verbliebenen neu aushandeln.
-    #[test]
-    fn verlassen_dreht_die_epoche() {
-        let mut s = zustand();
-        let a = admin(&mut s);
-        let raum = s.raum_anlegen(a, "Geheim", 1_010).unwrap();
-        s.raum_verschluesseln(a, raum, true, 1_020).unwrap();
-        let seit = s.raeume.get(&raum).unwrap().verschluesselt_seit;
-        assert_eq!(seit, 1_020);
-
-        let b = s.anmelden("k2", "Bosse", 1_020).unwrap();
-        s.betreten(b, raum, 1_030).unwrap();
-        assert_eq!(
-            s.raeume.get(&raum).unwrap().verschluesselt_seit,
-            seit,
-            "Betreten allein darf die Epoche nicht drehen — sonst würde bei jedem Kommen ein neuer Schlüssel fällig"
-        );
-
-        s.verlassen(b, 1_040).unwrap();
-        let nachher = s.raeume.get(&raum).unwrap().verschluesselt_seit;
-        assert!(
-            nachher >= seit + 1_000,
-            "Epoche muss um mindestens eine Sekunde steigen (war {seit}, ist {nachher})"
-        );
-
-        // Zweimal kurz hintereinander: die Zahl muss trotzdem steigen, sonst
-        // bliebe die Epoche gleich und der alte Schlüssel gültig.
-        let c = s.anmelden("k3", "Clemens", 1_040).unwrap();
-        s.betreten(c, raum, 1_040).unwrap();
-        let vorher = s.raeume.get(&raum).unwrap().verschluesselt_seit;
-        s.verlassen(c, vorher).unwrap();
-        assert!(
-            s.raeume.get(&raum).unwrap().verschluesselt_seit > vorher,
-            "zwei Drehungen in derselben Millisekunde müssen trotzdem steigen"
-        );
-
-        // Ohne Verschlüsselung wird nichts gedreht.
-        let offen = s.raum_anlegen(a, "Offen", 2_000).unwrap();
-        s.betreten(c, offen, 2_000).unwrap();
-        s.verlassen(c, 2_100).unwrap();
-        assert_eq!(s.raeume.get(&offen).unwrap().verschluesselt_seit, 0);
-    }
-
 }
