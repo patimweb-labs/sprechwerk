@@ -12,7 +12,16 @@ export type Rolle = "administrator" | "moderator" | "mitglied" | "gast";
 export type Verbindung =
   | { art: "getrennt" }
   | { art: "verbindet"; server: string }
-  | { art: "verbunden"; server: string; server_name: string; ich: string; name: string; rolle: Rolle }
+  | {
+      art: "verbunden";
+      server: string;
+      server_name: string;
+      ich: string;
+      name: string;
+      rolle: Rolle;
+      /** Eigener öffentlicher Schlüssel (Hex) — dieselbe Person auf jedem Gerät. */
+      kennung?: string;
+    }
   | { art: "fehler"; text: string };
 
 export interface Raum {

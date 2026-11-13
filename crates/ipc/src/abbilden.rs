@@ -10,21 +10,57 @@ use sprechwerk_domain::role::darf;
 use sprechwerk_domain::{Capability, Message, Role, RoomId};
 use sprechwerk_protocol::{Mitgliedsansicht, Raumansicht, ServerFrame};
 
+/// Die Angaben der Begrüßung, aus denen der Anfangszustand entsteht.
+///
+/// Ein Wert statt neun Stellungen: die Felder der Begrüßung sind zum Teil
+/// gleichartig (`String`, `Vec`, `Option`), und ein vertauschtes Argument wäre
+/// hier erst im Fenster zu sehen.
+#[derive(Debug, Clone)]
+pub struct Begruessung {
+    /// Adresse des Servers, wie sie im Fenster steht.
+    pub server: String,
+    /// Anzeigename des Servers.
+    pub server_name: String,
+    /// Eigene Kennung.
+    pub ich: sprechwerk_domain::MemberId,
+    /// Eigener Name.
+    pub mein_name: String,
+    /// Eigene Rolle.
+    pub rolle: Role,
+    /// Alle Räume des Servers.
+    pub raeume: Vec<Raumansicht>,
+    /// Alle Mitglieder des Servers.
+    pub mitglieder: Vec<Mitgliedsansicht>,
+    /// Raum, in dem man landet.
+    pub raum: Option<RoomId>,
+    /// Verlauf dieses Raums.
+    pub verlauf: Vec<Message>,
+}
+
 /// Baut den Anfangszustand aus der Begrüßung.
-pub fn aus_willkommen(
-    server: &str,
-    server_name: String,
-    ich: sprechwerk_domain::MemberId,
-    mein_name: String,
-    rolle: Role,
-    raeume: Vec<Raumansicht>,
-    mitglieder: Vec<Mitgliedsansicht>,
-    raum: Option<RoomId>,
-    verlauf: Vec<Message>,
-) -> Zustand {
+pub fn aus_willkommen(b: Begruessung) -> Zustand {
+    let Begruessung {
+        server,
+        server_name,
+        ich,
+        mein_name,
+        rolle,
+        raeume,
+        mitglieder,
+        raum,
+        verlauf,
+    } = b;
     let mut z = Zustand::neu();
+    // Die eigene Kennung steht in der Mitgliederliste — der Server gibt sie
+    // weiter, damit jeder die Schlüssel der anderen kennt.
+    let eigene_kennung = mitglieder
+        .iter()
+        .find(|m| m.id == ich)
+        .map(|m| m.kennung.clone())
+        .unwrap_or_default();
     z.verbindung = Some(Verbindung::Verbunden {
-        server: server.to_string(),
+        kennung: eigene_kennung,
+        server,
         server_name: server_name.clone(),
         ich,
         name: mein_name,
@@ -81,17 +117,17 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
                 .find(|m| m.id == ich)
                 .map(|m| m.name.clone())
                 .unwrap_or_default();
-            *zustand = aus_willkommen(
-                &server,
+            *zustand = aus_willkommen(Begruessung {
+                server,
                 server_name,
                 ich,
-                name,
+                mein_name: name,
                 rolle,
                 raeume,
                 mitglieder,
                 raum,
                 verlauf,
-            );
+            });
         }
 
         ServerFrame::Betreten {
@@ -218,11 +254,6 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
             zustand.meldung = None;
         }
 
-        // Das Prüfprotokoll wird **nicht** mehr ins Fenster gespiegelt: es ist
-        // ein Protokoll (Datenbank und Log des Servers), keine Ansicht. Der
-        // Rahmen bleibt im Protokoll, damit die Kommandozeile ihn lesen kann.
-        ServerFrame::Protokoll { .. } => {}
-
         ServerFrame::Anforderung { .. } => {}
     }
 }
@@ -279,7 +310,7 @@ fn mitglieder_abbilden(
         .into_iter()
         .map(|m| mitglied_abbilden(m, ich))
         .collect();
-    aus.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    aus.sort_by_key(|m| m.name.to_lowercase());
     aus
 }
 
@@ -299,7 +330,7 @@ fn mitglied_abbilden(m: Mitgliedsansicht, ich: Option<sprechwerk_domain::MemberI
 fn nachricht_abbilden(n: &Message, zustand: &Zustand) -> Nachricht {
     let eigene_rolle = zustand.meine_rolle().unwrap_or(Role::Gast);
     let ich = zustand.ich();
-    let loeschbar = n.geloescht == false
+    let loeschbar = !n.geloescht
         && (Some(n.verfasser) == ich || darf(eigene_rolle, Capability::PersonEingreifen));
     Nachricht {
         id: n.id,
@@ -325,6 +356,7 @@ mod tests {
             ich: MemberId::aus_roh(1),
             name: "Ada".into(),
             rolle,
+            kennung: "ab".repeat(32),
         });
         z
     }

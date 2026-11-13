@@ -1072,5 +1072,41 @@
   "en": "Only administrators may see and lift bans.",
   "es": "Solo los administradores pueden ver y levantar bloqueos.",
   "fr": "Seuls les administrateurs peuvent voir et lever les bannissements."
+ },
+ "set.fact.server": {
+  "de": "Server",
+  "en": "Server",
+  "es": "Servidor",
+  "fr": "Serveur"
+ },
+ "set.fact.name": {
+  "de": "Name des Servers",
+  "en": "Server name",
+  "es": "Nombre del servidor",
+  "fr": "Nom du serveur"
+ },
+ "set.fact.me": {
+  "de": "Ich",
+  "en": "Me",
+  "es": "Yo",
+  "fr": "Moi"
+ },
+ "set.fact.role": {
+  "de": "Rolle",
+  "en": "Role",
+  "es": "Rol",
+  "fr": "Rôle"
+ },
+ "set.fact.key": {
+  "de": "Kennung (öffentlich)",
+  "en": "Key (public)",
+  "es": "Clave (pública)",
+  "fr": "Clé (publique)"
+ },
+ "set.key_hint": {
+  "de": "Diese Kennung ist deine Identität auf jedem Gerät. Sie ist öffentlich — sie weiterzugeben ist unbedenklich; die Schlüsseldatei daneben nicht.",
+  "en": "This key is your identity on every device. It is public — sharing it is harmless; the key file next to it is not.",
+  "es": "Esta clave es tu identidad en cualquier dispositivo. Es pública: compartirla es inofensivo, el archivo de clave no.",
+  "fr": "Cette clé est votre identité sur chaque appareil. Elle est publique — la partager est sans danger ; le fichier de clé, non."
  }
 }

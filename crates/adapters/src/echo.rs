@@ -90,6 +90,10 @@ impl Echounterdrueckung {
     ///
     /// Muss vor dem zugehörigen Aufnahmeblock kommen, sonst filtert AEC3 gegen
     /// die Vergangenheit.
+    // `as_chunks` — der Vorschlag des Lints — gibt es erst ab Rust 1.88;
+    // `Cargo.toml` sagt für dieses Projekt 1.80 zu. Fällt weg, sobald die
+    // Zusage steigt.
+    #[allow(clippy::chunks_exact_to_as_chunks)]
     pub fn referenz(&mut self, block: &[f32]) {
         for stueck in block.chunks_exact(RAHMEN_10MS) {
             self.pipeline.referenz(stueck);
@@ -97,6 +101,8 @@ impl Echounterdrueckung {
     }
 
     /// Rechnet den bekannten Echoanteil aus einem 20-ms-Block heraus.
+    // Siehe `referenz`: `as_chunks_mut` setzt Rust 1.88 voraus.
+    #[allow(clippy::chunks_exact_to_as_chunks)]
     pub fn verarbeite(&mut self, block: &mut [f32]) {
         let mut aus = vec![0.0f32; RAHMEN_10MS];
         for stueck in block.chunks_exact_mut(RAHMEN_10MS) {

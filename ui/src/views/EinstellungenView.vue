@@ -10,7 +10,17 @@ import * as UI from "@weppelmann/components";
 import { IconMic, IconRefresh, IconSpeaker } from "@weppelmann/icons";
 import { api, type Geraet } from "../api";
 import { SPRACHEN } from "../i18n";
-import { einstellungen, modell, sprache, speichere, t, waehleSprache, wendeThema } from "../store";
+import { kennungGruppiert } from "../format";
+import {
+  einstellungen,
+  modell,
+  rolle as rollenName,
+  sprache,
+  speichere,
+  t,
+  waehleSprache,
+  wendeThema,
+} from "../store";
 
 const themen = [
   { value: "dark", label: "Dunkel" },
@@ -166,11 +176,13 @@ const fakten = computed(() => {
   const v = modell.verbindung;
   if (v?.art !== "verbunden") return [];
   return [
-    { key: "Server", value: v.server, mono: true },
-    { key: "Name", value: v.server_name },
-    { key: "Ich", value: v.name },
-    { key: "Rolle", value: v.rolle },
-    { key: "Kennung", value: v.ich, mono: true },
+    { key: t("set.fact.server"), value: v.server, mono: true },
+    { key: t("set.fact.name"), value: v.server_name },
+    { key: t("set.fact.me"), value: v.name },
+    { key: t("set.fact.role"), value: rollenName(v.rolle) },
+    // Die **Kennung** ist der öffentliche Schlüssel, nicht die Mitgliedsnummer:
+    // nur damit ist der Umzug auf ein anderes Gerät nachvollziehbar.
+    { key: t("set.fact.key"), value: kennungGruppiert(v.kennung ?? ""), mono: true },
   ];
 });
 
@@ -198,6 +210,7 @@ async function thema(wert: string) {
             </template>
           </UI.WpFormField>
           <UI.WpFactList v-if="fakten.length" :facts="fakten" />
+          <p v-if="fakten.length" class="kennung-hinweis">{{ t("set.key_hint") }}</p>
         </div>
       </UI.WpCard>
 
@@ -439,5 +452,12 @@ async function thema(wert: string) {
   gap: var(--wp-space-3);
   flex-wrap: wrap;
   padding-bottom: var(--wp-space-4);
+}
+
+.kennung-hinweis {
+  margin: var(--wp-space-2) 0 0;
+  color: var(--wp-color-text-muted);
+  font-size: var(--wp-font-size-sm, 0.875rem);
+  max-width: 60ch;
 }
 </style>

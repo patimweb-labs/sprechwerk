@@ -29,6 +29,11 @@ pub enum Verbindung {
         ich: MemberId,
         name: String,
         rolle: Role,
+        /// Eigener **öffentlicher** Schlüssel (Hex) — die Kennung, die auf
+        /// einem anderen Gerät dieselbe Person ergibt. Sie ist öffentlich; sie
+        /// zu zeigen ist der einzige Weg, den Umzug nachvollziehbar zu machen.
+        #[serde(default)]
+        kennung: String,
     },
     /// Abgelehnt oder abgebrochen.
     Fehler { text: String },
@@ -342,6 +347,7 @@ mod tests {
             ich: mitglied,
             name: "Ada".into(),
             rolle: Role::Mitglied,
+            kennung: "ab".repeat(32),
         });
         z.aktueller_raum = Some(raum);
         assert!(z.ich().is_some());
@@ -353,6 +359,7 @@ mod tests {
             ich: mitglied,
             name: "Ada".into(),
             rolle: Role::Moderator,
+            kennung: "ab".repeat(32),
         });
         assert!(z.darf_raeume_verwalten());
         assert!(!z.darf_rollen_vergeben());
