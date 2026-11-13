@@ -270,6 +270,21 @@ pub struct AudioStand {
     pub taub: bool,
 }
 
+/// Fordert den Raumschlüssel erneut an (für einen verschlüsselten Raum).
+#[tauri::command]
+pub async fn schluessel_anfordern(
+    anwendung: State<'_, Arc<Anwendung>>,
+    raum: sprechwerk_domain::RoomId,
+) -> Result<(), String> {
+    match anwendung
+        .befehl(sprechwerk_ipc::Befehl::SchluesselAnfordern { raum })
+        .await
+    {
+        Antwort::Fehler { text } => Err(text),
+        _ => Ok(()),
+    }
+}
+
 /// Misst die Umlaufzeit zum Server (Ping → Pong).
 #[tauri::command]
 pub async fn ping(anwendung: State<'_, Arc<Anwendung>>) -> Result<(), String> {

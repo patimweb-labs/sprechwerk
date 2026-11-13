@@ -106,6 +106,7 @@ function zustandDerWahrheit(verbunden: boolean): Zustand {
     // Protokoll und Betriebszahlen holt man sich ausdrücklich; im Dummy
     // beginnen sie leer, damit man den Weg „noch nicht gelesen" sieht.
     latenz_ms: null,
+    schluessel: [],
     guete: null,
     sperren: [],
     protokoll: [],
@@ -156,6 +157,10 @@ export const einstellungenVorgabe: Einstellungen = {
 };
 
 export const mockApi = {
+  async schluesselAnfordern(): Promise<void> {
+    melden();
+  },
+
   async ping(): Promise<void> {
     // Im Dummy eine plausible Loopback-Zahl, damit man die Anzeige beurteilen kann.
     stand.latenz_ms = 8 + Math.floor(Math.random() * 6);

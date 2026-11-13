@@ -100,6 +100,7 @@ pub fn run() {
             commands::zaehler,
             commands::sperrliste,
             commands::ping,
+            commands::schluessel_anfordern,
             commands::raum_verschluesseln,
             commands::audio_starten,
             commands::audio_stoppen,

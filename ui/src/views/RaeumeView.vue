@@ -26,6 +26,8 @@ import {
   modell,
   raumUmbenennen,
   sende,
+  schluesselAnfordern,
+  schluesselVorhanden,
   sperreMitglied,
   stummschalten,
   trenneMitglied,
@@ -330,6 +332,23 @@ async function absenden() {
               <UI.WpIconButton :icon="IconMore" :label="t('room.menu')" size="sm" variant="ghost" />
             </UI.WpMenu>
           </div>
+
+          <!-- Verschlüsselt: der Schlüssel ist die halbe Miete. Wer ihn nicht
+               hat, hört nichts — und weiß ohne diese Zeile nicht, warum. -->
+          <p v-if="raum.verschluesselt" class="schluessel" :class="{ fehlt: schluesselVorhanden(raum.id) === false }">
+            <template v-if="schluesselVorhanden(raum.id)">
+              {{ t("room.key_ok") }}
+            </template>
+            <template v-else>
+              {{ t("room.key_missing") }}
+              <UI.WpButton
+                :label="t('room.key_request')"
+                size="sm"
+                variant="ghost"
+                @press="schluesselAnfordern(raum.id)"
+              />
+            </template>
+          </p>
 
           <ul v-if="anwesendeVon(raum.id).length" class="leute">
             <li
@@ -926,5 +945,18 @@ async function absenden() {
   .schiene {
     width: var(--wp-size-control-md);
   }
+}
+
+/* Der Schlüsselstand ist eine Zeile unter dem Raumnamen: ruhig, wenn alles da
+   ist; deutlich, wenn nicht — dann hört man nämlich nichts. */
+.schluessel {
+  margin: 0 0 var(--wp-space-2) var(--wp-space-3);
+  font-size: var(--wp-font-size-xs, 0.75rem);
+  color: var(--wp-color-text-muted);
+}
+
+.schluessel.fehlt {
+  color: var(--wp-color-warning, var(--wp-color-text));
+  font-weight: 600;
 }
 </style>

@@ -13,6 +13,7 @@ export const modell = reactive<Zustand>({
   mitglieder: [],
   nachrichten: [],
   latenz_ms: null,
+  schluessel: [],
   guete: null,
   sperren: [],
   protokoll: [],
@@ -177,6 +178,27 @@ export const latenzText = computed(() => {
   if (ms < 1000) return `${ms} ms`;
   return `${(ms / 1000).toFixed(1).replace(".", ",")} s`;
 });
+
+/**
+ * Hat der Client den Schlüssel dieses Raums?
+ *
+ * `null` heißt: der Raum ist nicht verschlüsselt (oder ich bin nicht drin) —
+ * dann ist die Frage sinnlos.
+ */
+export function schluesselVorhanden(raum: string): boolean | null {
+  const r = modell.raeume.find((x) => x.id === raum);
+  if (!r || !r.verschluesselt) return null;
+  return modell.schluessel.some((s) => s.raum === raum);
+}
+
+/** Den Raumschlüssel erneut anfordern (nach einem verlorenen Paket). */
+export async function schluesselAnfordern(raum: string) {
+  try {
+    await api.schluesselAnfordern(raum);
+  } catch (fehler) {
+    modell.meldung = `Schlüssel nicht angefordert: ${String(fehler)}`;
+  }
+}
 
 /** Sperrliste holen (nur Administrator). */
 export async function ladeSperrliste() {
@@ -381,48 +403,53 @@ export const darfEingreifen = computed(() =>
 
 /** Server-Stummschaltung (Mikrofon oder Ton). */
 export async function stummschalten(mitglied: string, taub: boolean, an: boolean) {
-  await api.stummschalten(mitglied, taub, an);
+  await befehl(() => api.stummschalten(mitglied, taub, an));
 }
 
 export async function verschieben(mitglied: string, raum: string) {
-  await api.verschieben(mitglied, raum);
+  await befehl(() => api.verschieben(mitglied, raum));
 }
 
 /** Ende-zu-Ende-Verschlüsselung eines Raums umschalten. */
 export async function verschluesseln(raum: string, an: boolean) {
-  await api.raumVerschluesseln(raum, an);
+  await befehl(() => api.raumVerschluesseln(raum, an));
 }
 
 export async function ausRaumWerfen(mitglied: string) {
-  await api.ausRaumWerfen(mitglied);
+  await befehl(() => api.ausRaumWerfen(mitglied));
 }
 
 export async function trenneMitglied(mitglied: string, grund: string) {
-  await api.trenneMitglied(mitglied, grund);
+  await befehl(() => api.trenneMitglied(mitglied, grund));
 }
 
 export async function sperreMitglied(mitglied: string, grund: string) {
-  await api.sperreMitglied(mitglied, grund);
+  await befehl(() => api.sperreMitglied(mitglied, grund));
 }
 
 export async function raumUmbenennen(raum: string, name: string) {
-  await api.raumUmbenennen(raum, name);
+  await befehl(() => api.raumUmbenennen(raum, name));
 }
 
 export async function loesche(nachricht: string) {
-  await api.nachrichtLoeschen(nachricht);
+  await befehl(() => api.nachrichtLoeschen(nachricht));
 }
 
 export async function legeRaumAn(name: string) {
   const bereinigt = name.trim();
   if (!bereinigt) return;
-  await api.raumAnlegen(bereinigt);
+  await befehl(() => api.raumAnlegen(bereinigt));
 }
 
 /** Kurzform für Texte in den Ansichten. */
 export { rolle, sprache, t };
 
-/** Zeit als „14:07" für die Nachrichtenliste. */
+/** Zeit als „14:07" für die Nachrichtenliste (in der gewählten Sprache). */
 export function uhrzeit(ms: number): string {
-  return new Date(ms).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  const spracheDerUhr =
+    sprache.value === "de" ? "de-DE" : sprache.value === "en" ? "en-GB" : sprache.value === "es" ? "es-ES" : "fr-FR";
+  return new Date(ms).toLocaleTimeString(spracheDerUhr, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

@@ -245,6 +245,24 @@ async fn lauf<F>(
                     if let (Some(v), Some(e)) = (netz.as_mut(), eigener.as_ref()) {
                         verteile_schluessel(v, &verwaltung, e).await;
                     }
+                    // Und den Stand ins Modell: die Oberfläche muss sagen
+                    // können, ob der Schlüssel dieses Raums vorliegt — ohne ihn
+                    // hört man in einem verschlüsselten Raum nichts.
+                    if let Ok(mut z) = zustand.lock() {
+                        z.schluessel = z
+                            .raeume
+                            .iter()
+                            .filter(|r| r.verschluesselt)
+                            .filter_map(|r| {
+                                verwaltung
+                                    .hole(r.id)
+                                    .map(|s| sprechwerk_ipc::Schluesselstand {
+                                        raum: r.id,
+                                        epoche: s.epoche,
+                                    })
+                            })
+                            .collect();
+                    }
                     let _ = raum_wechsel;
                 }
                 Ok(None) => {
@@ -493,6 +511,9 @@ async fn lauf<F>(
                         // Sendedauer in der Messung.
                         ping_gesendet = Some(std::time::Instant::now());
                         sprechwerk_protocol::ClientFrame::Ping
+                    }
+                    Befehl::SchluesselAnfordern { raum } => {
+                        sprechwerk_protocol::ClientFrame::SchluesselAnfrage { raum }
                     }
                     Befehl::Zaehler => sprechwerk_protocol::ClientFrame::Zaehler,
                     Befehl::Sperrliste => sprechwerk_protocol::ClientFrame::Sperrliste,

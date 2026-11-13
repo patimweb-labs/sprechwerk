@@ -100,6 +100,13 @@ pub struct Zustand {
     /// Verhängte Sperren (leer, bis sie einmal abgefragt wurden).
     #[serde(default)]
     pub sperren: Vec<Sperre>,
+    /// Für welche verschlüsselten Räume der Raumschlüssel vorliegt (mit Epoche).
+    ///
+    /// Ohne Schlüssel hört man in einem verschlüsselten Raum **nichts** — der
+    /// häufigste Grund für „ich höre niemanden". Deshalb steht der Zustand im
+    /// Modell und wird angezeigt, statt nur in einer Notiz zu verschwinden.
+    #[serde(default)]
+    pub schluessel: Vec<Schluesselstand>,
     /// Umlaufzeit zum Server in Millisekunden (aus Ping/Pong gemessen).
     ///
     /// Sie wird **im Rust-Teil** gemessen, nicht im Fenster: nur dort sitzt die
@@ -123,6 +130,18 @@ pub struct Zustand {
 /// Wie viele Protokollzeilen ein Aufruf ohne Angabe liest.
 fn fuenfzig() -> usize {
     50
+}
+
+/// Der Raumschlüssel eines verschlüsselten Raums.
+///
+/// Ohne ihn hört man in einem verschlüsselten Raum **nichts** — der häufigste
+/// Grund für „ich höre niemanden". Deshalb steht der Zustand im Modell und
+/// wird angezeigt, statt nur in einer Notiz zu verschwinden.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Schluesselstand {
+    pub raum: RoomId,
+    /// Epoche des Schlüssels (zählt bei jedem Verlassen hoch).
+    pub epoche: u32,
 }
 
 /// Eine verhängte Sperre, wie sie das Fenster zeigt.
@@ -305,6 +324,10 @@ pub enum Befehl {
     },
     /// Umlaufzeit messen (schickt ein Lebenszeichen und stoppt die Zeit).
     Ping,
+    /// Den Raumschlüssel erneut anfordern (nach einem verlorenen Paket).
+    SchluesselAnfordern {
+        raum: RoomId,
+    },
     /// Verhängte Sperren auflisten (nur Administrator).
     Sperrliste,
     /// Betriebszahlen abfragen.

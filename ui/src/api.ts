@@ -54,6 +54,13 @@ export interface Nachricht {
   loeschbar: boolean;
 }
 
+/** Der Raumschlüssel eines verschlüsselten Raums. */
+export interface Schluesselstand {
+  raum: string;
+  /** Epoche des Schlüssels (zählt bei jedem Verlassen hoch). */
+  epoche: number;
+}
+
 /** Eine verhängte Sperre. */
 export interface Sperre {
   kennung: string | null;
@@ -99,6 +106,8 @@ export interface Zustand {
   nachrichten: Nachricht[];
   /** Verhängte Sperren (leer, bis sie einmal abgefragt wurden). */
   sperren: Sperre[];
+  /** Räume, deren Schlüssel vorliegt (nur verschlüsselte Räume). */
+  schluessel: Schluesselstand[];
   /** Umlaufzeit zum Server in Millisekunden (aus Ping/Pong). */
   latenz_ms: number | null;
   /** Betriebszahlen, bis sie einmal abgefragt wurden: null. */
@@ -180,6 +189,7 @@ const echtApi = {
   zaehler: () => invoke<void>("zaehler"),
   sperrliste: () => invoke<void>("sperrliste"),
   ping: () => invoke<void>("ping"),
+  schluesselAnfordern: (raum: string) => invoke<void>("schluessel_anfordern", { raum }),
   raumVerschluesseln: (raum: string, an: boolean) =>
     invoke<void>("raum_verschluesseln", { raum, an }),
   audioGeraete: () => invoke<Geraeteliste>("audio_geraete"),

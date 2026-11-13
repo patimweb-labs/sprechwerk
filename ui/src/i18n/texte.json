@@ -1120,5 +1120,23 @@
   "en": "Reason (appears in the audit log)",
   "es": "Motivo (aparece en el registro)",
   "fr": "Motif (apparaît dans le journal)"
+ },
+ "room.key_ok": {
+  "de": "verschlüsselt · Schlüssel liegt vor",
+  "en": "encrypted · key present",
+  "es": "cifrado · clave disponible",
+  "fr": "chiffré · clé présente"
+ },
+ "room.key_missing": {
+  "de": "verschlüsselt · Schlüssel fehlt — du hörst nichts.",
+  "en": "encrypted · key missing — you hear nothing.",
+  "es": "cifrado · falta la clave: no oirás nada.",
+  "fr": "chiffré · clé manquante — vous n'entendez rien."
+ },
+ "room.key_request": {
+  "de": "Schlüssel anfordern",
+  "en": "Request key",
+  "es": "Solicitar clave",
+  "fr": "Demander la clé"
  }
 }
