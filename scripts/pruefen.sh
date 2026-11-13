@@ -63,8 +63,8 @@ if [[ -d ui/node_modules ]]; then
   ( cd ui && npm run --silent typecheck >/dev/null 2>&1 )
   berichte "vue-tsc (ui)" "$?"
 else
-  echo "  ui/node_modules fehlt — übersprungen (npm install im Verzeichnis ui)"
-  berichte "vue-tsc (ui)" 3
+  echo "  ui/node_modules fehlt — nicht geprüft (vorher 'npm install' in ui/)"
+  berichte "vue-tsc (ui) [nicht geprüft]" 1
 fi
 
 if [[ "$NUR_TESTS" -eq 1 ]]; then
