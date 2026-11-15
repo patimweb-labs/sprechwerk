@@ -54,6 +54,9 @@ function nachricht(id: string, verfasser: string, verfasserName: string, text: s
 
 const ICH = "mitglied_aaaa0000000000000000000000000001";
 
+/** Ein erfundener, aber plausibler Zertifikats-Fingerabdruck für den Dummy. */
+const ZERTIFIKAT = "9f3c5b1ab27e4d0c6a8f13e79b2d40c57e1f9a3b6c0d2e847a5b3c9d1f6e0a24";
+
 const raeume: Raum[] = [
   raum("raum_0001", "Empfang", 1),
   raum("raum_0002", "Vorstand", 1),
@@ -110,6 +113,9 @@ function zustandDerWahrheit(verbunden: boolean): Zustand {
     guete: null,
     sperren: [],
     protokoll: [],
+    // Ein Fingerabdruck, wie ihn der echte Server hätte (64 Zeichen): ohne ihn
+    // zeigte der Dummy eine Zeile, die es im Fenster nie gibt.
+    zertifikat: verbunden ? ZERTIFIKAT : null,
 
     meldung: null,
   };
@@ -149,6 +155,9 @@ export const einstellungenVorgabe: Einstellungen = {
   rauschunterdrueckung: true,
   noisegate: true,
   echounterdrueckung: true,
+  vertrauen: [
+    { server: "sprechwerk.verein.example:7443", fingerabdruck: ZERTIFIKAT },
+  ],
   favoriten: [
     { name: "Trainingsabend", server: "sprechwerk.verein.example:7443" },
     { name: "Vorstand (Test)", server: "192.0.2.11:7443" },
@@ -435,5 +444,14 @@ export const mockApi = {
     } catch {
       /* egal */
     }
+  },
+
+  /** Wie im echten Fenster: der angeheftete Wert wird vergessen. */
+  async zertifikatVergessen(server: string): Promise<void> {
+    const e = await this.einstellungenLesen();
+    e.vertrauen = e.vertrauen.filter((v) => v.server !== server);
+    await this.einstellungenSpeichern(e);
+    stand.meldung = "Zertifikat vergessen — beim nächsten Verbinden wird neu angeheftet";
+    melden();
   },
 };

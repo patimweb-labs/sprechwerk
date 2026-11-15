@@ -121,8 +121,9 @@ onMounted(laden);
 
 h2 {
   margin: 0;
-  font: var(--wp-font-heading);
-  color: var(--wp-color-text);
+  font-size: var(--wp-font-size-lg);
+  font-weight: var(--wp-font-weight-semibold);
+  color: var(--wp-color-text-default);
 }
 
 .unter {
@@ -135,27 +136,27 @@ h2 {
   margin: 0;
   padding: var(--wp-space-4);
   border-radius: var(--wp-radius-md);
-  background: var(--wp-color-surface-2);
+  background: var(--wp-color-bg-panel);
   color: var(--wp-color-text-muted);
 }
 
 .tabelle {
   width: 100%;
   border-collapse: collapse;
-  font: var(--wp-font-body);
+  font-size: var(--wp-font-size-md);
 }
 
 th {
   text-align: left;
   padding: var(--wp-space-2) var(--wp-space-3);
   color: var(--wp-color-text-muted);
-  font-weight: 600;
-  border-bottom: 1px solid var(--wp-color-border);
+  font-weight: var(--wp-font-weight-semibold);
+  border-bottom: var(--wp-size-border) solid var(--wp-color-border-strong);
 }
 
 td {
   padding: var(--wp-space-2) var(--wp-space-3);
-  border-bottom: 1px solid var(--wp-color-border-subtle);
+  border-bottom: var(--wp-size-border) solid var(--wp-color-border-subtle);
   vertical-align: top;
 }
 
@@ -187,7 +188,7 @@ tr.abgelehnt td {
   padding: 0 var(--wp-space-2);
   margin-right: var(--wp-space-2);
   border-radius: var(--wp-radius-sm);
-  background: var(--wp-color-surface-3);
+  background: var(--wp-color-bg-raised);
   color: var(--wp-color-text-muted);
   font-size: 0.85em;
 }

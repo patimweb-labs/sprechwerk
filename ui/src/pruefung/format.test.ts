@@ -1,7 +1,7 @@
 // Die Kennung ist das, was eine Person auf jedem Gerät ist. Sie muss lesbar
 // sein — und genau so aussehen wie der Fingerabdruck, den der Server druckt.
 import { describe, expect, it } from "vitest";
-import { kennungGruppiert } from "../format";
+import { fingerabdruckGruppiert, kennungGruppiert } from "../format";
 
 describe("Kennung lesbar machen", () => {
   it("gruppiert zu vier Zeichen", () => {
@@ -48,5 +48,24 @@ describe("zuletzt verbunden", () => {
   it("eine Zeit in der Zukunft ist gerade eben, nicht negativ", () => {
     // Uhren gehen falsch; „vor -3 Minuten" wäre ein Fehler im Fenster.
     expect(zuletztText(jetzt + 180_000, jetzt)).toBe("gerade eben");
+  });
+});
+
+describe("Fingerabdruck (TOFU)", () => {
+  it("zeigt den ganzen Wert, nicht einen Anfang", () => {
+    const fp = "9f3c5b1ab27e4d0c6a8f13e79b2d40c57e1f9a3b6c0d2e847a5b3c9d1f6e0a24";
+    const text = fingerabdruckGruppiert(fp);
+    // 64 Zeichen → 16 Gruppen à vier Zeichen, 15 Doppelpunkte.
+    expect(text.split(":").length).toBe(16);
+    expect(text.replace(/:/g, "")).toBe(fp);
+    expect(text.endsWith("…")).toBe(false);
+  });
+
+  it("nimmt auch getippte Schreibweisen", () => {
+    expect(fingerabdruckGruppiert("3FE0 5a78")).toBe("3fe0:5a78");
+  });
+
+  it("ohne Wert steht ein Strich", () => {
+    expect(fingerabdruckGruppiert("")).toBe("—");
   });
 });

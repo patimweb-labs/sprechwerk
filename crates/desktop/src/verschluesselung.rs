@@ -1219,12 +1219,41 @@ mod tests {
                 }
             }
         }
+        // Die ganze Sicht jedes Teilnehmers: wer er ist, wen er für den Wart
+        // hält, wie oft er nachgefragt hat und wie er die Runde sieht. Ein
+        // Fehlschlag hier ist fast immer ein Zeitrennen — ohne diese Angaben
+        // lässt er sich nur durch Glück nachstellen.
+        let sicht: Vec<String> = teilnehmer
+            .iter()
+            .map(|t| {
+                let wart = t
+                    .verbindung
+                    .mitglieder
+                    .iter()
+                    .find(|m| Schluesselverwaltung::bin_wart(m.id, &t.verbindung.mitglieder, raum))
+                    .map(|m| m.id);
+                let runde: Vec<_> = t
+                    .verbindung
+                    .mitglieder
+                    .iter()
+                    .filter(|m| m.raum == Some(raum))
+                    .map(|m| (m.id, m.raum_seit, !m.kennung.is_empty()))
+                    .collect();
+                format!(
+                    "{} (ich {:?}): Epoche {:?}, seit {}, Wart {:?}, Anfragen {}, Runde {:?}",
+                    t.name,
+                    t.verbindung.ich,
+                    t.epoche(raum),
+                    t.seit(raum),
+                    wart,
+                    t.anfragen.get(),
+                    runde
+                )
+            })
+            .collect();
         panic!(
-            "Schlüssel der Epoche {erwartet} kamen nicht zustande: {:?}",
-            teilnehmer
-                .iter()
-                .map(|t| (t.name, t.epoche(raum)))
-                .collect::<Vec<_>>()
+            "Schlüssel der Epoche {erwartet} kamen nicht zustande:\n  {}",
+            sicht.join("\n  ")
         );
     }
 

@@ -111,12 +111,16 @@ const dialog = ref<
 >(null);
 /** Gewählte Rolle im Rollen-Dialog. */
 const rollenWahl = ref<string>("mitglied");
-const rollen = computed(() => [
-  { value: "administrator", label: t("rolle.administrator") },
-  { value: "moderator", label: t("rolle.moderator") },
-  { value: "mitglied", label: t("rolle.mitglied") },
-  { value: "gast", label: t("rolle.gast") },
-]);
+// Wer Administrator werden will, muss Rolle vergeben dürfen: die Auswahl
+// folgt aus dem Modell, nicht aus einer Prüfung hinterher (AGENTS.md §2.3).
+const rollen = computed(() =>
+  [
+    { value: "administrator", label: t("rolle.administrator") },
+    { value: "moderator", label: t("rolle.moderator") },
+    { value: "mitglied", label: t("rolle.mitglied") },
+    { value: "gast", label: t("rolle.gast") },
+  ].filter((r) => r.value !== "administrator" || darfRollenVergeben.value),
+);
 const zielMitglied = ref<string | null>(null);
 const zielRaum = ref<string | null>(null);
 const eingabeName = ref("");
@@ -322,6 +326,7 @@ async function absenden() {
               <span class="raum__zahl">{{ anwesendeVon(raum.id).length || "" }}</span>
             </button>
             <UI.WpMenu
+              class="zeilenmenue"
               :items="raumMenuePunkte()"
               :label="t('room.menu')"
               align="right"
@@ -376,6 +381,7 @@ async function absenden() {
               </span>
               <UI.WpMenu
                 v-if="!m.ich && darfEingreifen"
+                class="zeilenmenue"
                 :items="mitgliedMenue(m.id)"
                 :label="`Menü für ${m.name}`"
                 align="right"
@@ -474,9 +480,8 @@ async function absenden() {
       :title="t('member.role') + ': ' + zielName"
       :description="t('member.role.desc')"
       :confirm-label="t('member.role.apply')"
-      :state="rollenWahl === 'administrator' && !darfRollenVergeben ? 'disabled' : 'default'"
       @confirm="bestaetigen"
-      @cancel="dialog = null"
+      @update:open="dialog = null"
     >
       <UI.WpSelect v-model="rollenWahl" :options="rollen" :label="t('member.role')" />
     </UI.WpDialog>
@@ -488,7 +493,7 @@ async function absenden() {
       :description="t('room.add.desc')"
       :confirm-label="t('room.add.confirm')"
       @confirm="bestaetigen"
-      @cancel="dialog = null"
+      @update:open="dialog = null"
     >
       <UI.WpInput v-model="eingabeName" :placeholder="t('room.add.placeholder')" />
     </UI.WpDialog>
@@ -499,7 +504,7 @@ async function absenden() {
       :description="raumName"
       :confirm-label="t('room.rename')"
       @confirm="bestaetigen"
-      @cancel="dialog = null"
+      @update:open="dialog = null"
     >
       <UI.WpInput v-model="eingabeName" :placeholder="t('room.rename.placeholder')" />
     </UI.WpDialog>
@@ -511,7 +516,7 @@ async function absenden() {
       tone="warn"
       :confirm-label="t('chat.delete')"
       @confirm="bestaetigen"
-      @cancel="dialog = null"
+      @update:open="dialog = null"
     />
 
     <UI.WpDialog
@@ -520,7 +525,7 @@ async function absenden() {
       :description="t('member.move.desc')"
       :confirm-label="t('member.move.confirm')"
       @confirm="bestaetigen"
-      @cancel="dialog = null"
+      @update:open="dialog = null"
     >
       <UI.WpSelect v-model="zielRaumWahl" :options="raumWahl" :label="t('room.enter')" />
     </UI.WpDialog>
@@ -532,7 +537,7 @@ async function absenden() {
       tone="warn"
       :confirm-label="t('member.kick.confirm')"
       @confirm="bestaetigen"
-      @cancel="dialog = null"
+      @update:open="dialog = null"
     >
       <UI.WpInput v-model="eingabeGrund" :placeholder="t('member.kick.reason')" />
     </UI.WpDialog>
@@ -641,17 +646,17 @@ async function absenden() {
   left: 0;
   top: 0;
   bottom: 0;
-  width: 2px;
+  width: calc(var(--wp-size-border) * 2);
   background: var(--wp-color-accent-default);
 }
 
 /* Schloss an verschlüsselten Räumen: klein, in der Textfarbe — ein Zustand,
    kein Schmuck. */
 .raum__schloss {
-  width: 12px;
-  height: 12px;
+  width: var(--wp-font-size-sm);
+  height: var(--wp-font-size-sm);
   margin-left: var(--wp-space-1);
-  vertical-align: -1px;
+  vertical-align: calc(var(--wp-size-border) * -1);
   color: var(--wp-color-text-muted);
 }
 
@@ -677,14 +682,14 @@ async function absenden() {
   padding: 0 0 var(--wp-space-1) 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: var(--wp-size-border);
 }
 
 .mensch {
   display: flex;
   align-items: center;
   gap: var(--wp-space-2);
-  padding: 2px var(--wp-space-2) 2px calc(var(--wp-space-4) + var(--wp-space-1));
+  padding: calc(var(--wp-space-1) / 2) var(--wp-space-2) calc(var(--wp-space-1) / 2) calc(var(--wp-space-4) + var(--wp-space-1));
 }
 
 .mensch:hover {
@@ -707,6 +712,8 @@ async function absenden() {
 }
 
 .mensch__ich {
+  /* Der Leerraum vor „du" fällt beim Übersetzen der Vorlage weg. */
+  margin-left: var(--wp-space-1);
   color: var(--wp-color-text-faint);
   font-size: var(--wp-font-size-xs);
 }
@@ -716,16 +723,19 @@ async function absenden() {
   color: var(--wp-color-text-faint);
 }
 
-.zeile > :last-child,
-.mensch > :last-child {
+/* Das ⋯-Menü einer Zeile erscheint erst beim Überfahren oder mit Fokus.
+   Über eine eigene Klasse, **nicht** über `:last-child`: eine Zeile ohne Menü
+   (die eigene, oder jede, wenn man nicht eingreifen darf) hätte sonst ihren
+   Namen versteckt — ein Mitglied sah in der Raumliste nur Kürzel. */
+.zeilenmenue {
   opacity: 0;
   transition: opacity var(--wp-duration-fast) ease;
 }
 
-.zeile:hover > :last-child,
-.zeile:focus-within > :last-child,
-.mensch:hover > :last-child,
-.mensch:focus-within > :last-child {
+.zeile:hover > .zeilenmenue,
+.zeile:focus-within > .zeilenmenue,
+.mensch:hover > .zeilenmenue,
+.mensch:focus-within > .zeilenmenue {
   opacity: 1;
 }
 
@@ -752,7 +762,7 @@ async function absenden() {
 }
 
 .kopf p {
-  margin: 2px 0 0;
+  margin: calc(var(--wp-space-1) / 2) 0 0;
   font-size: var(--wp-font-size-xs);
   color: var(--wp-color-text-muted);
 }
@@ -801,7 +811,7 @@ async function absenden() {
 }
 
 .schiene:hover {
-  color: var(--wp-color-text);
+  color: var(--wp-color-text-default);
   background: var(--wp-color-bg-raised);
 }
 
@@ -810,13 +820,13 @@ async function absenden() {
 }
 
 .schiene__zahl {
-  min-width: 18px;
-  padding: 0 4px;
+  min-width: calc(var(--wp-space-4) + var(--wp-space-1) / 2);
+  padding: 0 var(--wp-space-1);
   font-size: var(--wp-font-size-xs);
-  line-height: 18px;
+  line-height: calc(var(--wp-space-4) + var(--wp-space-1) / 2);
   text-align: center;
   color: var(--wp-color-bg-panel);
-  background: var(--wp-color-accent);
+  background: var(--wp-color-accent-default);
   border-radius: var(--wp-radius-sm);
 }
 
@@ -833,7 +843,7 @@ async function absenden() {
 
 .beitrag {
   padding: var(--wp-space-1) 0 var(--wp-space-3);
-  border-left: 2px solid transparent;
+  border-left: calc(var(--wp-size-border) * 2) solid transparent;
   padding-left: var(--wp-space-2);
 }
 
@@ -956,7 +966,7 @@ async function absenden() {
 }
 
 .schluessel.fehlt {
-  color: var(--wp-color-warning, var(--wp-color-text));
-  font-weight: 600;
+  color: var(--wp-color-status-warn);
+  font-weight: var(--wp-font-weight-semibold);
 }
 </style>

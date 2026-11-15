@@ -38,3 +38,18 @@ export function zuletztText(ms: number | null | undefined, jetzt = Date.now()): 
   if (monate < 12) return t("time.months", monate);
   return t("time.years", Math.round(monate / 12));
 }
+
+/**
+ * Fingerabdruck vollständig in Vierergruppen: `3ff0:5a78:…`.
+ *
+ * **Vollständig, nicht abgekürzt** (anders als `kennungGruppiert`): der Wert
+ * wird verglichen, nicht gelesen. Wer die letzten vier Zeichen abschneidet,
+ * kann zwei Zertifikate nicht mehr unterscheiden — und ein Angreifer fände
+ * genau dort seinen Platz.
+ */
+export function fingerabdruckGruppiert(fingerabdruck: string): string {
+  const roh = fingerabdruck.replace(/[^0-9a-fA-F]/g, "").toLowerCase();
+  if (!roh) return "—";
+  const gruppen = roh.match(/.{1,4}/g) ?? [];
+  return gruppen.join(":");
+}

@@ -268,6 +268,8 @@ pub fn getrennt(zustand: &mut Zustand, grund: Option<String>) {
     zustand.aktueller_raum = None;
     zustand.mitglieder.clear();
     zustand.raeume.clear();
+    // Der Fingerabdruck gehört zur Verbindung: ohne Verbindung kein Wert.
+    zustand.zertifikat = None;
 }
 
 /// Setzt die Anwesenheitszahlen aus der Mitgliederliste (nicht aus der Meldung —

@@ -363,7 +363,7 @@ async function thema(wert: string) {
 }
 
 .kopf__text p {
-  margin: 2px 0 0;
+  margin: calc(var(--wp-space-1) / 2) 0 0;
   font-size: var(--wp-font-size-xs);
   color: var(--wp-color-text-muted);
 }

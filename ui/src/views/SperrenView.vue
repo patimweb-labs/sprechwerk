@@ -127,8 +127,9 @@ onMounted(() => {
 
 h2 {
   margin: 0;
-  font: var(--wp-font-heading);
-  color: var(--wp-color-text);
+  font-size: var(--wp-font-size-lg);
+  font-weight: var(--wp-font-weight-semibold);
+  color: var(--wp-color-text-default);
 }
 
 .unter {
@@ -141,33 +142,33 @@ h2 {
   margin: 0;
   padding: var(--wp-space-4);
   border-radius: var(--wp-radius-md);
-  background: var(--wp-color-surface-2);
+  background: var(--wp-color-bg-panel);
   color: var(--wp-color-text-muted);
 }
 
 .tabelle {
   width: 100%;
   border-collapse: collapse;
-  font: var(--wp-font-body);
+  font-size: var(--wp-font-size-md);
 }
 
 th {
   text-align: left;
   padding: var(--wp-space-2) var(--wp-space-3);
   color: var(--wp-color-text-muted);
-  font-weight: 600;
-  border-bottom: 1px solid var(--wp-color-border);
+  font-weight: var(--wp-font-weight-semibold);
+  border-bottom: var(--wp-size-border) solid var(--wp-color-border-strong);
 }
 
 td {
   padding: var(--wp-space-2) var(--wp-space-3);
-  border-bottom: 1px solid var(--wp-color-border-subtle);
+  border-bottom: var(--wp-size-border) solid var(--wp-color-border-subtle);
   vertical-align: middle;
 }
 
 /* Kennungen und Adressen sind Maschinenwerte: gleiche Breite, gut lesbar. */
 .werte {
-  font-family: var(--wp-font-mono, monospace);
+  font-family: var(--wp-font-family-mono);
   font-size: 0.9em;
 }
 
