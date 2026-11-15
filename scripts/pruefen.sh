@@ -43,13 +43,22 @@ berichte() {
   fi
 }
 
-echo "== Arbeitsbereich: Tests"
+echo "== Arbeitsbereich: Form, Werkzeuge, Tests"
+cargo fmt --all --check >/dev/null 2>&1
+berichte "cargo fmt --check" "$?"
+cargo clippy --all-targets --quiet -- -D warnings >/tmp/sprechwerk-pruefung-clippy.log 2>&1
+berichte "cargo clippy -D warnings" "$?"
 cargo test --quiet 2>&1 | tail -3
 berichte "cargo test (Arbeitsbereich)" "${PIPESTATUS[0]}"
 
 echo
-echo "== Fenster: Tests (eigenes Crate, eigene Sperrdatei)"
+echo "== Fenster: Form, Werkzeuge, Tests (eigenes Crate, eigene Sperrdatei)"
 if [[ -d crates/desktop ]]; then
+  ( cd crates/desktop && cargo fmt --check >/dev/null 2>&1 )
+  berichte "cargo fmt --check (desktop)" "$?"
+  ( cd crates/desktop && cargo clippy --all-targets --quiet -- -D warnings \
+      >/tmp/sprechwerk-pruefung-clippy-desktop.log 2>&1 )
+  berichte "cargo clippy (desktop)" "$?"
   ( cd crates/desktop && cargo test --quiet 2>&1 | tail -3 )
   berichte "cargo test (crates/desktop)" "$?"
 else
@@ -64,6 +73,11 @@ if [[ -d ui/node_modules ]]; then
   berichte "vue-tsc (ui)" "$?"
   ( cd ui && npm test --silent >/tmp/sprechwerk-pruefung-ui.log 2>&1 )
   berichte "vitest (ui, Ansichten)" "$?"
+  if [[ "$NUR_TESTS" -eq 0 ]]; then
+    # Echter Browser: Stile, Sichtbarkeit, alle drei Themes (docs/bilder/).
+    ( cd ui && npm run --silent bilder >/tmp/sprechwerk-pruefung-bilder.log 2>&1 )
+    berichte "Ansichten im Browser (3 Themes)" "$?"
+  fi
 else
   echo "  ui/node_modules fehlt — nicht geprüft (vorher 'npm install' in ui/)"
   berichte "vue-tsc (ui) [nicht geprüft]" 1

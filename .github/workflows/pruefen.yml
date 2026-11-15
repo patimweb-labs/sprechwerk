@@ -153,6 +153,22 @@ jobs:
       - name: Ansichten und Texte
         run: cd ui && npm test --silent
 
+      # Im echten Browser: prüft, was jsdom nicht sieht (Stile, z. B. dass jeder
+      # Name in der Raumliste sichtbar ist), und erzeugt die Bilder aller
+      # Ansichten in dark, light und mono. Der Läufer bringt Chrome mit.
+      # Hochgeladen statt verglichen: die Schriftdarstellung unterscheidet sich
+      # zwischen Maschinen, die Bilder im Repository entstehen lokal.
+      - name: Ansichten im Browser (drei Themes)
+        run: cd ui && npm run --silent bilder
+
+      - name: Bilder ablegen
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ansichten
+          path: docs/bilder/*.png
+          if-no-files-found: ignore
+
   sprache:
     name: Sprache — Messungen am laufenden Server
     runs-on: ubuntu-24.04

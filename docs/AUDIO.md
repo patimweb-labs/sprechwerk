@@ -14,18 +14,30 @@ Voraussetzungen da sind.
 
 ## Bauvoraussetzungen
 
-```bash
-# Fedora
-sudo dnf install alsa-lib-devel pkgconf-pkg-config cmake
-# Debian/Ubuntu
-sudo apt install libasound2-dev pkg-config cmake
+**Keine Entwicklungspakete nötig.** `crates/audio` steht im Arbeitsbereich und
+baut überall ohne `cmake` und ohne ALSA-Header:
 
-cargo build --manifest-path crates/audio/Cargo.toml
+* **Opus** wird zur **Laufzeit** geladen (`libloading`): `libopus.so.0` unter
+  Linux, `libopus.dylib` unter macOS, `opus.dll` unter Windows — aus dem System
+  oder neben der Anwendung. Fehlt sie, sagt der Client das, statt zu stürzen.
+* **Geräte unter Linux** über das laufende PipeWire/PulseAudio (`parec`/`pacat`
+  aus `pulseaudio-utils`). Wer lieber ALSA direkt will, baut mit
+  `--features cpal` und braucht dann `alsa-lib-devel` (Fedora) bzw.
+  `libasound2-dev` (Debian/Ubuntu) und `pkg-config`.
+* **Geräte unter Windows und macOS** über `cpal` (WASAPI bzw. CoreAudio) — dort
+  fest eingebunden, ohne Zusatzpakete.
+
+```bash
+# Laufzeit unter Linux (meist schon vorhanden)
+sudo dnf install opus pulseaudio-utils            # Fedora
+sudo apt install libopus0 pulseaudio-utils        # Debian/Ubuntu
+
+cargo test -p sprechwerk-audio
 ```
 
-`crates/audio` steht **nicht** im Arbeitsbereich (`crates/audio/Cargo.toml` hat
-eine eigene `[workspace]`), damit `cargo test --workspace` ohne Soundkarte
-durchläuft.
+Die Tests von `crates/audio` brauchen **keine** Soundkarte: Geräte und Codec
+stecken hinter Schnittstellen, und der echte Gerätepfad hat ein eigenes
+Werkzeug (`scripts/audio-ende-zu-ende.sh`, virtuelle Geräte).
 
 ## Kette
 
@@ -45,7 +57,7 @@ QUIC-Datagramm ──► Ordnung + Verlustausgleich (80 ms) ──► Opus-Decod
 | Bitrate | 32 kbit/s mono | Vorgabe; TeamSpeak nutzt je Kanalqualität 6–32 kbit/s |
 | Vorlauf | 60 ms (einstellbar 0–200) | ersetzt TeamSpecks `delay_ptt_msecs=300` |
 | Jitter-Puffer | 4 Rahmen = 80 ms (eine Paritätsgruppe) | ersetzt den 60-ms-Puffer: Verlustausgleich braucht eine Gruppe Aufschub |
-| Kopfaufschlag | 4 von 84 Byte = 4,8 % | Sprachkopf Version/Codec/Folge |
+| Kopfaufschlag | 6 von 86 Byte = 7,0 % | Sprachkopf Version/Codec/Folge/Sprecher |
 
 ## Rauschunterdrückung und Noisegate
 
@@ -183,14 +195,55 @@ Was der Pfad ausdrücklich **nicht** kann (bewusst, nicht vergessen):
    gleichen Rechner. Steht als nächster Schritt in `docs/QUALITAET.md`.
 4. **Keine Ende-zu-Ende-Verschlüsselung** (ADR 0002/0006) — offen.
 
-## Werkzeug: `scripts/sprechprobe.sh`
+## Werkzeug: `scripts/sprechprobe.sh` (Netz und Codec)
 
-Prüft den ganzen Weg ohne Mikrofon und ohne Kopfhörer: startet einen eigenen
-Server, lässt eine Probe einen Ton senden, eine zweite mitschneiden und eine
-dritte in einem anderen Raum sitzen. Geprüft werden Ankunft, Frequenz,
-Raumtreue, Rückkanal und Laufzeit. Rückgabewert 0 = bestanden.
+Prüft den Weg **ohne Gerät**: startet einen eigenen Server, lässt eine Probe
+einen Ton senden, eine zweite mitschneiden und eine dritte in einem anderen
+Raum sitzen. Geprüft werden Ankunft, Frequenz, Raumtreue, Rückkanal und
+Laufzeit. Rückgabewert 0 = bestanden.
 
 ```bash
 scripts/sprechprobe.sh            # eigener Port 17443
 scripts/sprechprobe.sh 18000      # anderer Port
 ```
+
+## Werkzeug: `scripts/audio-ende-zu-ende.sh` (der echte Pfad)
+
+Prüft den Weg **mit Geräten**, aber trotzdem auf einem Rechner, ohne Mikrofon
+und ohne weitere Personen. PipeWire bekommt vier virtuelle Geräte; dazwischen
+liegen zwei echte Endpunkte (`sprechprobe endpunkt`) und der echte Server:
+
+```text
+Ton (pacat) ──► sw_a_senke ──(remap)──► sw_a_mikrofon
+                                            │  Endpunkt A:
+                                            │  parec → RNNoise → Gate
+                                            │  → Opus → Vorlauf
+                                            ▼
+                                    Server (QUIC, Raum)
+                                            ▼
+                             sw_b_hoerer ◄── pacat ← Jitter-Puffer
+                                            │  ◄── Opus ← Endpunkt B
+                                  (parec mitschneiden)
+```
+
+Kein Teil ist nachgebaut: Aufnahme, Rauschunterdrückung, Noisegate, Opus,
+Paritätsrahmen, Server, Jitter-Puffer und Wiedergabe laufen wie im Fenster.
+Zwei Läufe:
+
+1. **Reiner Ton 440 Hz** (Entrauschung und Gate aus) — kommt er an, ist es
+   derselbe Ton (Goertzel gegen 220/880/1000 Hz), und war vorher Stille?
+2. **Stimmähnliches Signal** (120 Hz mit Oberwellen, 4 Hz-Hüllkurve, also
+   Silben) **mit** RNNoise und Gate — kommt Sprache durch die Entrauschung?
+
+```bash
+scripts/audio-ende-zu-ende.sh        # eigener Port 17444
+scripts/audio-ende-zu-ende.sh 18000  # anderer Port
+```
+
+Rückgabewert 0 = bestanden. Voraussetzung: PipeWire oder PulseAudio mit
+`pactl`, `parec`, `pacat` — also das, was für Ton ohnehin läuft.
+
+Was der Lauf **nicht** sagt: nichts über ein echtes Netz (kein Verlust, kein
+Jitter, keine MTU), nichts über Lautsprecher und Mikrofon (die Geräte sind
+virtuell) und nichts über das Ohr. Er sagt, dass die Kette als Ganzes Sprache
+überträgt und dabei weder verstummt noch den falschen Ton erzeugt.

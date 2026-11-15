@@ -64,6 +64,8 @@ cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo te
 npm --prefix ui run typecheck && npm --prefix ui run build
 ./scripts/latenz.sh                    # Latenz messen (p50/p95/p99)
 ./scripts/rundlauf.sh                  # Server + zwei Clienten von Hand
+./scripts/sprechprobe.sh               # Sprachpfad ohne Gerät (Netz, Codec)
+./scripts/audio-ende-zu-ende.sh        # Sprachpfad mit Gerät (virtuelle Geräte)
 
 npm --prefix ui run dev                # Frontend autark, Port 1423
 cargo run --manifest-path crates/desktop/Cargo.toml --features custom-protocol
@@ -143,7 +145,8 @@ Der Stil steht in `docs/marke/icons.md`; hier nur die Regeln, an die sich Code h
   Crate `crates/desktop` (eigene `[workspace]`, deshalb eigener Aufruf).
   Server: `crates/server` (`sprechwerk`), Referenzclient: `crates/cli`.
 - **Besonderheiten:**
-  * Sprache läuft als QUIC-Datagramm (4 Byte Kopf: Version, Codec, Folge),
+  * Sprache läuft als QUIC-Datagramm (6 Byte Kopf: Version, Codec, Folge,
+    Sprecher),
     Steuerung und Text als Strom — **nie** Dateien über die Sprachverbindung.
   * Der Raum steht **nicht** im Sprachkopf, sondern im Sitzungszustand des
     Servers. Damit ist Umleiten in fremde Räume unmöglich.
@@ -151,6 +154,7 @@ Der Stil steht in `docs/marke/icons.md`; hier nur die Regeln, an die sich Code h
     je Verbindung einen Beweis an. Gerätewechsel = Schlüsseldatei mitnehmen.
   * Zertifikat selbst signiert, Fingerabdruck beim ersten Verbinden bestätigen
     (TOFU) — `docs/adr/0002-verschluesselung.md`.
-  * Audio braucht Systempakete (`alsa-lib`, `cmake` für gebündeltes Opus), siehe
-    `docs/AUDIO.md`; das Merkmal `audio` ist deshalb nicht voreingestellt.
+  * Audio braucht **keine** Entwicklungspakete: Opus wird zur Laufzeit geladen,
+    Linux-Geräte laufen über PipeWire/PulseAudio; ALSA direkt nur mit
+    `--features cpal` (dann `alsa-lib-devel`). Siehe `docs/AUDIO.md`.
 - **Kontakt/Issues:** https://gitea.weppelmann.ddnss.de/patrickweppelmann/sprechwerk
