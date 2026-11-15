@@ -4,6 +4,7 @@
 //! Startablauf: Konfiguration lesen, Datenbank öffnen, Zustand laden,
 //! Sicherung planen, lauschen.
 
+mod gesundheit;
 mod kern;
 mod konfig;
 mod netz;
@@ -23,6 +24,7 @@ const HILFE: &str = r#"sprechwerk — Server
   sprechwerk export <datei>          Zustand als Text schreiben
   sprechwerk import <datei>          Zustand aus Text einspielen
   sprechwerk sicherung               Sofortsicherung anlegen
+  sprechwerk --gesundheit            Lebenszeichen prüfen (für den Healthcheck)
 
 Konfiguration über Datei und Umgebungsvariablen (SPRECHWERK_*), siehe `beispiel`.
 "#;
@@ -74,6 +76,31 @@ fn betrieb_import(quelle: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Prüft das Lebenszeichen (für `HEALTHCHECK` im Container).
+///
+/// **Warum nicht eine Testverbindung?** Der erste Client wird Administrator
+/// (SPEC §7) — ein Healthcheck, der sich verbindet, belegt diesen Platz mit
+/// einem Wegwerfschlüssel. Geprüft wird deshalb die Datei, die der Dienst
+/// selbst schreibt.
+fn betrieb_gesundheit() -> anyhow::Result<()> {
+    let konfig = konfig_laden()?;
+    let daten = &konfig.server.daten;
+    let jetzt = kern::jetzt_ms();
+    let stand = gesundheit::lese(daten);
+    if gesundheit::ist_frisch(stand, jetzt) {
+        println!(
+            "gesund (Lebenszeichen vor {} ms)",
+            jetzt - stand.unwrap_or(jetzt)
+        );
+        return Ok(());
+    }
+    anyhow::bail!(
+        "nicht gesund: kein frisches Lebenszeichen in {} (Grenze {} ms)",
+        daten.display(),
+        gesundheit::GRENZE_MS
+    )
+}
+
 fn betrieb_sicherung() -> anyhow::Result<()> {
     let konfig = konfig_laden()?;
     let state = zustand_laden(&konfig)?;
@@ -110,6 +137,7 @@ fn main() -> anyhow::Result<()> {
             return betrieb_import(&quelle);
         }
         Some("sicherung") => return betrieb_sicherung(),
+        Some("gesundheit") | Some("--gesundheit") => return betrieb_gesundheit(),
         Some("hilfe") | Some("--hilfe") | Some("-h") => {
             print!("{}", HILFE);
             return Ok(());
@@ -154,6 +182,24 @@ fn main() -> anyhow::Result<()> {
 
     laufzeit.block_on(async move {
         let kern = Arc::new(Mutex::new(kern::Kern::neu(konfig.clone())?));
+
+        // Lebenszeichen für den Container-Healthcheck (siehe `gesundheit.rs`).
+        // Sofort einmal schreiben: sonst gilt der Dienst in den ersten Sekunden
+        // als krank, und ein Neustart kurz nach dem Start sähe wie ein Ausfall
+        // aus.
+        {
+            let daten = konfig.server.daten.clone();
+            let _ = gesundheit::schreibe(&daten, kern::jetzt_ms());
+            tokio::spawn(async move {
+                let mut takt = tokio::time::interval(gesundheit::TAKT);
+                loop {
+                    takt.tick().await;
+                    if let Err(fehler) = gesundheit::schreibe(&daten, kern::jetzt_ms()) {
+                        tracing::warn!(fehler = %fehler, "Lebenszeichen nicht schreibbar");
+                    }
+                }
+            });
+        }
 
         // Sicherung nach Zeitplan (**Festlegung SPEC §2**).
         if konfig.sicherung.aktiv {

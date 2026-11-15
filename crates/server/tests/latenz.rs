@@ -12,7 +12,7 @@
 //! mehr als der reine Serverdurchlauf, und damit die ehrlichere Zahl.
 
 use sprechwerk_adapters::{Schluessel, Verbindung};
-use sprechwerk_protocol::{ClientFrame, ServerFrame, Sprachkopf};
+use sprechwerk_protocol::{ClientFrame, ServerFrame, Sprachkopf, SPRACHKOPF_LEN};
 use std::net::SocketAddr;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -137,7 +137,9 @@ async fn sprachlatenz_durch_den_server() {
             .expect("Rahmen kommt an")
             .expect("kein Fehler");
         let dauer = start.elapsed().as_micros();
-        assert_eq!(empfangen.len(), 4 + 80);
+        // Kopfgröße aus dem Vertrag: sie ist schon einmal gewachsen
+        // (Sprecher kam dazu), und dieser Test soll das mitgehen.
+        assert_eq!(empfangen.len(), SPRACHKOPF_LEN + 80);
         zeiten.push(dauer);
     }
 
