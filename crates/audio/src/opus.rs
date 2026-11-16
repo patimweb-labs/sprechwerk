@@ -91,13 +91,56 @@ fn bibliothek() -> Result<&'static Bibliothek> {
     }
 }
 
+/// Wo Opus gesucht wird: erst **neben dem Programm**, dann über den Namen.
+///
+/// Der bloße Name reicht nicht überall:
+/// * **macOS** sucht `dlopen("libopus.0.dylib")` weder im App-Bundle
+///   (`Sprechwerk.app/Contents/Frameworks`, wohin das Paket Opus legt) noch
+///   unter Homebrew auf Apple Silicon (`/opt/homebrew/lib`).
+/// * **Windows** fände `opus.dll` neben der `.exe` zwar auch über den Namen —
+///   der volle Pfad schließt aber aus, dass eine fremde `opus.dll` aus dem
+///   aktuellen Verzeichnis zuerst geladen wird.
+///
+/// Rein (keine Dateisystemzugriffe), damit die Reihenfolge prüfbar ist.
+fn kandidaten(programm_ordner: Option<&std::path::Path>) -> Vec<std::ffi::OsString> {
+    let mut liste = Vec::new();
+    if let Some(ordner) = programm_ordner {
+        for name in ["opus.dll", "libopus.0.dylib", "libopus.so.0"] {
+            liste.push(ordner.join(name).into_os_string());
+        }
+        // macOS-App: Contents/MacOS/<programm> → Contents/Frameworks/
+        liste.push(
+            ordner
+                .join("../Frameworks/libopus.0.dylib")
+                .into_os_string(),
+        );
+    }
+    liste.extend(NAMEN.iter().map(std::ffi::OsString::from));
+    // Homebrew: Apple Silicon und Intel.
+    for pfad in [
+        "/opt/homebrew/lib/libopus.0.dylib",
+        "/usr/local/lib/libopus.0.dylib",
+    ] {
+        liste.push(pfad.into());
+    }
+    liste
+}
+
 fn laden() -> Result<Bibliothek> {
     let mut letzter = String::new();
-    for name in NAMEN {
+    let programm = std::env::current_exe().ok();
+    let ordner = programm.as_deref().and_then(std::path::Path::parent);
+    for name in kandidaten(ordner) {
+        // Nicht vorhandene Pfade gar nicht erst versuchen: sonst nennt die
+        // Fehlermeldung am Ende einen Pfad, den es nie gab, statt des Namens.
+        if std::path::Path::new(&name).is_absolute() && !std::path::Path::new(&name).exists() {
+            continue;
+        }
+        let name = name.as_os_str();
         // Sicherheitsanforderung: `Library::new` ist unsicher, weil beliebiger
-        // Code im Prozess landen kann. Hier werden nur feste Namen aus dem
-        // Programm geladen — keine Eingabe von außen.
-        match unsafe { libloading::Library::new(*name) } {
+        // Code im Prozess landen kann. Hier werden nur feste Namen und Pfade
+        // neben dem eigenen Programm geladen — keine Eingabe von außen.
+        match unsafe { libloading::Library::new(name) } {
             Ok(griff) => {
                 // Sicherheitsanforderung: Die Signaturen unten sind die der
                 // veröffentlichten Opus-API (`opus.h`), unverändert.
@@ -121,7 +164,7 @@ fn laden() -> Result<Bibliothek> {
                     });
                 }
             }
-            Err(fehler) => letzter = format!("{name}: {fehler}"),
+            Err(fehler) => letzter = format!("{}: {fehler}", name.to_string_lossy()),
         }
     }
     Err(anyhow!(
@@ -290,6 +333,36 @@ impl Drop for Dekodierer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opus_neben_dem_programm_kommt_vor_dem_systemweiten() {
+        let ordner = std::path::Path::new("/Programme/Sprechwerk.app/Contents/MacOS");
+        let liste = kandidaten(Some(ordner));
+        let stelle = |gesucht: &str| {
+            liste
+                .iter()
+                .position(|k| k.to_string_lossy() == gesucht)
+                .unwrap_or_else(|| panic!("{gesucht} fehlt in {liste:?}"))
+        };
+        // Im App-Bundle (macOS) und neben der .exe (Windows) …
+        let bundle =
+            stelle("/Programme/Sprechwerk.app/Contents/MacOS/../Frameworks/libopus.0.dylib");
+        let neben = stelle("/Programme/Sprechwerk.app/Contents/MacOS/opus.dll");
+        // … vor dem bloßen Namen, den das System auflöst.
+        let name = stelle("libopus.so.0");
+        assert!(bundle < name && neben < name);
+        // Homebrew auf Apple Silicon kennt dlopen nicht von selbst.
+        stelle("/opt/homebrew/lib/libopus.0.dylib");
+    }
+
+    #[test]
+    fn ohne_programmpfad_bleiben_die_namen() {
+        let liste = kandidaten(None);
+        assert_eq!(
+            liste.first().map(|k| k.to_string_lossy().into_owned()),
+            Some("libopus.so.0".into())
+        );
+    }
 
     fn sinus(anzahl: usize, hz: f32, amplitude: f32) -> Vec<i16> {
         (0..anzahl)
