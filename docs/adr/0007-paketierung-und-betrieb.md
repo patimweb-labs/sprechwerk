@@ -40,6 +40,27 @@ entscheidet.
 | Umzug auf andere Maschine | Volume kopieren **oder** Export/Import — beides getestet |
 | Aufräumen | `aufbewahrung_tage` für Text, Sicherungsrotation, keine verwaisten Räume |
 
+## Umgesetzt (2026-11-16): Releases
+
+`.github/workflows/release.yml` mit release-please (AGENTS.md §6). Ein Merge
+des Release-PRs erzeugt Tag, Änderungsliste und hängt an das GitHub-Release:
+
+| Teil | Form | Gebaut auf |
+|---|---|---|
+| Fenster | `.deb`, `.rpm`, AppImage (x86_64) | `ubuntu-24.04`, `npm --prefix ui run pakete` |
+| Server + CLI | `.tar.gz` je x86_64 und aarch64 | eigener Läufer je Architektur |
+| Container | `ghcr.io/patimweb-labs/sprechwerk`, amd64 + arm64 | eigener Läufer je Architektur, kein QEMU |
+| Prüfsummen | `SHA256SUMS` | — |
+
+Offen aus der Tabelle oben: **Flatpak, Windows, macOS** — dort ist noch kein
+Bau gelaufen, also wird auch nichts ausgeliefert. `.deb`/`.rpm` nennen Opus und
+`parec`/`pacat` als Abhängigkeit (`bundle.linux` in `tauri.conf.json`); das
+AppImage kann das nicht und setzt beides voraus.
+
+`scripts/versionen.py` (in `pruefen.sh` und der CI) prüft vorher, dass
+release-please jede Version anheben kann, ohne dass `cargo build --locked`
+danach scheitert.
+
 ## Kosten
 
 * Vier Paketformate = vier Baustellen; Flatpak und macOS sind die teuersten.

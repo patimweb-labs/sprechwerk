@@ -150,12 +150,44 @@ Bildschirmfreigabe, Emojis/Reaktionen, Suche. Was als Nächstes kommt, steht in
 Zwei Teile: der **Server** (einmal, beim Betreiber) und das **Fenster** (bei
 jedem, der mitredet).
 
+### Fertige Pakete
+
+Jedes [Release](https://github.com/patimweb-labs/sprechwerk/releases) bringt mit:
+
+| Datei | Für |
+|---|---|
+| `Sprechwerk_<version>_amd64.deb` | Fenster — Debian, Ubuntu (ab 24.04) |
+| `Sprechwerk-<version>-1.x86_64.rpm` | Fenster — Fedora, openSUSE |
+| `Sprechwerk_<version>_amd64.AppImage` | Fenster — jedes andere Linux, ohne Installation |
+| `sprechwerk-server-<version>-linux-x86_64.tar.gz` | Server + `sprechwerk-cli`, PC/Server |
+| `sprechwerk-server-<version>-linux-aarch64.tar.gz` | dasselbe für ARM (Raspberry Pi 4/5, 64 Bit) |
+| `SHA256SUMS` | Prüfsummen aller Dateien (`sha256sum -c SHA256SUMS`) |
+
+Dazu das Container-Abbild für `amd64` und `arm64`:
+
+```bash
+docker run -d --name sprechwerk -p 7443:7443/udp -v sprechwerk-daten:/data \
+  ghcr.io/patimweb-labs/sprechwerk:latest
+```
+
+`.deb` und `.rpm` ziehen Opus und `parec`/`pacat` als Abhängigkeit nach; beim
+AppImage müssen beide vorhanden sein (auf fast jedem Linux-Schreibtisch sind
+sie es). Die Server-Programme brauchen glibc 2.39 oder neuer (Debian 13,
+Ubuntu 24.04, aktuelle Fedora) — für ältere Systeme den Container nehmen.
+Windows- und macOS-Pakete gibt es noch nicht (siehe [Fenster](#fenster)).
+
 ### Server im Container (der übliche Weg)
 
 ```bash
 docker compose up -d --build
 docker compose logs -f          # zeigt den Zertifikat-Fingerabdruck
 ```
+
+Ohne eigenen Bau: in `docker-compose.yml` die Zeile `build: .` streichen und
+`image: ghcr.io/patimweb-labs/sprechwerk:0.1` eintragen. Fest auf eine
+Minor-Version statt `latest`: vor 1.0 kommt ein Bruch als neue Minor-Version,
+und ein Update migriert die Daten ohne Rückweg (SPEC §2) — das soll ein
+bewusster Schritt sein.
 
 Ein Volume (`/data`), ein Port (`7443/udp`), sonst nichts — Einstellungen in
 `docker-compose.yml` oder als Umgebungsvariablen (siehe [Betrieb](#betrieb)).
@@ -195,10 +227,12 @@ cargo build --release --manifest-path crates/desktop/Cargo.toml --features custo
 ```
 
 `--features custom-protocol` bettet die Oberfläche ein; ohne das Merkmal lädt
-das Fenster die Entwicklungsadresse (Port 1423). Pakete (`.deb`, `.rpm`,
-AppImage) sind in `crates/desktop/tauri.conf.json` eingerichtet und entstehen
-mit der Tauri-CLI (`cargo install tauri-cli --version '^2'`, dann
-`cargo tauri build` in `crates/desktop`).
+das Fenster die Entwicklungsadresse (Port 1423).
+
+Pakete wie im Release (`.deb`, `.rpm`, AppImage) baut `npm --prefix ui run
+pakete` — die Tauri-CLI kommt dabei aus `ui/node_modules`, festgelegt auf eine
+Version; nichts weiter zu installieren. Ergebnis unter
+`crates/desktop/target/release/bundle/`.
 
 **Linux — Fedora** (so geprüft):
 
@@ -359,6 +393,11 @@ für Werkzeuge. Das Wichtigste in Kürze:
   kein `px` in den Stilen steht.
 * **Tests sind Teil der Lieferung** — ein Fix ohne Test ist ein Fix auf Probe.
 * **Immer über Branch und Pull Request**, Conventional Commits.
+* **Releases macht niemand von Hand.** Nach jedem Merge auf `master` hält
+  release-please einen PR „chore: Release x.y.z" aktuell (Versionen,
+  `CHANGELOG.md`). Wer ihn mergt, löst das Release aus: Tag, Pakete, Abbild,
+  Prüfsummen (`.github/workflows/release.yml`). Ging ein Bau schief: „Run
+  workflow" mit dem Tag baut die Dateien neu.
 
 ## Aufbau
 
