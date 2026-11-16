@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "de.weppelmann.Sprechwerk",
   "build": {
-    "beforeDevCommand": "npm --prefix ../../ui run dev",
+    "beforeDevCommand": "npm --prefix ../ui run dev",
     "devUrl": "http://localhost:1423",
-    "beforeBuildCommand": "npm --prefix ../../ui run build",
+    "beforeBuildCommand": "npm --prefix ../ui run build",
     "frontendDist": "../../ui/dist"
   },
   "app": {
@@ -39,6 +39,27 @@
       "icons/icon-512.png",
       "icons/icon.ico",
       "icons/icon.icns"
-    ]
+    ],
+    "publisher": "Patrick Weppelmann",
+    "copyright": "Copyright (C) 2026 Patrick Weppelmann",
+    "license": "MIT",
+    "homepage": "https://github.com/patimweb-labs/sprechwerk",
+    "category": "SocialNetworking",
+    "shortDescription": "Sprach- und Texträume für Vereine",
+    "longDescription": "Selbst gehostete Sprach- und Texträume für Vereine: ein Server, ein UDP-Port, Schlüsseldateien statt Konten.",
+    "linux": {
+      "deb": {
+        "depends": [
+          "libopus0",
+          "pulseaudio-utils"
+        ]
+      },
+      "rpm": {
+        "depends": [
+          "libopus.so.0()(64bit)",
+          "/usr/bin/parec"
+        ]
+      }
+    }
   }
 }

@@ -1,0 +1,322 @@
+# Release: Version, Änderungsliste, Pakete, Container-Abbild.
+#
+# Ablauf (AGENTS.md §6, release-please):
+#   1. Jeder Push auf `master` lässt release-please die Conventional Commits seit
+#      dem letzten Release lesen. Gibt es etwas Auslieferbares (`feat`, `fix`, …),
+#      öffnet oder aktualisiert es einen PR „chore: Release x.y.z": Version in
+#      allen Manifesten angehoben, `CHANGELOG.md` fortgeschrieben.
+#   2. Wird **dieser** PR gemergt, legt release-please Tag und GitHub-Release an.
+#   3. Im selben Lauf entstehen danach die Dateien und hängen sich ans Release:
+#        * Server + Referenzclient, Linux x86_64 und aarch64 (`.tar.gz`)
+#        * Fenster, Linux x86_64 (`.deb`, `.rpm`, AppImage)
+#        * Container-Abbild `ghcr.io/<repo>`, amd64 + arm64
+#        * `SHA256SUMS` über alle Dateien
+#
+# Warum alles in **einer** Datei: Ein Release, das mit dem `GITHUB_TOKEN`
+# angelegt wird, löst keine weiteren Workflows aus (GitHub verhindert so
+# Endlosschleifen). Ein getrennter Workflow „on: release" liefe nie.
+#
+# Aus demselben Grund läuft `pruefen.yml` nicht auf dem Release-PR. Der PR
+# ändert nur Versionsnummern und die Änderungsliste; dass Cargo die
+# angehobenen Sperrdateien annimmt, prüft hier jeder Bau mit `--locked`.
+#
+# Ein Bau ist schiefgegangen? „Run workflow" mit dem Tag (z. B. `v0.1.0`) baut
+# die Dateien für ein bestehendes Release neu und ersetzt sie.
+#
+# Windows und macOS fehlen bewusst: dort ist der Bau noch nie gelaufen
+# (README, „Fenster"). Erst prüfen, dann ausliefern.
+
+name: release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Bestehendes Release neu bauen (z. B. v0.1.0)"
+        required: true
+
+# Zwei Releases gleichzeitig würden sich gegenseitig die Dateien überschreiben.
+# Nicht abbrechen: ein halb hochgeladenes Release ist schlimmer als ein spätes.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+  ABBILD: ghcr.io/${{ github.repository }}
+
+jobs:
+  release-please:
+    name: Version und Änderungsliste
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      erstellt: ${{ steps.rp.outputs.release_created }}
+      tag: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - id: rp
+        uses: googleapis/release-please-action@v5
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # Ein Ziel für alle Baujobs, egal ob frisch erstellt oder von Hand nachgebaut.
+  #
+  # `!cancelled()` hier und in allen Jobs danach: beim Handstart ist
+  # release-please übersprungen — und GitHub überspringt sonst jeden Job, der
+  # (auch über Umwege) davon abhängt.
+  ziel:
+    name: Was gebaut wird
+    needs: release-please
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.t.outputs.tag }}
+      version: ${{ steps.t.outputs.version }}
+    steps:
+      - id: t
+        env:
+          HAND: ${{ inputs.tag }}
+          ERSTELLT: ${{ needs.release-please.outputs.erstellt }}
+          NEU: ${{ needs.release-please.outputs.tag }}
+        run: |
+          tag=""
+          if [ -n "$HAND" ]; then
+            tag="$HAND"
+          elif [ "$ERSTELLT" = "true" ]; then
+            tag="$NEU"
+          fi
+          if [ -n "$tag" ] && ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag „$tag“ hat nicht die Form vX.Y.Z"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          if [ -z "$tag" ]; then
+            echo "Kein neues Release — nur der Release-PR wurde fortgeschrieben."
+          fi
+
+  server:
+    name: Server ${{ matrix.arch }}
+    needs: ziel
+    if: ${{ !cancelled() && needs.ziel.outputs.tag != '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, arch: x86_64 }
+          - { os: ubuntu-24.04-arm, arch: aarch64 }
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.ziel.outputs.tag }}
+
+      # Die Version selbst steht in `rust-toolchain.toml`; rustup nimmt sie dort.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Bauen
+        run: cargo build --release --locked -p sprechwerk-server -p sprechwerk-cli
+
+      - name: Packen
+        id: pack
+        env:
+          VERSION: ${{ needs.ziel.outputs.version }}
+        run: |
+          name="sprechwerk-server-${VERSION}-linux-${{ matrix.arch }}"
+          mkdir -p "aus/$name"
+          cp target/release/sprechwerk target/release/sprechwerk-cli \
+             README.md LICENSE "aus/$name/"
+          tar -C aus -czf "$name.tar.gz" "$name"
+          echo "datei=$name.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Ans Release hängen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ needs.ziel.outputs.tag }}" "${{ steps.pack.outputs.datei }}" --clobber
+
+  fenster:
+    name: Fenster Linux x86_64
+    needs: ziel
+    if: ${{ !cancelled() && needs.ziel.outputs.tag != '' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.ziel.outputs.tag }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      # Dieselben Bibliotheken wie in `pruefen.yml`; `file` braucht der
+      # AppImage-Bau.
+      - name: Systembibliotheken für Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev librsvg2-dev patchelf \
+            build-essential pkg-config file
+
+      # Wie in `pruefen.yml`: `ui/` hängt über `file:../../weppelmann-ui` an der
+      # Komponentenbibliothek neben diesem Repository.
+      - name: Komponentenbibliothek holen
+        env:
+          TOKEN: ${{ secrets.WEPPELMANN_UI_TOKEN }}
+        run: |
+          ziel="${{ github.workspace }}/../weppelmann-ui"
+          url="https://github.com/Smotherer007/weppelmann-ui.git"
+          if [ -n "$TOKEN" ]; then
+            url="https://x-access-token:${TOKEN}@github.com/Smotherer007/weppelmann-ui.git"
+          fi
+          git clone --depth 1 "$url" "$ziel"
+          cd "$ziel" && npm ci --no-audit --no-fund && npm run -s tokens
+
+      - name: Abhängigkeiten der Oberfläche
+        run: cd ui && npm ci --no-audit --no-fund
+
+      # `pakete` ruft `tauri build` in `crates/desktop` auf: baut die Oberfläche,
+      # das Programm (mit eingebetteter Oberfläche) und alle drei Pakete.
+      # `APPIMAGE_EXTRACT_AND_RUN`: linuxdeploy ist selbst ein AppImage und
+      # bräuchte sonst FUSE, das der Läufer nicht hat.
+      - name: Pakete bauen
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: npm --prefix ui run pakete
+
+      - name: Ans Release hängen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          b=crates/desktop/target/release/bundle
+          gh release upload "${{ needs.ziel.outputs.tag }}" \
+            $b/deb/*.deb $b/rpm/*.rpm $b/appimage/*.AppImage --clobber
+
+  # Je Architektur auf einem eigenen Läufer gebaut, nicht über QEMU: Rust unter
+  # Emulation braucht eine Stunde statt Minuten.
+  abbild:
+    name: Container ${{ matrix.plattform }}
+    needs: ziel
+    if: ${{ !cancelled() && needs.ziel.outputs.tag != '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, plattform: linux/amd64, kurz: amd64 }
+          - { os: ubuntu-24.04-arm, plattform: linux/arm64, kurz: arm64 }
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.ziel.outputs.tag }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.ABBILD }}
+          labels: |
+            org.opencontainers.image.title=sprechwerk
+            org.opencontainers.image.description=Sprach- und Texträume für Vereine
+            org.opencontainers.image.version=${{ needs.ziel.outputs.version }}
+
+      # Nur nach Prüfsumme hochladen; die Namen (`0.1.0`, `latest`) bekommt erst
+      # das gemeinsame Verzeichnis beider Architekturen im nächsten Job.
+      - id: bau
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.plattform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.ABBILD }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Prüfsumme merken
+        run: |
+          mkdir -p digests
+          echo "${{ steps.bau.outputs.digest }}" > "digests/${{ matrix.kurz }}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digest-${{ matrix.kurz }}
+          path: digests/*
+          retention-days: 1
+
+  abbild-namen:
+    name: Container benennen
+    needs: [ziel, abbild]
+    if: ${{ !cancelled() && needs.abbild.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digest-*
+          merge-multiple: true
+          path: digests
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # `0.1.0`, `0.1` und `latest`. Vor 1.0 kommt ein Bruch als neue
+      # Minor-Version (`bump-minor-pre-major`) — deshalb kein Name `0`.
+      - name: Ein Name, zwei Architekturen
+        env:
+          VERSION: ${{ needs.ziel.outputs.version }}
+        run: |
+          quellen=""
+          for d in digests/*; do quellen="$quellen ${ABBILD}@$(cat "$d")"; done
+          docker buildx imagetools create \
+            -t "${ABBILD}:${VERSION}" \
+            -t "${ABBILD}:${VERSION%.*}" \
+            -t "${ABBILD}:latest" \
+            $quellen
+          docker buildx imagetools inspect "${ABBILD}:${VERSION}"
+
+  pruefsummen:
+    name: Prüfsummen
+    needs: [ziel, server, fenster]
+    if: ${{ !cancelled() && needs.server.result == 'success' && needs.fenster.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.ziel.outputs.tag }}
+        run: |
+          mkdir aus && cd aus
+          gh release download "$TAG" -R "${{ github.repository }}" \
+            -p '*.tar.gz' -p '*.deb' -p '*.rpm' -p '*.AppImage'
+          sha256sum * | tee SHA256SUMS
+          gh release upload "$TAG" SHA256SUMS -R "${{ github.repository }}" --clobber
