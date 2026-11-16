@@ -55,6 +55,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libopus0
 
+      # Kann release-please die Version überall anheben, ohne dass `--locked`
+      # danach scheitert? (Sonst fällt es erst mitten im Release auf.)
+      - name: Versionen und Release-Konfiguration
+        run: python3 scripts/versionen.py
+
       - uses: Swatinem/rust-cache@v2
 
       - name: Form

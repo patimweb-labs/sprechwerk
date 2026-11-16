@@ -1,0 +1,99 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-component-in-tag": false,
+  "include-v-in-tag": true,
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": false,
+  "pull-request-title-pattern": "chore: Release ${version}",
+  "pull-request-header": "Wenn dieser PR gemergt wird, entsteht das Release ${version} mit allen Paketen und dem Container-Abbild.",
+  "changelog-sections": [
+    {
+      "type": "feat",
+      "section": "Neu"
+    },
+    {
+      "type": "fix",
+      "section": "Behoben"
+    },
+    {
+      "type": "perf",
+      "section": "Schneller"
+    },
+    {
+      "type": "refactor",
+      "section": "Umgebaut"
+    },
+    {
+      "type": "docs",
+      "section": "Dokumentation"
+    },
+    {
+      "type": "build",
+      "section": "Bau und Pakete"
+    },
+    {
+      "type": "ci",
+      "section": "CI",
+      "hidden": true
+    },
+    {
+      "type": "test",
+      "section": "Tests",
+      "hidden": true
+    },
+    {
+      "type": "chore",
+      "section": "Sonstiges",
+      "hidden": true
+    }
+  ],
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "sprechwerk",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value == 'sprechwerk-domain' || @.name.value == 'sprechwerk-protocol' || @.name.value == 'sprechwerk-store' || @.name.value == 'sprechwerk-adapters' || @.name.value == 'sprechwerk-ipc' || @.name.value == 'sprechwerk-server' || @.name.value == 'sprechwerk-cli' || @.name.value == 'sprechwerk-audio')].version"
+        },
+        {
+          "type": "toml",
+          "path": "crates/desktop/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "crates/desktop/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value == 'sprechwerk-domain' || @.name.value == 'sprechwerk-protocol' || @.name.value == 'sprechwerk-adapters' || @.name.value == 'sprechwerk-ipc' || @.name.value == 'sprechwerk-audio' || @.name.value == 'sprechwerk-desktop')].version"
+        },
+        {
+          "type": "json",
+          "path": "crates/desktop/tauri.conf.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "ui/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "ui/package-lock.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "ui/package-lock.json",
+          "jsonpath": "$.packages[''].version"
+        }
+      ]
+    }
+  }
+}

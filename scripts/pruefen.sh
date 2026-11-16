@@ -43,6 +43,11 @@ berichte() {
   fi
 }
 
+echo "== Versionen und Release-Konfiguration"
+python3 scripts/versionen.py >/tmp/sprechwerk-pruefung-versionen.log 2>&1
+berichte "scripts/versionen.py" "$?"
+
+echo
 echo "== Arbeitsbereich: Form, Werkzeuge, Tests"
 cargo fmt --all --check >/dev/null 2>&1
 berichte "cargo fmt --check" "$?"
