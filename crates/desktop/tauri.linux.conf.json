@@ -1,0 +1,23 @@
+{
+  "bundle": {
+    "targets": [
+      "deb",
+      "rpm",
+      "appimage"
+    ],
+    "linux": {
+      "deb": {
+        "depends": [
+          "libopus0",
+          "pulseaudio-utils"
+        ]
+      },
+      "rpm": {
+        "depends": [
+          "libopus.so.0()(64bit)",
+          "/usr/bin/parec"
+        ]
+      }
+    }
+  }
+}

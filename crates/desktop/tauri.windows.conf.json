@@ -1,0 +1,23 @@
+{
+  "bundle": {
+    "targets": [
+      "nsis",
+      "msi"
+    ],
+    "resources": {
+      "opus/opus.dll": "opus.dll"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "German",
+          "English"
+        ]
+      }
+    }
+  }
+}

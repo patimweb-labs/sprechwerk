@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MIT -->
+<component type="desktop-application">
+  <id>de.weppelmann.Sprechwerk</id>
+  <name>Sprechwerk</name>
+  <summary>Sprach- und Texträume für Vereine</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="de.weppelmann">
+    <name>Patrick Weppelmann</name>
+  </developer>
+  <description>
+    <p>
+      Sprechwerk verbindet mit einem selbst gehosteten Server für Sprach- und
+      Texträume — gedacht für Vereine, die heute TeamSpeak oder Discord benutzen.
+    </p>
+    <ul>
+      <li>Keine Konten: die Kennung ist eine Schlüsseldatei</li>
+      <li>Sprache Ende-zu-Ende verschlüsselt je Raum</li>
+      <li>Ein Server, ein UDP-Port, ein Container</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">de.weppelmann.Sprechwerk.desktop</launchable>
+  <url type="homepage">https://github.com/patimweb-labs/sprechwerk</url>
+  <url type="bugtracker">https://github.com/patimweb-labs/sprechwerk/issues</url>
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-chat">intense</content_attribute>
+    <content_attribute id="social-audio">intense</content_attribute>
+  </content_rating>
+  <requires>
+    <internet>always</internet>
+  </requires>
+  <recommends>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </recommends>
+  <!-- Keine <releases>: Versionen und Änderungen stehen im GitHub-Release
+       (release-please). Eine zweite, von Hand gepflegte Liste hier wäre
+       nach dem ersten Release veraltet. -->
+</component>

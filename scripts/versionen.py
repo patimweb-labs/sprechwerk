@@ -91,6 +91,18 @@ for schluessel in ("beforeDevCommand", "beforeBuildCommand"):
     if treffer and not (WURZEL / "crates" / treffer.group(1) / "package.json").is_file():
         befunde.append(f"tauri.conf.json {schluessel}: `{treffer.group(1)}` zeigt nicht auf ui/")
 
+# 5. Eine Kennung für das Fenster: Tauri (Wayland-App-ID), Flatpak, Metainfo.
+#    Weichen sie ab, findet der Schreibtisch Symbol und Starter nicht.
+kennung = tauri["identifier"]
+flatpak = (WURZEL / "crates/desktop/packaging/flatpak" / f"{kennung}.yml")
+if not flatpak.is_file():
+    befunde.append(f"Flatpak-Manifest {flatpak.relative_to(WURZEL)} fehlt (heißt nach der Kennung)")
+elif not re.search(rf"^id: {re.escape(kennung)}$", flatpak.read_text(encoding="utf-8"), re.M):
+    befunde.append(f"{flatpak.relative_to(WURZEL)}: `id` ist nicht {kennung}")
+metainfo = flatpak.with_name(f"{kennung}.metainfo.xml")
+if metainfo.is_file() and f"<id>{kennung}</id>" not in metainfo.read_text(encoding="utf-8"):
+    befunde.append(f"{metainfo.relative_to(WURZEL)}: <id> ist nicht {kennung}")
+
 if befunde:
     print("Versionen und Release-Konfiguration:")
     for b in befunde:

@@ -216,3 +216,14 @@ jobs:
           name: sprachproben
           path: /tmp/sprachproben/*.log
           if-no-files-found: ignore
+
+  # Das Fenster auf allen Systemen bauen — Linux-Pakete, Flatpak, Windows,
+  # macOS (`pakete.yml`). Auf Windows und macOS zusätzlich Clippy: dort sind
+  # andere Teile übersetzt (cpal statt PipeWire), die unter Linux nie ein
+  # Compiler sieht. Die Pakete hängen als Artefakte am Lauf.
+  pakete:
+    name: Pakete
+    uses: ./.github/workflows/pakete.yml
+    with:
+      pruefen: true
+    secrets: inherit
