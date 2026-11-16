@@ -215,6 +215,37 @@ mod mit_cpal {
         bytes
     }
 
+    /// Alle Ein- und Ausgabegeräte des Standard-Hosts, Vorgabe markiert.
+    pub(super) fn geraete() -> Result<super::Systemgeraete, String> {
+        let host = cpal::default_host();
+        let vorgabe_ein = host.default_input_device().and_then(|d| d.name().ok());
+        let vorgabe_aus = host.default_output_device().and_then(|d| d.name().ok());
+        let liste = |geraete: Box<dyn Iterator<Item = cpal::Device>>, vorgabe: &Option<String>| {
+            let mut namen: Vec<super::Systemgeraet> = Vec::new();
+            for name in geraete.filter_map(|d| d.name().ok()) {
+                // Manche Hosts nennen dasselbe Gerät zweimal (je Format).
+                if namen.iter().any(|g| g.name == name) {
+                    continue;
+                }
+                namen.push(super::Systemgeraet {
+                    vorgabe: vorgabe.as_deref() == Some(name.as_str()),
+                    name,
+                });
+            }
+            namen
+        };
+        Ok(super::Systemgeraete {
+            mikrofon: liste(
+                Box::new(host.input_devices().map_err(|e| e.to_string())?),
+                &vorgabe_ein,
+            ),
+            lautsprecher: liste(
+                Box::new(host.output_devices().map_err(|e| e.to_string())?),
+                &vorgabe_aus,
+            ),
+        })
+    }
+
     /// Aufnahme über cpal (WASAPI / CoreAudio / ALSA).
     pub struct CpalAufnahme {
         /// Der Strom muss leben, solange aufgenommen wird.
@@ -401,8 +432,10 @@ mod mit_cpal {
     impl Wiedergabe for CpalWiedergabe {
         fn schreibe(&mut self, daten: &[u8]) -> std::io::Result<()> {
             let werte: Vec<i16> = daten
-                .chunks_exact(2)
-                .map(|p| i16::from_le_bytes([p[0], p[1]]))
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|p| i16::from_le_bytes(*p))
                 .collect();
             let _ = &self.rest;
             self.senden
@@ -418,6 +451,39 @@ mod mit_cpal {
 
 #[cfg(any(feature = "cpal", not(target_os = "linux")))]
 pub use mit_cpal::{CpalAufnahme, CpalWiedergabe};
+
+// ------------------------------------------------------------- Geräteliste
+
+/// Ein Gerät, wie das System es nennt — der Name ist zugleich die Kennung, die
+/// [`aufnahme_oeffnen`]/[`wiedergabe_oeffnen`] wieder annehmen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Systemgeraet {
+    pub name: String,
+    pub vorgabe: bool,
+}
+
+/// Mikrofone und Lautsprecher.
+#[derive(Debug, Clone, Default)]
+pub struct Systemgeraete {
+    pub mikrofon: Vec<Systemgeraet>,
+    pub lautsprecher: Vec<Systemgeraet>,
+}
+
+/// Die Geräte über cpal (WASAPI, CoreAudio, ALSA mit `--features cpal`).
+///
+/// `None` heißt: in **diesem Bau** gibt es keine solche Liste (Linux ohne
+/// `cpal`; dort liefert `pactl` die Geräte). Die Fensteranwendung fragt so,
+/// statt selbst nach dem Betriebssystem zu unterscheiden (AGENTS.md §2.10).
+pub fn systemgeraete() -> Option<Result<Systemgeraete, String>> {
+    #[cfg(any(feature = "cpal", not(target_os = "linux")))]
+    {
+        Some(mit_cpal::geraete())
+    }
+    #[cfg(not(any(feature = "cpal", not(target_os = "linux"))))]
+    {
+        None
+    }
+}
 
 // -------------------------------------------------------- Auswahl mit Rückfall
 

@@ -12,6 +12,11 @@
 //!
 //! Der eigentliche Sprachpfad kommt später über `crates/audio` (Opus); dieses
 //! Modul ist ausdrücklich nur Auswahl und Prüfung.
+//!
+//! **Ohne diese Werkzeuge** (Windows, macOS) kommen Liste, Pegel und Prüfton
+//! über die Geräteschicht von `crates/audio` (cpal: WASAPI, CoreAudio) — also
+//! über denselben Weg, den dort auch die Sprache nimmt. Unterschieden wird
+//! danach, **was da ist**, nicht nach dem Betriebssystem (AGENTS.md §2.10).
 
 use serde::Serialize;
 use std::io::Read;
@@ -40,7 +45,7 @@ pub struct Geraeteliste {
 #[derive(Debug, thiserror::Error)]
 pub enum Fehler {
     #[error(
-        "Audio-Werkzeuge fehlen (pactl/parec/paplay) — ist PipeWire oder PulseAudio installiert?"
+        "Kein Tonweg: weder PipeWire/PulseAudio (pactl/parec/paplay) noch eine Geräteschicht des Systems"
     )]
     Werkzeug,
     #[error("Gerät nicht gefunden: {0}")]
@@ -49,14 +54,44 @@ pub enum Fehler {
     Messung(String),
 }
 
-/// Sind die Werkzeuge vorhanden?
+/// Ist das Werkzeug im `PATH`?
+///
+/// Selbst gesucht statt über `sh -c "command -v …"`: unter Windows gibt es kein
+/// `sh` (oder eines aus Git, das dann bei jedem Aufruf ein Konsolenfenster
+/// aufblitzen lässt).
 fn werkzeug(name: &str) -> bool {
-    Command::new("sh")
-        .arg("-c")
-        .arg(format!("command -v {name} >/dev/null 2>&1"))
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    std::env::var_os("PATH").is_some_and(|pfad| im_pfad(name, &pfad))
+}
+
+/// Rein: liegt `name` (unter Windows auch `name.exe`) in einem der Ordner?
+fn im_pfad(name: &str, pfad: &std::ffi::OsStr) -> bool {
+    std::env::split_paths(pfad).any(|ordner| {
+        [name.to_string(), format!("{name}.exe")]
+            .iter()
+            .any(|datei| ordner.join(datei).is_file())
+    })
+}
+
+/// Geräte über die Geräteschicht von `crates/audio`, für eine der beiden Seiten.
+fn systemliste(mikrofon: bool) -> Result<Vec<Geraet>, Fehler> {
+    let geraete = match sprechwerk_audio::geraet::systemgeraete() {
+        Some(Ok(g)) => g,
+        Some(Err(text)) => return Err(Fehler::Messung(text)),
+        None => return Err(Fehler::Werkzeug),
+    };
+    let liste = if mikrofon {
+        geraete.mikrofon
+    } else {
+        geraete.lautsprecher
+    };
+    Ok(liste
+        .into_iter()
+        .map(|g| Geraet {
+            id: g.name.clone(),
+            name: g.name,
+            vorgabe: g.vorgabe,
+        })
+        .collect())
 }
 
 /// Liest die Geräteliste von `pactl`.
@@ -144,6 +179,9 @@ fn vorgabe(art: &str) -> Option<String> {
 
 /// Aufnahmegeräte.
 pub fn mikrofon_geraete() -> Result<Vec<Geraet>, Fehler> {
+    if !werkzeug("pactl") {
+        return systemliste(true);
+    }
     let mut liste = liste("sources")?;
     let vorgabe = vorgabe("source");
     for g in liste.iter_mut() {
@@ -154,6 +192,9 @@ pub fn mikrofon_geraete() -> Result<Vec<Geraet>, Fehler> {
 
 /// Wiedergabegeräte.
 pub fn lautsprecher_geraete() -> Result<Vec<Geraet>, Fehler> {
+    if !werkzeug("pactl") {
+        return systemliste(false);
+    }
     let mut liste = liste("sinks")?;
     let vorgabe = vorgabe("sink");
     for g in liste.iter_mut() {
@@ -162,11 +203,15 @@ pub fn lautsprecher_geraete() -> Result<Vec<Geraet>, Fehler> {
     Ok(liste)
 }
 
-/// Schreibt einen kurzen Prüfton (440 Hz, 0,7 s) als WAV in eine Datei.
-fn testton_datei() -> Result<std::path::PathBuf, Fehler> {
-    let pfad = std::env::temp_dir().join("sprechwerk-testton.wav");
-    let rate = 48_000u32;
-    let dauer = 0.7f32;
+/// Abtastrate des Prüftons — dieselbe wie die der Geräteschicht.
+const TESTTON_RATE: u32 = 48_000;
+/// Länge des Prüftons in Sekunden.
+const TESTTON_DAUER: f32 = 0.7;
+
+/// Der Prüfton als rohe Bytes (440 Hz, 16 Bit, mono, kleine Ende).
+fn testton_pcm() -> Vec<u8> {
+    let rate = TESTTON_RATE;
+    let dauer = TESTTON_DAUER;
     let anzahl = (rate as f32 * dauer) as u32;
     let mut daten: Vec<u8> = Vec::with_capacity(anzahl as usize * 2);
     for i in 0..anzahl {
@@ -177,6 +222,14 @@ fn testton_datei() -> Result<std::path::PathBuf, Fehler> {
         let pcm = (wert * i16::MAX as f32) as i16;
         daten.extend_from_slice(&pcm.to_le_bytes());
     }
+    daten
+}
+
+/// Schreibt den Prüfton als WAV in eine Datei (für `paplay`).
+fn testton_datei() -> Result<std::path::PathBuf, Fehler> {
+    let pfad = std::env::temp_dir().join("sprechwerk-testton.wav");
+    let rate = TESTTON_RATE;
+    let daten = testton_pcm();
     let mut wav = Vec::with_capacity(44 + daten.len());
     wav.extend_from_slice(b"RIFF");
     wav.extend_from_slice(&((36 + daten.len()) as u32).to_le_bytes());
@@ -198,7 +251,7 @@ fn testton_datei() -> Result<std::path::PathBuf, Fehler> {
 /// Spielt einen Prüfton auf dem gewählten Gerät.
 pub fn testton(geraet: &str) -> Result<(), Fehler> {
     if !werkzeug("paplay") {
-        return Err(Fehler::Werkzeug);
+        return testton_system(geraet);
     }
     let datei = testton_datei()?;
     let mut befehl = Command::new("paplay");
@@ -215,6 +268,115 @@ pub fn testton(geraet: &str) -> Result<(), Fehler> {
         return Err(Fehler::Geraet(geraet.to_string()));
     }
     Ok(())
+}
+
+/// Prüfton über die Geräteschicht (ohne `paplay`).
+///
+/// Die Wiedergabe nimmt die Daten sofort an und spielt sie im Hintergrund;
+/// der Strom muss deshalb so lange leben, wie der Ton dauert — sonst bricht er
+/// nach dem ersten Block ab.
+fn testton_system(geraet: &str) -> Result<(), Fehler> {
+    let mut wiedergabe = sprechwerk_audio::geraet::wiedergabe_oeffnen(geraet)
+        .map_err(|e| Fehler::Geraet(format!("{geraet}: {e}")))?;
+    wiedergabe
+        .schreibe(&testton_pcm())
+        .map_err(|e| Fehler::Messung(e.to_string()))?;
+    std::thread::sleep(Duration::from_secs_f32(TESTTON_DAUER) + Duration::from_millis(200));
+    Ok(())
+}
+
+/// Bildet einen Effektivwert (`summe` der Quadrate über `anzahl` Werte
+/// zwischen -1 und 1) auf 0–100 ab: -60 dB bis 0 dB (Sprache liegt selten über
+/// -6 dB).
+fn pegel_wert(summe: f64, anzahl: u64) -> Result<u8, Fehler> {
+    if anzahl == 0 {
+        return Err(Fehler::Messung("keine Daten vom Mikrofon".into()));
+    }
+    let rms = (summe / anzahl as f64).sqrt();
+    let db = 20.0 * rms.max(1e-6).log10();
+    let anteil = ((db + 60.0) / 60.0).clamp(0.0, 1.0);
+    Ok((anteil * 100.0).round() as u8)
+}
+
+/// Summiert die Quadrate eines Blocks (16 Bit, kleine Ende).
+fn quadrate(block: &[u8]) -> (f64, u64) {
+    let (paare, _) = block.as_chunks::<2>();
+    let summe = paare
+        .iter()
+        .map(|p| {
+            let wert = i16::from_le_bytes(*p) as f64 / i16::MAX as f64;
+            wert * wert
+        })
+        .sum();
+    (summe, paare.len() as u64)
+}
+
+/// Wartet bis zur Frist auf Blöcke und liefert den Pegel.
+fn pegel_sammeln(
+    empfangen: &std::sync::mpsc::Receiver<Vec<u8>>,
+    millisekunden: u64,
+) -> Result<u8, Fehler> {
+    let frist = Instant::now() + Duration::from_millis(millisekunden);
+    let mut summe: f64 = 0.0;
+    let mut anzahl: u64 = 0;
+    loop {
+        let jetzt = Instant::now();
+        if jetzt >= frist {
+            break;
+        }
+        match empfangen.recv_timeout(frist - jetzt) {
+            Ok(block) => {
+                let (s, n) = quadrate(&block);
+                summe += s;
+                anzahl += n;
+            }
+            Err(_) => break,
+        }
+    }
+    pegel_wert(summe, anzahl)
+}
+
+/// Pegel über die Geräteschicht (ohne `parec`).
+///
+/// Die Aufnahme ist nicht `Send` (ein cpal-Strom gehört seinem Thread) und ihr
+/// `lies` blockiert, bis Daten kommen — deshalb wird sie **im** Lesethread
+/// geöffnet, und der Aufrufer wartet nur bis zur Frist. Liefert das Gerät nie
+/// etwas, bleibt der Lesethread bis zum Programmende stehen; die Oberfläche
+/// hängt trotzdem nicht.
+fn pegel_system(geraet: &str, millisekunden: u64) -> Result<u8, Fehler> {
+    let (senden, empfangen) = std::sync::mpsc::channel::<Vec<u8>>();
+    let (bereit, ob_bereit) = std::sync::mpsc::channel::<Result<(), String>>();
+    let geraet = geraet.to_string();
+    std::thread::Builder::new()
+        .name("sprechwerk-pegelmessung".into())
+        .spawn(move || {
+            let mut aufnahme = match sprechwerk_audio::geraet::aufnahme_oeffnen(&geraet) {
+                Ok(a) => {
+                    let _ = bereit.send(Ok(()));
+                    a
+                }
+                Err(e) => {
+                    let _ = bereit.send(Err(format!("{geraet}: {e}")));
+                    return;
+                }
+            };
+            // 10 ms bei 48 kHz, 16 Bit.
+            let mut block = vec![0u8; 960];
+            while aufnahme.lies(&mut block).is_ok() {
+                if senden.send(block.clone()).is_err() {
+                    return;
+                }
+            }
+        })
+        .map_err(|_| Fehler::Messung("Lesethread".into()))?;
+    // Öffnen dauert auf WASAPI/CoreAudio Millisekunden; zwei Sekunden sind
+    // großzügig und halten die Oberfläche trotzdem nicht lange auf.
+    match ob_bereit.recv_timeout(Duration::from_secs(2)) {
+        Ok(Ok(())) => {}
+        Ok(Err(text)) => return Err(Fehler::Geraet(text)),
+        Err(_) => return Err(Fehler::Messung("Mikrofon öffnet nicht".into())),
+    }
+    pegel_sammeln(&empfangen, millisekunden)
 }
 
 /// Misst den Eingangspegel für `millisekunden` und liefert 0–100.
@@ -236,7 +398,7 @@ pub fn pegel(geraet: &str, millisekunden: u64) -> Result<u8, Fehler> {
         )));
     }
     if !werkzeug("parec") {
-        return Err(Fehler::Werkzeug);
+        return pegel_system(geraet, millisekunden);
     }
     let mut befehl = Command::new("parec");
     befehl.args(["--format=s16le", "--rate=16000", "--channels=1", "--raw"]);
@@ -275,40 +437,10 @@ pub fn pegel(geraet: &str, millisekunden: u64) -> Result<u8, Fehler> {
         })
         .map_err(|_| Fehler::Messung("Lesethread".into()))?;
 
-    let frist = Instant::now() + Duration::from_millis(millisekunden);
-    let mut summe: f64 = 0.0;
-    let mut anzahl: u64 = 0;
-    loop {
-        let jetzt = Instant::now();
-        if jetzt >= frist {
-            break;
-        }
-        match empfangen.recv_timeout(frist - jetzt) {
-            // `as_chunks` (Vorschlag des Lints) gibt es erst ab Rust 1.88;
-            // das Projekt sagt 1.80 zu.
-            #[allow(clippy::chunks_exact_to_as_chunks)]
-            Ok(block) => {
-                for paar in block.chunks_exact(2) {
-                    let wert = i16::from_le_bytes([paar[0], paar[1]]) as f64 / i16::MAX as f64;
-                    summe += wert * wert;
-                    anzahl += 1;
-                }
-            }
-            Err(_) => break,
-        }
-    }
-
+    let ergebnis = pegel_sammeln(&empfangen, millisekunden);
     let _ = kind.kill();
     let _ = kind.wait();
-
-    if anzahl == 0 {
-        return Err(Fehler::Messung("keine Daten vom Mikrofon".into()));
-    }
-    let rms = (summe / anzahl as f64).sqrt();
-    // -60 dB bis 0 dB auf 0–100 abbilden (Sprache liegt selten über -6 dB).
-    let db = 20.0 * rms.max(1e-6).log10();
-    let anteil = ((db + 60.0) / 60.0).clamp(0.0, 1.0);
-    Ok((anteil * 100.0).round() as u8)
+    ergebnis
 }
 
 #[cfg(test)]
@@ -350,6 +482,78 @@ mod tests {
     fn monitor_als_mikrofon_wird_abgelehnt() {
         let fehler = pegel("alsa_output.x.monitor", 100).unwrap_err();
         assert!(matches!(fehler, Fehler::Geraet(_)), "{fehler}");
+    }
+
+    #[test]
+    fn werkzeug_wird_im_pfad_gefunden_auch_als_exe() {
+        let ordner = std::env::temp_dir().join(format!("sprechwerk-pfad-{}", std::process::id()));
+        std::fs::create_dir_all(&ordner).expect("Ordner");
+        std::fs::write(ordner.join("pactl"), b"").expect("Datei");
+        std::fs::write(ordner.join("parec.exe"), b"").expect("Datei");
+        let pfad =
+            std::env::join_paths([std::path::PathBuf::from("/gibt/es/nicht"), ordner.clone()])
+                .expect("PATH");
+        assert!(im_pfad("pactl", &pfad));
+        assert!(im_pfad("parec", &pfad), "Windows: parec.exe zählt");
+        assert!(!im_pfad("paplay", &pfad));
+        // Ein Ordner gleichen Namens ist kein Werkzeug.
+        std::fs::create_dir_all(ordner.join("pacat")).expect("Ordner");
+        assert!(!im_pfad("pacat", &pfad));
+        let _ = std::fs::remove_dir_all(ordner);
+    }
+
+    #[test]
+    fn pegel_bildet_minus_60_bis_0_db_ab() {
+        // Stille → 0, Vollaussteuerung → 100, -30 dB → Mitte.
+        assert_eq!(pegel_wert(0.0, 100).unwrap(), 0);
+        assert_eq!(pegel_wert(100.0, 100).unwrap(), 100);
+        let minus_30_db = 10f64.powf(-30.0 / 20.0);
+        assert_eq!(
+            pegel_wert(minus_30_db * minus_30_db * 10.0, 10).unwrap(),
+            50
+        );
+        assert!(matches!(pegel_wert(0.0, 0), Err(Fehler::Messung(_))));
+    }
+
+    #[test]
+    fn quadrate_lesen_16_bit_kleine_ende() {
+        let mut block = Vec::new();
+        block.extend_from_slice(&i16::MAX.to_le_bytes());
+        block.extend_from_slice(&0i16.to_le_bytes());
+        block.push(0x7f); // halbes Paar am Ende zählt nicht
+        let (summe, anzahl) = quadrate(&block);
+        assert_eq!(anzahl, 2);
+        assert!((summe - 1.0).abs() < 1e-9, "{summe}");
+    }
+
+    #[test]
+    fn pegel_aus_einem_strom_von_bloecken() {
+        // Derselbe Weg wie bei der Geräteschicht, nur ohne Gerät.
+        let (senden, empfangen) = std::sync::mpsc::channel();
+        let laut: Vec<u8> = (0..480)
+            .flat_map(|_| (i16::MAX / 2).to_le_bytes())
+            .collect();
+        senden.send(laut).unwrap();
+        drop(senden);
+        let wert = pegel_sammeln(&empfangen, 200).expect("Pegel");
+        // -6 dB → 90.
+        assert_eq!(wert, 90);
+    }
+
+    #[test]
+    fn testton_pcm_hat_die_laenge_der_wav() {
+        let pcm = testton_pcm();
+        assert_eq!(
+            pcm.len(),
+            (TESTTON_RATE as f32 * TESTTON_DAUER) as usize * 2
+        );
+        // Hüllkurve: beginnt und endet leise, kein Knacken.
+        let erster = i16::from_le_bytes([pcm[0], pcm[1]]);
+        let letzter = i16::from_le_bytes([pcm[pcm.len() - 2], pcm[pcm.len() - 1]]);
+        assert!(
+            erster.abs() < 100 && letzter.abs() < 100,
+            "{erster} {letzter}"
+        );
     }
 
     #[test]

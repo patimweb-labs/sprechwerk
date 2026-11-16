@@ -120,7 +120,7 @@ Lizenzbedingungen (Stand 2026) und können sich ändern.
 
 ## Stand heute
 
-Lauffähig und geprüft: **211 Tests** im Arbeitsbereich, **36** in der
+Lauffähig und geprüft: **215 Tests** im Arbeitsbereich, **41** in der
 Fensteranwendung, **52** in der Oberfläche, dazu die Ansichten im echten
 Browser und sechs Messskripte, die einen echten Server starten.
 
@@ -159,6 +159,10 @@ Jedes [Release](https://github.com/patimweb-labs/sprechwerk/releases) bringt mit
 | `Sprechwerk_<version>_amd64.deb` | Fenster — Debian, Ubuntu (ab 24.04) |
 | `Sprechwerk-<version>-1.x86_64.rpm` | Fenster — Fedora, openSUSE |
 | `Sprechwerk_<version>_amd64.AppImage` | Fenster — jedes andere Linux, ohne Installation |
+| `Sprechwerk_<version>_x86_64.flatpak` | Fenster — als Flatpak (Silverblue, Steam Deck, …) |
+| `Sprechwerk_<version>_x64-setup.exe` | Fenster — Windows 10/11, Installation ohne Administratorrechte |
+| `Sprechwerk_<version>_x64_en-US.msi` | Fenster — Windows, für die Verteilung über Gruppenrichtlinien |
+| `Sprechwerk_<version>_universal.dmg` | Fenster — macOS 11 oder neuer, Apple Silicon und Intel |
 | `sprechwerk-server-<version>-linux-x86_64.tar.gz` | Server + `sprechwerk-cli`, PC/Server |
 | `sprechwerk-server-<version>-linux-aarch64.tar.gz` | dasselbe für ARM (Raspberry Pi 4/5, 64 Bit) |
 | `SHA256SUMS` | Prüfsummen aller Dateien (`sha256sum -c SHA256SUMS`) |
@@ -174,7 +178,24 @@ docker run -d --name sprechwerk -p 7443:7443/udp -v sprechwerk-daten:/data \
 AppImage müssen beide vorhanden sein (auf fast jedem Linux-Schreibtisch sind
 sie es). Die Server-Programme brauchen glibc 2.39 oder neuer (Debian 13,
 Ubuntu 24.04, aktuelle Fedora) — für ältere Systeme den Container nehmen.
-Windows- und macOS-Pakete gibt es noch nicht (siehe [Fenster](#fenster)).
+
+**Flatpak:** `flatpak install --user Sprechwerk_<version>_x86_64.flatpak` —
+die GNOME-Laufzeit kommt dabei von Flathub mit. Schlüssel und Einstellungen
+liegen dann unter `~/.var/app/de.weppelmann.Sprechwerk/`.
+
+**Windows und macOS sind nicht signiert** (dafür bräuchte es ein
+Code-Signing-Zertifikat bzw. ein Apple-Entwicklerkonto). Das System warnt
+deshalb beim ersten Start:
+
+* **Windows:** SmartScreen meldet „Der Computer wurde durch Windows geschützt" —
+  „Weitere Informationen", dann „Trotzdem ausführen".
+* **macOS:** Die App aus dem `.dmg` nach „Programme" ziehen. Beim ersten Start
+  Rechtsklick auf die App → „Öffnen" → „Öffnen". Meldet macOS, die App sei
+  „beschädigt", hat es nur die Download-Markierung nicht gemocht:
+  `xattr -dr com.apple.quarantine /Applications/Sprechwerk.app`.
+  Beim ersten Sprechen fragt macOS nach dem Mikrofon.
+
+Opus liegt bei Windows und macOS im Paket; nichts weiter zu installieren.
 
 ### Server im Container (der übliche Weg)
 
@@ -229,10 +250,12 @@ cargo build --release --manifest-path crates/desktop/Cargo.toml --features custo
 `--features custom-protocol` bettet die Oberfläche ein; ohne das Merkmal lädt
 das Fenster die Entwicklungsadresse (Port 1423).
 
-Pakete wie im Release (`.deb`, `.rpm`, AppImage) baut `npm --prefix ui run
-pakete` — die Tauri-CLI kommt dabei aus `ui/node_modules`, festgelegt auf eine
-Version; nichts weiter zu installieren. Ergebnis unter
-`crates/desktop/target/release/bundle/`.
+Pakete wie im Release baut `npm --prefix ui run pakete` — die Tauri-CLI kommt
+dabei aus `ui/node_modules`, festgelegt auf eine Version; nichts weiter zu
+installieren. Ergebnis unter `crates/desktop/target/release/bundle/`. Welche
+Pakete auf welchem System entstehen, steht in `crates/desktop/tauri.<system>.conf.json`;
+das Flatpak entsteht aus dem `.deb` (Anleitung im Kopf von
+`crates/desktop/packaging/flatpak/de.weppelmann.Sprechwerk.yml`).
 
 **Linux — Fedora** (so geprüft):
 
@@ -254,15 +277,22 @@ ALSA-Entwicklungspakete braucht es nur für `--features cpal`
 ([`docs/AUDIO.md`](docs/AUDIO.md)).
 
 **Windows 10/11:** Rust mit der MSVC-Werkzeugkette (Visual Studio Build Tools),
-WebView2 (in Windows 11 enthalten). Geräte über WASAPI, ohne Zusatzpakete;
-`opus.dll` neben `sprechwerk-desktop.exe` legen.
+CMake, WebView2 (in Windows 11 enthalten). Geräte über WASAPI, ohne
+Zusatzpakete. `crates/desktop/opus/opus.dll` muss vor dem Bau da sein — Tauri
+legt sie neben die `.exe` und prüft schon beim `cargo build`, dass es sie gibt.
+Wie sie entsteht (Opus aus den Quellen, statische C-Laufzeit), steht im Schritt
+„Opus bauen" in `.github/workflows/pakete.yml`.
 
-**macOS:** Xcode-Befehlszeilenwerkzeuge (`xcode-select --install`), Opus z. B.
-über `brew install opus`. Geräte über CoreAudio.
+**macOS:** Xcode-Befehlszeilenwerkzeuge (`xcode-select --install`), CMake.
+Geräte über CoreAudio. Für den Bau gehört `libopus.0.dylib` nach
+`crates/desktop/opus/` (Tauri packt sie in `Contents/Frameworks`); zum
+Ausprobieren ohne Paket genügt `brew install opus`.
 
-Windows und macOS sind vom Code her vorgesehen (Opus wird zur Laufzeit als
-`opus.dll` bzw. `libopus.dylib` geladen, Geräte über `cpal`), laufen aber
-**noch nicht in der CI** — Rückmeldungen von dort sind willkommen.
+Windows und macOS bauen **in der CI bei jedem PR** (`pakete.yml`, mit Clippy
+auf der jeweiligen Plattform). Auf echten Geräten ist dort noch niemand
+gewesen — Rückmeldungen von Windows und macOS sind willkommen. Unter Windows
+und macOS kommen Geräteliste, Pegel und Prüfton über cpal, unter Linux über
+`pactl`/`parec`/`paplay`; entschieden wird danach, was vorhanden ist.
 
 ## Das erste Mal verbinden
 

@@ -14,3 +14,9 @@ crates/desktop/gen/
 
 # Erzeugte Auswertungen (Abhängigkeitsgraph), keine Quelle
 graph-out/
+
+# Pakete: Opus für Windows/macOS (in der CI gebaut, `pakete.yml`), das `.deb`
+# als Eingabe des Flatpaks und dessen Bauordner
+crates/desktop/opus/
+crates/desktop/packaging/flatpak/sprechwerk.deb
+.flatpak-builder/

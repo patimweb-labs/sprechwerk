@@ -1,0 +1,15 @@
+{
+  "bundle": {
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "macOS": {
+      "frameworks": [
+        "opus/libopus.0.dylib"
+      ],
+      "signingIdentity": "-",
+      "minimumSystemVersion": "11.0"
+    }
+  }
+}

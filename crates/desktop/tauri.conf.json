@@ -27,11 +27,6 @@
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "deb",
-      "rpm",
-      "appimage"
-    ],
     "icon": [
       "icons/icon-32.png",
       "icons/icon-128.png",
@@ -46,20 +41,6 @@
     "homepage": "https://github.com/patimweb-labs/sprechwerk",
     "category": "SocialNetworking",
     "shortDescription": "Sprach- und Texträume für Vereine",
-    "longDescription": "Selbst gehostete Sprach- und Texträume für Vereine: ein Server, ein UDP-Port, Schlüsseldateien statt Konten.",
-    "linux": {
-      "deb": {
-        "depends": [
-          "libopus0",
-          "pulseaudio-utils"
-        ]
-      },
-      "rpm": {
-        "depends": [
-          "libopus.so.0()(64bit)",
-          "/usr/bin/parec"
-        ]
-      }
-    }
+    "longDescription": "Selbst gehostete Sprach- und Texträume für Vereine: ein Server, ein UDP-Port, Schlüsseldateien statt Konten."
   }
 }

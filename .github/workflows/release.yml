@@ -8,7 +8,8 @@
 #   2. Wird **dieser** PR gemergt, legt release-please Tag und GitHub-Release an.
 #   3. Im selben Lauf entstehen danach die Dateien und hängen sich ans Release:
 #        * Server + Referenzclient, Linux x86_64 und aarch64 (`.tar.gz`)
-#        * Fenster, Linux x86_64 (`.deb`, `.rpm`, AppImage)
+#        * Fenster (`pakete.yml`): Linux `.deb`/`.rpm`/AppImage, Flatpak,
+#          Windows `.exe`/`.msi`, macOS `.dmg` (Apple Silicon + Intel)
 #        * Container-Abbild `ghcr.io/<repo>`, amd64 + arm64
 #        * `SHA256SUMS` über alle Dateien
 #
@@ -23,8 +24,7 @@
 # Ein Bau ist schiefgegangen? „Run workflow" mit dem Tag (z. B. `v0.1.0`) baut
 # die Dateien für ein bestehendes Release neu und ersetzt sie.
 #
-# Windows und macOS fehlen bewusst: dort ist der Bau noch nie gelaufen
-# (README, „Fenster"). Erst prüfen, dann ausliefern.
+# Windows und macOS sind **unsigniert** (siehe `pakete.yml`).
 
 name: release
 
@@ -144,67 +144,43 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ needs.ziel.outputs.tag }}" "${{ steps.pack.outputs.datei }}" --clobber
 
-  fenster:
-    name: Fenster Linux x86_64
+  # Fenster für alle Systeme: derselbe Baustein, den `pruefen.yml` bei jedem PR
+  # aufruft — was hier gebaut wird, ist dort schon einmal durchgelaufen.
+  pakete:
+    name: Fenster
     needs: ziel
+    if: ${{ !cancelled() && needs.ziel.outputs.tag != '' }}
+    uses: ./.github/workflows/pakete.yml
+    with:
+      ref: ${{ needs.ziel.outputs.tag }}
+    secrets: inherit
+    permissions:
+      contents: read
+
+  # Hängt an, was gebaut wurde — auch wenn eine Plattform scheitert: ein
+  # Release ohne macOS ist besser als eines ohne alles. Der Lauf bleibt rot,
+  # „Run workflow" mit dem Tag holt das Fehlende nach.
+  pakete-hochladen:
+    name: Fenster ans Release
+    needs: [ziel, pakete]
     if: ${{ !cancelled() && needs.ziel.outputs.tag != '' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
-          ref: ${{ needs.ziel.outputs.tag }}
+          pattern: pakete-*
+          merge-multiple: true
+          path: aus
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-
-      # Dieselben Bibliotheken wie in `pruefen.yml`; `file` braucht der
-      # AppImage-Bau.
-      - name: Systembibliotheken für Tauri
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev librsvg2-dev patchelf \
-            build-essential pkg-config file
-
-      # Wie in `pruefen.yml`: `ui/` hängt über `file:../../weppelmann-ui` an der
-      # Komponentenbibliothek neben diesem Repository.
-      - name: Komponentenbibliothek holen
-        env:
-          TOKEN: ${{ secrets.WEPPELMANN_UI_TOKEN }}
-        run: |
-          ziel="${{ github.workspace }}/../weppelmann-ui"
-          url="https://github.com/Smotherer007/weppelmann-ui.git"
-          if [ -n "$TOKEN" ]; then
-            url="https://x-access-token:${TOKEN}@github.com/Smotherer007/weppelmann-ui.git"
-          fi
-          git clone --depth 1 "$url" "$ziel"
-          cd "$ziel" && npm ci --no-audit --no-fund && npm run -s tokens
-
-      - name: Abhängigkeiten der Oberfläche
-        run: cd ui && npm ci --no-audit --no-fund
-
-      # `pakete` ruft `tauri build` in `crates/desktop` auf: baut die Oberfläche,
-      # das Programm (mit eingebetteter Oberfläche) und alle drei Pakete.
-      # `APPIMAGE_EXTRACT_AND_RUN`: linuxdeploy ist selbst ein AppImage und
-      # bräuchte sonst FUSE, das der Läufer nicht hat.
-      - name: Pakete bauen
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: "1"
-        run: npm --prefix ui run pakete
-
-      - name: Ans Release hängen
+      - name: Hochladen
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          b=crates/desktop/target/release/bundle
-          gh release upload "${{ needs.ziel.outputs.tag }}" \
-            $b/deb/*.deb $b/rpm/*.rpm $b/appimage/*.AppImage --clobber
+          find aus -type f | sort
+          find aus -type f -print0 | xargs -0 -r \
+            gh release upload "${{ needs.ziel.outputs.tag }}" -R "${{ github.repository }}" --clobber
 
   # Je Architektur auf einem eigenen Läufer gebaut, nicht über QEMU: Rust unter
   # Emulation braucht eine Stunde statt Minuten.
@@ -304,8 +280,8 @@ jobs:
 
   pruefsummen:
     name: Prüfsummen
-    needs: [ziel, server, fenster]
-    if: ${{ !cancelled() && needs.server.result == 'success' && needs.fenster.result == 'success' }}
+    needs: [ziel, server, pakete-hochladen]
+    if: ${{ !cancelled() && needs.ziel.outputs.tag != '' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -317,6 +293,7 @@ jobs:
         run: |
           mkdir aus && cd aus
           gh release download "$TAG" -R "${{ github.repository }}" \
-            -p '*.tar.gz' -p '*.deb' -p '*.rpm' -p '*.AppImage'
+            -p '*.tar.gz' -p '*.deb' -p '*.rpm' -p '*.AppImage' \
+            -p '*.flatpak' -p '*.exe' -p '*.msi' -p '*.dmg'
           sha256sum * | tee SHA256SUMS
           gh release upload "$TAG" SHA256SUMS -R "${{ github.repository }}" --clobber

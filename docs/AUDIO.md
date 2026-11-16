@@ -18,14 +18,21 @@ Voraussetzungen da sind.
 baut überall ohne `cmake` und ohne ALSA-Header:
 
 * **Opus** wird zur **Laufzeit** geladen (`libloading`): `libopus.so.0` unter
-  Linux, `libopus.dylib` unter macOS, `opus.dll` unter Windows — aus dem System
-  oder neben der Anwendung. Fehlt sie, sagt der Client das, statt zu stürzen.
+  Linux, `libopus.dylib` unter macOS, `opus.dll` unter Windows. Gesucht wird
+  zuerst neben dem Programm (Windows: neben der `.exe`; macOS:
+  `Sprechwerk.app/Contents/Frameworks`, dort legen die Pakete sie ab), dann im
+  System, zuletzt unter Homebrew. Fehlt sie, sagt der Client das, statt zu
+  stürzen.
 * **Geräte unter Linux** über das laufende PipeWire/PulseAudio (`parec`/`pacat`
   aus `pulseaudio-utils`). Wer lieber ALSA direkt will, baut mit
   `--features cpal` und braucht dann `alsa-lib-devel` (Fedora) bzw.
   `libasound2-dev` (Debian/Ubuntu) und `pkg-config`.
 * **Geräte unter Windows und macOS** über `cpal` (WASAPI bzw. CoreAudio) — dort
-  fest eingebunden, ohne Zusatzpakete.
+  fest eingebunden, ohne Zusatzpakete. Auch Geräteliste, Pegelanzeige und
+  Prüfton in den Einstellungen gehen dort über cpal
+  (`sprechwerk_audio::geraet::systemgeraete`); unter Linux über
+  `pactl`/`parec`/`paplay`. Das Fenster entscheidet danach, welche Werkzeuge
+  im `PATH` liegen, nicht nach dem Betriebssystem.
 
 ```bash
 # Laufzeit unter Linux (meist schon vorhanden)

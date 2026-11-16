@@ -1,6 +1,6 @@
 # ADR 0007 — Pakete je System und Betrieb
 
-**Status:** entworfen (2026-11-04)
+**Status:** entworfen (2026-11-04), Pakete und Releases umgesetzt (2026-11-16)
 **Betrifft:** `crates/desktop`, `flatpak/`, `packaging/`, OCI-Image
 
 ## Fenster
@@ -47,15 +47,46 @@ des Release-PRs erzeugt Tag, Änderungsliste und hängt an das GitHub-Release:
 
 | Teil | Form | Gebaut auf |
 |---|---|---|
-| Fenster | `.deb`, `.rpm`, AppImage (x86_64) | `ubuntu-24.04`, `npm --prefix ui run pakete` |
+| Fenster Linux | `.deb`, `.rpm`, AppImage (x86_64) | `ubuntu-24.04` |
+| Fenster Flatpak | `.flatpak` (x86_64), GNOME-Laufzeit 51 | aus dem `.deb` umgepackt |
+| Fenster Windows | NSIS-`.exe` (ohne Adminrechte), `.msi` | `windows-2025` |
+| Fenster macOS | `.dmg`, universal (arm64 + x86_64), ab macOS 11 | `macos-15` |
 | Server + CLI | `.tar.gz` je x86_64 und aarch64 | eigener Läufer je Architektur |
 | Container | `ghcr.io/patimweb-labs/sprechwerk`, amd64 + arm64 | eigener Läufer je Architektur, kein QEMU |
 | Prüfsummen | `SHA256SUMS` | — |
 
-Offen aus der Tabelle oben: **Flatpak, Windows, macOS** — dort ist noch kein
-Bau gelaufen, also wird auch nichts ausgeliefert. `.deb`/`.rpm` nennen Opus und
-`parec`/`pacat` als Abhängigkeit (`bundle.linux` in `tauri.conf.json`); das
-AppImage kann das nicht und setzt beides voraus.
+Die Fenster-Pakete baut `.github/workflows/pakete.yml`; denselben Baustein ruft
+`pruefen.yml` bei **jedem PR** auf. Was im Release landet, ist also vorher schon
+einmal gebaut worden — mit Clippy auf Windows und macOS, wo andere Teile
+übersetzt werden (cpal statt PipeWire).
+
+Entscheidungen dabei:
+
+* **Flatpak umgepackt statt aus den Quellen gebaut.** Die GNOME-Laufzeit 51
+  bringt WebKitGTK 4.1, `libopus.so.0` und `pactl`/`parec`/`pacat`/`paplay`
+  mit; im Flatpak läuft damit dieselbe Binärdatei wie im `.deb`. Geprüft
+  2026-11-16: alle 133 Bibliotheken werden gefunden, das Fenster startet,
+  `pactl` erreicht den Tonserver über `--socket=pulseaudio`. **Preis:** so
+  nicht Flathub-tauglich (dort wird ohne Netz aus den Quellen gebaut); das ist
+  ein eigener Schritt.
+* **Opus selbst gebaut** (1.5.2, Prüfsumme von xiph.org) und ins Paket gelegt:
+  Windows `opus.dll` mit statischer C-Laufzeit neben der `.exe`, macOS
+  `libopus.0.dylib` in `Contents/Frameworks`. Homebrew-Bibliotheken liefen nur
+  ab der macOS-Version des Bau-Rechners, vcpkg-DLLs brauchten das „Visual C++
+  Redistributable". `opus.rs` sucht deshalb zuerst neben dem Programm.
+* **Unsigniert.** Kein Apple-Entwicklerkonto (99 €/Jahr), kein
+  Windows-Zertifikat. macOS wird ad hoc signiert (Apple Silicon startet sonst
+  gar nichts), Gatekeeper und SmartScreen warnen beim ersten Start; die README
+  sagt, was dann zu tun ist. **Preis:** jeder Nutzer sieht eine Warnung.
+* **macOS-Mikrofon:** `crates/desktop/Info.plist` setzt
+  `NSMicrophoneUsageDescription` — ohne den Eintrag beendet macOS die App beim
+  ersten Mikrofonzugriff.
+
+`.deb`/`.rpm` nennen Opus und `parec`/`pacat` als Abhängigkeit
+(`tauri.linux.conf.json`); das AppImage kann das nicht und setzt beides voraus.
+
+**Noch nie auf echter Hardware gelaufen:** Windows und macOS. Gebaut wird in
+der CI, ausprobiert hat es noch niemand.
 
 `scripts/versionen.py` (in `pruefen.sh` und der CI) prüft vorher, dass
 release-please jede Version anheben kann, ohne dass `cargo build --locked`
