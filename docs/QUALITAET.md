@@ -125,7 +125,7 @@ Daraus folgt für uns:
 | Verlustbehandlung | nicht einstellbar, clientintern | Opus-In-Band-FEC + 60–120 ms Jitter-Puffer | Client |
 | Stille | VAD im Client | VAD/DTX, keine Pakete bei Stille | Client; spart rund 60 % Bandbreite |
 | Staukontrolle | eigener UDP-Pfad | **BBR** statt Cubic | Server: `staukontrolle = "bbr"` |
-| Paketaufschlag | eigener Kopf | 4 Byte | bereits umgesetzt (vorher 8) |
+| Paketaufschlag | eigener Kopf | 6 Byte | bereits umgesetzt (vorher 8) |
 
 Der Punkt, an dem wir **besser** werden können, ist die
 Push-to-Talk-Verzögerung: 300 ms Vorgabe in TeamSpeak sind im Gespräch deutlich
@@ -133,7 +133,7 @@ hörbar. Ein Vorlaufpuffer liefert dieselbe Sicherheit ohne die Wartezeit.
 
 ## 4. Was am Server dafür schon getan ist
 
-* **Sprachkopf von 8 auf 4 Byte** — der Raum steht nicht mehr im Datagramm,
+* **Sprachkopf von 8 auf 6 Byte** — der Raum steht nicht mehr im Datagramm,
   sondern kommt aus dem Sitzungszustand. Weniger Aufschlag und zugleich sicher:
   niemand kann in einen fremden Raum hineinsprechen.
 * **Staukontrolle umstellbar** (`staukontrolle = "bbr"`, Vorgabe). Cubic
@@ -194,3 +194,45 @@ Mitglied, Grenze und Zahl der Abweisungen.
 Geprüft: `crates/server/src/netz.rs` (Fenster je Sekunde, Stille öffnet wieder,
 `0` = unbegrenzt) und `crates/server/tests/rundlauf.rs` (echter Server mit
 Grenze 5: der sechste Rahmen wird abgewiesen).
+
+## 2c. Aufpreis der Quantensicherheit (2026-11-14, gleiche Maschine)
+
+ADR 0010 Schritt 1: die Schlüsselvereinbarung ist hybrid `X25519MLKEM768`.
+Gemessen wird der Handschlag, nicht das Hochfahren des Prozesses: 200
+Verbindungen je Variante, gleicher Lauf, nur die Gruppe getauscht.
+
+```
+klassisch X25519        p50  0,19 ms   p95  0,22 ms   p99  0,28 ms
+hybrid X25519MLKEM768   p50  0,24 ms   p95  0,28 ms   p99  0,38 ms
+```
+
+**+50 µs je Verbindungsaufbau**, einmal je Sitzung. Der Sprachpfad ist
+unberührt — dort rechnet `chacha20poly1305`, nicht der TLS-Anbieter:
+
+```
+scripts/latenz.sh, drei Läufe nach dem Umbau:
+  Sprachrahmen   p50 15–18 µs   p95 18–22 µs   p99 26–29 µs
+  Beitritt       p50 1,47–1,81 ms   p95 1,80–2,76 ms
+```
+
+Vorher (Anbieter `ring`, ein Lauf): p50 20 µs / p95 32 µs / p99 350 µs und
+Beitritt p50 1,75 ms / p95 2,53 ms. Der Unterschied zwischen den Läufen ist
+größer als der Unterschied zwischen den Anbietern — auf dem Sprachpfad ist
+kein Aufpreis messbar. Auf der Leitung wächst der erste Flug um den ML-KEM-Anteil
+(1184 Byte öffentlicher Schlüssel, 1088 Byte Geheimtext), ohne zusätzlichen
+Umlauf.
+
+## 2d. Antwort und Rundruf unter einer Sperre (2026-11-15, gleiche Maschine)
+
+Der Server führt einen Befehl jetzt **unter derselben Sperre** aus, unter der
+er die Antwort ins Postfach legt (vorher: zwei Sperren, dazwischen eine Lücke,
+siehe `docs/datenfluss.md` §2). Die Sperre umfasst damit zusätzlich ein
+Einreihen in einen Kanal ohne Warten. `scripts/latenz.sh`, je drei Läufe:
+
+```
+vorher (zwei Sperren)   Sprachrahmen p50 15–16 µs  p99 21–29 µs   Beitritt p50 1,42–2,12 ms  p95 2,07–3,69 ms
+nachher (eine Sperre)   Sprachrahmen p50 15–16 µs  p99 25–28 µs   Beitritt p50 1,56–2,05 ms  p95 2,18–2,80 ms
+```
+
+Kein messbarer Unterschied — die Streuung zwischen Läufen ist größer als der
+Eingriff. Der Sprachpfad nimmt die Sperre ohnehin nicht über diese Stelle.

@@ -82,12 +82,26 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let mut verbindung = Verbindung::oeffnen(server, &schluessel, &name, passwort.as_deref())
-        .await
-        .context("Anmeldung")?;
+    // Angehefteter Fingerabdruck, falls vorhanden (TOFU wie SSH):
+    // `SPRECHWERK_FINGERABDRUCK=3ff0:5a78:…` — ohne den Wert wird angeheftet,
+    // was der Server zeigt.
+    let erwartet = std::env::var("SPRECHWERK_FINGERABDRUCK").ok();
+    let mut verbindung = Verbindung::oeffnen_mit(
+        server,
+        &schluessel,
+        &name,
+        passwort.as_deref(),
+        erwartet.as_deref(),
+    )
+    .await
+    .context("Anmeldung")?;
     println!(
         "verbunden mit „{}“ als {} ({:?})",
         verbindung.server_name, name, verbindung.rolle
+    );
+    println!(
+        "Zertifikat: {}",
+        sprechwerk_protocol::gruppiere(&verbindung.zertifikat)
     );
     println!("Kennung: {}", schluessel.kennung());
 

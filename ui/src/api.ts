@@ -104,6 +104,15 @@ export interface Zustand {
   raeume: Raum[];
   mitglieder: Mitglied[];
   nachrichten: Nachricht[];
+  /**
+   * Fingerabdruck des Server-Zertifikats, mit dem diese Verbindung läuft
+   * (SHA-256, 64 Zeichen hexadezimal). `null`, solange keine Verbindung steht.
+   *
+   * Er steht im Modell, damit man ihn **sehen** und mit dem vergleichen kann,
+   * was der Betreiber ansagt — eine Anheftung, deren Wert niemand nachlesen
+   * kann, wäre keine Bestätigung.
+   */
+  zertifikat: string | null;
   /** Verhängte Sperren (leer, bis sie einmal abgefragt wurden). */
   sperren: Sperre[];
   /** Räume, deren Schlüssel vorliegt (nur verschlüsselte Räume). */
@@ -115,6 +124,12 @@ export interface Zustand {
   /** Zuletzt gelesenes Prüfprotokoll (leer, solange niemand es geöffnet hat). */
   protokoll: Eintrag[];
   meldung: string | null;
+}
+
+/** Ein angehefteter Fingerabdruck (TOFU, ADR 0002 §3). */
+export interface Vertrauen {
+  server: string;
+  fingerabdruck: string;
 }
 
 /** Ein gemerkter Server (Favorit). */
@@ -149,6 +164,14 @@ export interface Einstellungen {
   noisegate: boolean;
   /** Echounterdrückung: eigene Wiedergabe aus der Aufnahme rechnen. */
   echounterdrueckung: boolean;
+  /**
+   * Angeheftete Server-Zertifikate.
+   *
+   * **Muss mitgeschickt werden.** Der Rust-Teil schreibt die Datei komplett
+   * neu; ein Feld, das hier fehlt, kommt als leere Liste zurück und löscht
+   * damit jedes Anheften. Deshalb steht es im Vertrag, nicht nur im Speicher.
+   */
+  vertrauen: Vertrauen[];
 }
 
 /** Läuft die Oberfläche in der Fensteranwendung (echter Rust-Teil)? */
@@ -209,6 +232,9 @@ const echtApi = {
   einstellungenLesen: () => invoke<Einstellungen>("einstellungen_lesen"),
   einstellungenSpeichern: (einstellungen: Einstellungen) =>
     invoke<void>("einstellungen_speichern", { einstellungen }),
+  /** Vergisst den angehefteten Fingerabdruck (nach Neuaufsetzen des Servers). */
+  zertifikatVergessen: (server: string) =>
+    invoke<void>("zertifikat_vergessen", { server }),
 };
 
 /** Stand des Sprechpfads (Mikrofon/Wiedergabe laufen). */

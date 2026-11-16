@@ -36,6 +36,13 @@ Rollen werden im Client verwaltet. Dazu kommt eine schlanke Diagnose (wer ist
 verbunden, letztes Protokoll, letzte Sicherung) — **[A]** als Unterbefehl des
 Servers, nicht als Weboberfläche.
 
+**Nachtrag 2026-11-14:** Der Container hat einen `HEALTHCHECK`, und er prüft
+**kein** Netz: der Server schreibt alle 10 s ein Lebenszeichen nach
+`<daten>/lebt`, `sprechwerk --gesundheit` liest es und antwortet mit dem
+Rückgabewert. Grund: der vorherige Check rief den Client auf — und der **erste
+Client wird Administrator**; der Check hätte diesen Platz mit einem
+Wegwerfschlüssel belegt. Ein Gesundheitscheck darf den Dienst nicht verändern.
+
 **Nachtrag 2026-11-13:** Das **Prüfprotokoll** ist zusätzlich im Fenster
 sichtbar — für Administrator und Moderator, also genau die Rollen, die das Recht
 „Prüfprotokoll lesen" haben. Ein Recht, das kein Client ausüben kann, ist eine
@@ -197,6 +204,31 @@ mit eigenem, kleinem Kopf (6 Byte: Version, Codec, Folge, Sprecher).
 **[A] Verschlüsselung:** nur TLS 1.3 aus QUIC. Kein eigenes Krypto, keine
  eigene Schlüsselableitung. Für den Besitznachweis der Kennung Ed25519.
 
+ **Zwei Schichten, Stand 2026-11-14:**
+
+ 1. **Transport** — TLS 1.3 mit AEAD, Schlüsselwechsel und Forward Secrecy.
+    Das Zertifikat ist selbst signiert; der Client **heftet** den
+    SHA-256-Fingerabdruck beim ersten Kontakt an (`trust on first use`, wie SSH)
+    und prüft ihn ab dann in jedem Handschlag. Die Unterschrift des Handschlags
+    wird über den Anbieter von `rustls` (`ring`) geprüft, nicht übersprungen —
+    ein bloßer Vergleich des Zertifikats genügte sonst, um sich auszugeben (der
+    öffentliche Teil steht in jedem Handschlag). Der geprüfte Wert steht im
+    Modell (`zertifikat`) und damit im Fenster; „vergessen" ist eine
+    ausdrückliche Handlung, kein stiller Knopf.
+ 2. **Sprache je Raum Ende zu Ende** (ADR 0006): X25519 + HKDF-SHA256 +
+    ChaCha20-Poly1305, Gruppenschlüssel mit Epoche. Text bleibt serverseitig
+    lesbar, weil er gespeichert wird.
+
+ **Quantensicher ist der Transport seit 2026-11-14** (ADR 0010, Schritt 1):
+ `rustls` läuft mit dem Anbieter `aws-lc-rs`, die Schlüsselvereinbarung ist
+ hybrid `X25519MLKEM768` (klassisch **und** quantensicher; ein Angreifer müsste
+ beides brechen). Gemessen: +50 µs je Verbindungsaufbau, keine Änderung am
+ Sprachpfad.
+
+ **Noch klassisch:** die Anmeldung (Ed25519) und die Umlage des Raumschlüssels
+ für die Sprache (X25519). Ein Mitschnitt von heute ist damit für Text wertlos,
+ für Sprache noch nicht — Schritt 2 in ADR 0010.
+
 **[A] Kennungen:** Räume und Mitglieder mit zufälliger 128-Bit-Kennung (UUID),
 nach außen als Text. Keine Wiederverwendung.
 
@@ -245,6 +277,8 @@ Beim Schreiben des Codes waren weitere Festlegungen nötig. Alle sind **[A]**.
 | Zertifikat | selbst signiert, Fingerabdruck beim Start | eine Zertifizierungsstelle ist für selbst gehostete Instanzen nicht praktikabel; Scheinsicherheit wäre schlimmer |
 | Speichern | nach jeder Änderung vollständig (Write-Through) | einfach und ausfallsicher bei dieser Größe; bei Bedarf später gezielte Schreibvorgänge |
 | Sicherung im Betrieb | `VACUUM INTO` plus JSON-Export | eine kopierte SQLite-Datei im Betrieb ist manchmal heil, manchmal nicht |
+| Reihenfolge je Verbindung | Antwort auf einen Befehl kommt **vor** jedem Rundruf, den ein späterer Befehl eines anderen auslöst | der Client ersetzt mit Momentaufnahmen (`Betreten { anwesend }`) seinen Stand; sonst verschwinden Gleichzeitige (gefunden 2026-11-15). Preis: Befehl und Zustellen unter einer Sperre — gemessen ohne Unterschied (`docs/QUALITAET.md` §2d) |
+| Hybride Raumschlüssel-Umlage (vorbereitet) | Ableitung über ML-KEM **und** X25519 samt beider X25519-Werte (wie X-Wing), Nullpunkte abgelehnt | ein bricht-nur-eins-Kombinierer ist nur so stark wie seine Bindung; ADR 0010 |
 
 ## 11. Nächste Schritte
 

@@ -114,6 +114,7 @@ pub fn run() {
             commands::audio_testton,
             commands::einstellungen_lesen,
             commands::einstellungen_speichern,
+            commands::zertifikat_vergessen,
         ])
         .run(tauri::generate_context!())
         .expect("Sprechwerk konnte das Fenster nicht starten");

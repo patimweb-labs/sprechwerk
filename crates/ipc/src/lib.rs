@@ -97,6 +97,13 @@ pub struct Zustand {
     pub raeume: Vec<Raum>,
     pub mitglieder: Vec<Mitglied>,
     pub nachrichten: Vec<Nachricht>,
+    /// Fingerabdruck des Server-Zertifikats, mit dem diese Verbindung läuft.
+    ///
+    /// Steht im Modell, damit man ihn **sehen** und mit dem vergleichen kann,
+    /// was der Betreiber ansagt (TOFU, ADR 0002 §3). Eine Anheftung, deren
+    /// Wert niemand nachlesen kann, wäre keine Bestätigung.
+    #[serde(default)]
+    pub zertifikat: Option<String>,
     /// Verhängte Sperren (leer, bis sie einmal abgefragt wurden).
     #[serde(default)]
     pub sperren: Vec<Sperre>,

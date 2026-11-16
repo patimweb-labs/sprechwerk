@@ -21,6 +21,39 @@ use sprechwerk_protocol::{ClientFrame, Raumansicht, ServerFrame, PROTOKOLL_VERSI
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+/// Schreibt eine Datei, die nur ihr Eigentümer lesen darf (Schlüssel, gemerkte
+/// Passwörter).
+///
+/// **Die Rechte gelten ab dem ersten Byte.** Erst schreiben und dann
+/// `chmod 600` ließe ein Fenster, in dem die Datei für alle lesbar ist — und
+/// ein still verschluckter Fehler beim `chmod` ließe sie dauerhaft so. Hier wird
+/// die Datei mit 0600 *angelegt*, und eine vorhandene wird vor dem Schreiben auf
+/// 0600 gebracht; jeder Fehler kommt beim Aufrufer an. Unter Windows schützt
+/// das Benutzerprofil (Zugriffsliste des Verzeichnisses), dort ist nichts zu
+/// tun.
+pub fn geheim_schreiben(pfad: &std::path::Path, inhalt: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(eltern) = pfad.parent() {
+        std::fs::create_dir_all(eltern)?;
+    }
+    let mut optionen = std::fs::OpenOptions::new();
+    optionen.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        optionen.mode(0o600);
+    }
+    let mut datei = optionen.open(pfad)?;
+    #[cfg(unix)]
+    {
+        // `mode` wirkt nur beim Anlegen; eine alte Datei kann weiter offen sein.
+        use std::os::unix::fs::PermissionsExt;
+        datei.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    datei.write_all(inhalt)?;
+    datei.sync_all()
+}
+
 /// Ein Schlüsselpaar in Textform.
 #[derive(Clone)]
 pub struct Schluessel {
@@ -46,15 +79,8 @@ impl Schluessel {
             return Ok(Self { geheim });
         }
         let s = Self::neu();
-        if let Some(eltern) = pfad.parent() {
-            std::fs::create_dir_all(eltern)?;
-        }
-        std::fs::write(pfad, hex::encode(s.geheim))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(pfad, std::fs::Permissions::from_mode(0o600));
-        }
+        geheim_schreiben(pfad, hex::encode(s.geheim).as_bytes())
+            .with_context(|| format!("Schlüsseldatei {}", pfad.display()))?;
         Ok(s)
     }
 
@@ -90,50 +116,140 @@ impl Schluessel {
     }
 }
 
-/// Zertifikatsprüfung: eigenes Zertifikat, kein Systemzertifikat.
+/// Prüft das Server-Zertifikat gegen den angehefteten Fingerabdruck.
 ///
-/// **Festlegung (SPEC §7):** Der Server hat ein selbst signiertes Zertifikat.
-/// Der Client nimmt es beim ersten Verbinden an und merkt sich den
-/// Fingerabdruck — wie SSH es macht. Eine Prüfung gegen eine Zertifizierungsstelle
-/// ist für selbst gehostete Instanzen nicht praktikabel und wäre eine
-/// Scheinsicherheit.
+/// **Festlegung (SPEC §7, ADR 0002 §3):** Der Server hat ein selbst signiertes
+/// Zertifikat. Der Client nimmt es beim **ersten** Kontakt an und heftet den
+/// Fingerabdruck an („trust on first use", wie SSH); ab dann muss er passen,
+/// sonst bricht die Verbindung **im Handschlag** ab — bevor Kennung, Beweis
+/// oder Serverpasswort über die Leitung gehen.
+///
+/// **Vergleichen allein genügt nicht.** Ein angeheftetes Zertifikat, dessen
+/// Besitz niemand beweist, wäre wertlos: der öffentliche Teil steht in jedem
+/// Handschlag, wer ihn kennt, könnte ihn vorzeigen. Deshalb prüft diese
+/// Struktur zusätzlich die TLS-1.3-Unterschrift mit dem Anbieter von `rustls`
+/// (`ring`) — bis 2026-11-14 stand hier für jede Signatur `Ok(())`.
 #[derive(Debug)]
-struct EigenesZertifikat;
+pub struct Zertifikatspruefung {
+    /// Angehefteter Fingerabdruck (`None` = erster Kontakt).
+    erwartet: Option<String>,
+    /// Was der Server tatsächlich gezeigt hat (nach dem Aufbau gesetzt).
+    gesehen: std::sync::Mutex<Option<String>>,
+    /// Warum abgelehnt wurde — für eine Meldung, die den Grund nennt.
+    ///
+    /// `rustls` reicht den Text einer abgelehnten Prüfung nur als
+    /// Transportfehler weiter; ohne dieses Feld stünde im Fenster „TLS-Fehler"
+    /// statt „anderes Zertifikat als beim letzten Mal".
+    abweichung: std::sync::Mutex<Option<String>>,
+}
 
-impl rustls::client::danger::ServerCertVerifier for EigenesZertifikat {
+impl Zertifikatspruefung {
+    /// `erwartet`: angehefteter Fingerabdruck oder `None` beim ersten Kontakt.
+    pub fn neu(erwartet: Option<&str>) -> Self {
+        Self {
+            erwartet: erwartet.map(str::to_string),
+            gesehen: std::sync::Mutex::new(None),
+            abweichung: std::sync::Mutex::new(None),
+        }
+    }
+
+    /// Der Fingerabdruck, den der Server gezeigt hat (nach dem Aufbau gesetzt).
+    pub fn gesehen(&self) -> Option<String> {
+        self.gesehen.lock().ok().and_then(|g| g.clone())
+    }
+
+    /// Der Grund einer Ablehnung, falls es eine gab.
+    pub fn abweichung(&self) -> Option<String> {
+        self.abweichung.lock().ok().and_then(|a| a.clone())
+    }
+
+    /// Die eigentliche Entscheidung — ohne TLS, damit prüfbar.
+    pub fn pruefe_zertifikat(&self, zert: &[u8]) -> Result<(), rustls::Error> {
+        let fingerabdruck = sprechwerk_protocol::zertifikat_fingerabdruck(zert);
+        if let Err(grund) =
+            sprechwerk_protocol::pruefe_fingerabdruck(self.erwartet.as_deref(), &fingerabdruck)
+        {
+            if let Ok(mut abweichung) = self.abweichung.lock() {
+                *abweichung = Some(grund.clone());
+            }
+            return Err(rustls::Error::General(grund));
+        }
+        if let Ok(mut gesehen) = self.gesehen.lock() {
+            *gesehen = Some(fingerabdruck);
+        }
+        Ok(())
+    }
+}
+
+/// Die Unterschriftsverfahren des Anbieters — dieselbe Liste, die auch der
+/// TLS-Stapel benutzt. Keine eigene Auswahl: was hier nicht steht, wird nicht
+/// geprüft, und was nicht geprüft wird, ist keine Prüfung.
+fn verfahren() -> rustls::crypto::WebPkiSupportedAlgorithms {
+    anbieter().signature_verification_algorithms
+}
+
+/// Die Schlüsselvereinbarungs-Gruppen, in dieser Reihenfolge (ADR 0010).
+///
+/// **Hybrid, nicht „nur Quanten":** `X25519MLKEM768` ist beides in einem —
+/// klassisch (X25519) und quantensicher (ML-KEM-768). Ein Angreifer müsste
+/// beide brechen. `X25519` bleibt als zweite Gruppe stehen, damit ein Gegenüber
+/// ohne PQ-Unterstützung nicht ausgesperrt ist; die Verbindung ist dann eben
+/// nur klassisch, also derselbe Stand wie vor dem Umbau.
+///
+/// **Gemessen** (ADR 0010): der Handschlag mit ausschließlich PQ-Gruppe dauert
+/// auf Loopback 18 ms statt 17 ms — der Aufschlag ist ein paar hundert Byte
+/// mehr im ClientHello, kein zusätzlicher Umlauf.
+pub fn kx_gruppen() -> Vec<&'static dyn rustls::crypto::SupportedKxGroup> {
+    vec![
+        rustls::crypto::aws_lc_rs::kx_group::X25519MLKEM768,
+        rustls::crypto::aws_lc_rs::kx_group::X25519,
+    ]
+}
+
+/// Der Krypto-Anbieter dieses Programms — **einer** für Handschlag,
+/// Unterschriften und Schlüsselaustausch.
+///
+/// `ring` kennt kein ML-KEM; deshalb `aws-lc-rs`. Zwei Anbieter nebeneinander
+/// gehen nicht: `rustls` hat genau einen Standard je Prozess.
+fn anbieter() -> rustls::crypto::CryptoProvider {
+    let mut anbieter = rustls::crypto::aws_lc_rs::default_provider();
+    anbieter.kx_groups = kx_gruppen();
+    anbieter
+}
+
+impl rustls::client::danger::ServerCertVerifier for Zertifikatspruefung {
     fn verify_server_cert(
         &self,
-        _end_entity: &rustls::pki_types::CertificateDer<'_>,
+        end_entity: &rustls::pki_types::CertificateDer<'_>,
         _intermediates: &[rustls::pki_types::CertificateDer<'_>],
         _server_name: &rustls::pki_types::ServerName<'_>,
         _ocsp: &[u8],
         _now: rustls::pki_types::UnixTime,
     ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        self.pruefe_zertifikat(end_entity.as_ref())?;
         Ok(rustls::client::danger::ServerCertVerified::assertion())
     }
 
     fn verify_tls12_signature(
         &self,
-        _message: &[u8],
-        _cert: &rustls::pki_types::CertificateDer<'_>,
-        _dss: &rustls::DigitallySignedStruct,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+        rustls::crypto::verify_tls12_signature(message, cert, dss, &verfahren())
     }
 
     fn verify_tls13_signature(
         &self,
-        _message: &[u8],
-        _cert: &rustls::pki_types::CertificateDer<'_>,
-        _dss: &rustls::DigitallySignedStruct,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+        rustls::crypto::verify_tls13_signature(message, cert, dss, &verfahren())
     }
 
     fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-        rustls::crypto::ring::default_provider()
-            .signature_verification_algorithms
-            .supported_schemes()
+        verfahren().supported_schemes()
     }
 }
 
@@ -149,6 +265,12 @@ pub struct Verbindung {
     pub rolle: sprechwerk_domain::Role,
     /// Servername aus der Begrüßung.
     pub server_name: String,
+    /// Fingerabdruck des Zertifikats, das dieser Server gezeigt hat.
+    ///
+    /// Steht im Modell, damit man ihn **nach** dem Verbinden noch vergleichen
+    /// kann — mit dem, was der Betreiber ansagt oder auf seinem Bildschirm
+    /// sieht. Ein Wert, den niemand sieht, ist keine Bestätigung.
+    pub zertifikat: String,
     /// Raumliste aus der Begrüßung (wird bei Änderungen aktualisiert).
     pub raeume: Vec<Raumansicht>,
     /// Raum, in dem man nach der Anmeldung sitzt (der Standardraum).
@@ -160,20 +282,42 @@ pub struct Verbindung {
 }
 
 impl Verbindung {
-    /// Baut die Verbindung auf und meldet sich an.
+    /// Baut die Verbindung auf und meldet sich an — **erster Kontakt**.
+    ///
+    /// Ohne angehefteten Fingerabdruck: das Zertifikat wird angenommen und
+    /// der gesehene Wert in [`Verbindung::zertifikat`] zurückgegeben, damit
+    /// der Aufrufer ihn anheften kann. Wer schon einen kennt, nimmt
+    /// [`Verbindung::oeffnen_mit`] — sonst wäre die Anheftung wirkungslos.
     pub async fn oeffnen(
         adresse: SocketAddr,
         schluessel: &Schluessel,
         name: &str,
         serverpasswort: Option<&str>,
     ) -> anyhow::Result<Self> {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .ok();
+        Self::oeffnen_mit(adresse, schluessel, name, serverpasswort, None).await
+    }
 
-        let mut tls = rustls::ClientConfig::builder()
+    /// Wie [`Verbindung::oeffnen`], prüft aber gegen einen angehefteten
+    /// Fingerabdruck (TOFU, ADR 0002 §3).
+    ///
+    /// Weicht das Zertifikat ab, scheitert der Handschlag — die Anmeldung
+    /// (Kennung, Beweis, Serverpasswort) geht dann **nicht** über die Leitung.
+    pub async fn oeffnen_mit(
+        adresse: SocketAddr,
+        schluessel: &Schluessel,
+        name: &str,
+        serverpasswort: Option<&str>,
+        erwarteter_fingerabdruck: Option<&str>,
+    ) -> anyhow::Result<Self> {
+        let pruefung = Arc::new(Zertifikatspruefung::neu(erwarteter_fingerabdruck));
+        let gewaehlt = anbieter();
+        // Der erste Aufruf setzt den Standard des Prozesses; spätere Aufrufe
+        // geben den vorhandenen zurück (deshalb `ok()`, nicht `unwrap`).
+        gewaehlt.clone().install_default().ok();
+        let mut tls = rustls::ClientConfig::builder_with_provider(Arc::new(gewaehlt))
+            .with_protocol_versions(&[&rustls::version::TLS13])?
             .dangerous()
-            .with_custom_certificate_verifier(Arc::new(EigenesZertifikat))
+            .with_custom_certificate_verifier(pruefung.clone())
             .with_no_client_auth();
         tls.alpn_protocols = vec![b"sprechwerk/1".to_vec()];
         let quic = QuicClientConfig::try_from(tls)?;
@@ -185,11 +329,24 @@ impl Verbindung {
 
         let mut endpunkt = quinn::Endpoint::client("0.0.0.0:0".parse()?)?;
         endpunkt.set_default_client_config(client_config);
-        let conn = endpunkt
-            .connect(adresse, "sprechwerk")
-            .with_context(|| format!("verbinde zu {adresse}"))?
-            .await
-            .context("TLS/QUIC-Verbindung")?;
+        let verbunden = endpunkt.connect(adresse, "sprechwerk");
+        let conn = match verbunden {
+            Ok(aufbau) => match aufbau.await {
+                Ok(conn) => conn,
+                Err(fehler) => {
+                    // Der Grund der Ablehnung steht im Prüfer, nicht im
+                    // Transportfehler: „anderes Zertifikat" ist die Meldung,
+                    // die der Nutzer braucht.
+                    if let Some(grund) = pruefung.abweichung() {
+                        anyhow::bail!(grund);
+                    }
+                    return Err(fehler)
+                        .with_context(|| format!("TLS/QUIC-Verbindung zu {adresse}"));
+                }
+            },
+            Err(fehler) => return Err(fehler).context("Verbindung aufbauen"),
+        };
+        let zertifikat = pruefung.gesehen().unwrap_or_default();
 
         // Der Server öffnet den Steuerstrom (siehe Server: ein Strom wird erst
         // mit den ersten Bytes sichtbar).
@@ -242,6 +399,7 @@ impl Verbindung {
                 ich,
                 rolle,
                 server_name,
+                zertifikat,
                 raeume,
                 raum,
                 mitglieder,
@@ -378,6 +536,35 @@ pub fn pruefe_beweis(kennung: &str, nonce: &str, beweis: &str) -> bool {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    #[test]
+    fn geheime_dateien_sind_nur_fuer_den_eigentuemer() {
+        use std::os::unix::fs::PermissionsExt;
+        let verzeichnis =
+            std::env::temp_dir().join(format!("sprechwerk-geheim-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&verzeichnis);
+        let rechte =
+            |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+
+        // Neu angelegt: 0600 von Anfang an.
+        let schluessel = verzeichnis.join("unter/schluessel");
+        Schluessel::laden_oder_erzeugen(&schluessel).unwrap();
+        assert_eq!(rechte(&schluessel), 0o600);
+
+        // Vorhanden und für alle lesbar (alter Stand): wird beim Schreiben zu.
+        let alt = verzeichnis.join("einstellungen.json");
+        std::fs::write(&alt, "{}").unwrap();
+        std::fs::set_permissions(&alt, std::fs::Permissions::from_mode(0o644)).unwrap();
+        geheim_schreiben(&alt, b"{\"passwort\":\"x\"}").unwrap();
+        assert_eq!(rechte(&alt), 0o600);
+        assert_eq!(
+            std::fs::read_to_string(&alt).unwrap(),
+            "{\"passwort\":\"x\"}"
+        );
+
+        let _ = std::fs::remove_dir_all(&verzeichnis);
+    }
+
     #[test]
     fn schluessel_signiert_und_prueft() {
         let s = Schluessel::neu();
@@ -394,5 +581,72 @@ mod tests {
         let text = s.export();
         let zurueck = Schluessel::aus_geheim(hex::decode(&text).unwrap().try_into().unwrap());
         assert_eq!(s.kennung(), zurueck.kennung());
+    }
+
+    #[test]
+    fn kx_gruppen_beginnen_mit_der_hybriden_gruppe() {
+        // ADR 0010: hybrid, nicht „nur Quanten" — und die hybride Gruppe muss
+        // **zuerst** stehen, sonst bleibt eine Verbindung still klassisch.
+        let gruppen = kx_gruppen();
+        assert_eq!(
+            gruppen[0].name(),
+            rustls::NamedGroup::X25519MLKEM768,
+            "die hybride Gruppe gehört an die erste Stelle"
+        );
+        assert_eq!(
+            gruppen[1].name(),
+            rustls::NamedGroup::X25519,
+            "der Rückfallweg bleibt, damit ältere Gegenstellen sich verbinden"
+        );
+    }
+
+    #[test]
+    fn der_anbieter_kennt_die_hybride_gruppe() {
+        // `ring` kennt kein ML-KEM: dieser Test schlägt fehl, sobald jemand den
+        // Anbieter zurückdreht, ohne die Gruppen mitzunehmen.
+        let a = anbieter();
+        assert!(a
+            .kx_groups
+            .iter()
+            .any(|g| g.name() == rustls::NamedGroup::X25519MLKEM768));
+        assert_eq!(a.kx_groups[0].name(), rustls::NamedGroup::X25519MLKEM768);
+    }
+
+    #[test]
+    fn erster_kontakt_heftet_den_gesehenen_wert_an() {
+        let p = Zertifikatspruefung::neu(None);
+        assert!(p.pruefe_zertifikat(b"erster").is_ok());
+        assert_eq!(
+            p.gesehen().as_deref(),
+            Some(sprechwerk_protocol::zertifikat_fingerabdruck(b"erster").as_str()),
+            "der gesehene Fingerabdruck muss zum Anheften zurückkommen"
+        );
+    }
+
+    #[test]
+    fn angehefteter_fingerabdruck_wird_geprueft() {
+        let richtig = sprechwerk_protocol::zertifikat_fingerabdruck(b"unser-server");
+        let p = Zertifikatspruefung::neu(Some(&richtig));
+        assert!(p.pruefe_zertifikat(b"unser-server").is_ok());
+        assert_eq!(p.gesehen().as_deref(), Some(richtig.as_str()));
+        assert!(p.abweichung().is_none());
+    }
+
+    #[test]
+    fn fremdes_zertifikat_wird_abgelehnt_und_der_grund_gemerkt() {
+        let richtig = sprechwerk_protocol::zertifikat_fingerabdruck(b"unser-server");
+        let p = Zertifikatspruefung::neu(Some(&richtig));
+        let fehler = p.pruefe_zertifikat(b"fremder-server").unwrap_err();
+        assert!(fehler.to_string().contains("anderes Zertifikat"));
+        // Der Grund muss auch dann lesbar bleiben, wenn `rustls` ihn nur als
+        // Transportfehler weiterreicht.
+        assert!(p
+            .abweichung()
+            .unwrap_or_default()
+            .contains("anderes Zertifikat"));
+        assert!(
+            p.gesehen().is_none(),
+            "ein abgelehntes Zertifikat darf nicht als gesehen gelten"
+        );
     }
 }

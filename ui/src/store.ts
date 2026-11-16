@@ -17,6 +17,8 @@ export const modell = reactive<Zustand>({
   guete: null,
   sperren: [],
   protokoll: [],
+  // Erst nach dem Verbinden gesetzt: der Wert, der geprüft wurde.
+  zertifikat: null,
 
   meldung: null,
 });
@@ -38,6 +40,7 @@ export const einstellungen = reactive<Einstellungen>({
   rauschunterdrueckung: true,
   noisegate: true,
   echounterdrueckung: true,
+  vertrauen: [],
 });
 
 /** Welche Ansicht ist offen? (Die Leiste links schreibt hier hinein.) */
@@ -324,22 +327,24 @@ export const eigeneTaub = computed(() => {
  */
 export async function eigenesMikrofon(an: boolean) {
   lokalStumm.value = an;
+  // Der Sprechpfad wirkt sofort und lokal; ein Fehler dort darf den Schalter
+  // nicht blockieren (Meldung kommt vom Serverweg darunter).
   if (!istDummy) await api.mikrofonStumm(an).catch(() => undefined);
   const id = modell.verbindung?.art === "verbunden" ? modell.verbindung.ich : null;
-  if (id) await api.stummschalten(id, false, an).catch(() => undefined);
+  if (id) await befehl(() => api.stummschalten(id, false, an));
 }
 
 /** Eigenen Ton abschalten (taub): nichts wird abgespielt. */
 export async function eigenesHoeren(an: boolean) {
   if (!istDummy) await api.hoerenAus(an).catch(() => undefined);
   const id = modell.verbindung?.art === "verbunden" ? modell.verbindung.ich : null;
-  if (id) await api.stummschalten(id, true, an).catch(() => undefined);
+  if (id) await befehl(() => api.stummschalten(id, true, an));
 }
 
 /** Push-to-Talk: Taste gedrückt oder losgelassen. */
 export async function sprechtaste(an: boolean) {
   if (!verbunden.value || !einstellungen.push_to_talk || istDummy) return;
-  await api.sprechtaste(an).catch(() => undefined);
+  await befehl(() => api.sprechtaste(an));
 }
 
 /** Stand des Sprechpfads holen (nach dem Verbinden, nach Gerätewechsel). */
@@ -400,6 +405,12 @@ export async function verbinden() {
   modell.meldung = null;
   try {
     await api.verbinden(einstellungen.server, einstellungen.name, einstellungen.passwort);
+    // Der Rust-Teil hat beim Verbinden gerade das Zertifikat angeheftet. Die
+    // Einstellungen deshalb **neu lesen**, bevor gespeichert wird: sonst
+    // überschreibt der Stand von vor dem Verbinden den frisch angehefteten
+    // Fingerabdruck — und die Anheftung wäre nach jeder Verbindung wieder weg.
+    const frisch = await api.einstellungenLesen();
+    einstellungen.vertrauen = frisch.vertrauen;
     await api.einstellungenSpeichern({ ...einstellungen });
     await holeAudioStand();
   } catch (fehler) {
@@ -410,7 +421,7 @@ export async function verbinden() {
 }
 
 export async function trennen() {
-  await api.trennen();
+  await befehl(() => api.trennen());
   if (!istDummy) await api.audioStoppen().catch(() => undefined);
   hoerbar.value = false;
   pegel.value = 0;
@@ -419,17 +430,17 @@ export async function trennen() {
 }
 
 export async function betreten(raum: string) {
-  await api.betreten(raum);
+  await befehl(() => api.betreten(raum));
 }
 
 export async function sende(text: string) {
   const bereinigt = text.trim();
   if (!bereinigt) return;
-  await api.textSenden(bereinigt);
+  await befehl(() => api.textSenden(bereinigt));
 }
 
 export async function setzeRolle(mitglied: string, rolle: string) {
-  await api.rolleSetzen(mitglied, rolle as never);
+  await befehl(() => api.rolleSetzen(mitglied, rolle as never));
 }
 
 /** Darf ich in Räume und Personen eingreifen? (Sichtbarkeit folgt aus dem Modell) */
@@ -453,6 +464,20 @@ export async function verschluesseln(raum: string, an: boolean) {
 
 export async function ausRaumWerfen(mitglied: string) {
   await befehl(() => api.ausRaumWerfen(mitglied));
+}
+
+/** Vergisst den angehefteten Fingerabdruck eines Servers.
+ *
+ * Nötig, wenn der Server neu aufgesetzt wurde (neues Zertifikat): der nächste
+ * Verbindungsversuch heftet dann den neuen Wert an. Bis dahin wird die
+ * Verbindung mit dem alten Wert abgelehnt — das ist gewollt.
+ */
+export async function zertifikatVergessen(server: string) {
+  await befehl(async () => {
+    await api.zertifikatVergessen(server);
+    einstellungen.vertrauen = einstellungen.vertrauen.filter((v) => v.server !== server);
+    modell.meldung = t("server.certificate_forgotten");
+  });
 }
 
 export async function trenneMitglied(mitglied: string, grund: string) {

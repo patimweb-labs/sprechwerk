@@ -71,6 +71,24 @@ pub struct Einstellungen {
     /// Echounterdrückung: die eigene Wiedergabe aus der Aufnahme rechnen.
     /// Nötig, wenn über Lautsprecher gesprochen wird (sonst pfeift es).
     pub echounterdrueckung: bool,
+    /// Angeheftete Server-Zertifikate (TOFU, ADR 0002 §3).
+    ///
+    /// **Warum an der Adresse und nicht am Favoriten?** Man kann sich mit einem
+    /// Server verbinden, ohne ihn zu merken; das Zertifikat muss trotzdem
+    /// geprüft werden. Der Favorit ist eine Bequemlichkeit, die Anheftung eine
+    /// Sicherheitszusage.
+    pub vertrauen: Vec<Vertrauen>,
+}
+
+/// Ein angehefteter Fingerabdruck: „dieser Adresse glaube ich, solange sie
+/// dieses Zertifikat zeigt".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct Vertrauen {
+    /// Adresse, wie sie eingetippt wurde (`sprechwerk.verein.example:7443`).
+    pub server: String,
+    /// SHA-256 über das Zertifikat, hexadezimal (64 Zeichen).
+    pub fingerabdruck: String,
 }
 
 impl Einstellungen {
@@ -88,6 +106,61 @@ impl Einstellungen {
             f.zuletzt = jetzt;
         }
     }
+}
+
+impl Einstellungen {
+    /// Der angeheftete Fingerabdruck dieses Servers, falls einer vorliegt.
+    ///
+    /// `None` heißt: **erster Kontakt**. Der Aufrufer nimmt das Zertifikat an
+    /// und heftet es an — mehr sagt „trust on first use" nicht.
+    pub fn vertrauen_fuer(&self, server: &str) -> Option<&str> {
+        let gesucht = adresse(server);
+        self.vertrauen
+            .iter()
+            .find(|v| adresse(&v.server) == gesucht)
+            .map(|v| v.fingerabdruck.as_str())
+    }
+
+    /// Heftet einen Fingerabdruck an (ersetzt einen vorhandenen Eintrag).
+    ///
+    /// Ein leerer Wert wird ignoriert: ein Eintrag ohne Fingerabdruck wäre eine
+    /// Zusage ohne Inhalt und würde beim nächsten Kontakt alles durchlassen.
+    pub fn merke_vertrauen(&mut self, server: &str, fingerabdruck: &str) {
+        let wert = sprechwerk_protocol::normalisiere(fingerabdruck);
+        if wert.len() != sprechwerk_protocol::FINGERABDRUCK_LEN {
+            return;
+        }
+        let gesucht = adresse(server);
+        match self
+            .vertrauen
+            .iter_mut()
+            .find(|v| adresse(&v.server) == gesucht)
+        {
+            Some(vorhanden) => vorhanden.fingerabdruck = wert,
+            None => self.vertrauen.push(Vertrauen {
+                server: server.trim().to_string(),
+                fingerabdruck: wert,
+            }),
+        }
+    }
+
+    /// Vergisst den angehefteten Wert — der nächste Kontakt heftet neu an.
+    ///
+    /// Der **einzige** Weg, eine Abweichung zu übergehen, und er ist bewusst
+    /// eine Handlung: ein Server, der neu aufgesetzt wurde, braucht ihn; ein
+    /// Angreifer darf ihn nicht auslösen können.
+    pub fn vergiss_vertrauen(&mut self, server: &str) -> bool {
+        let gesucht = adresse(server);
+        let vorher = self.vertrauen.len();
+        self.vertrauen.retain(|v| adresse(&v.server) != gesucht);
+        self.vertrauen.len() != vorher
+    }
+}
+
+/// Adressen vergleichen: Groß-/Kleinschreibung und Leerzeichen am Rand zählen
+/// nicht — `Verein.Example:7443` und `verein.example:7443` sind derselbe Server.
+fn adresse(server: &str) -> String {
+    server.trim().to_ascii_lowercase()
 }
 
 impl Default for Einstellungen {
@@ -109,6 +182,7 @@ impl Default for Einstellungen {
             rauschunterdrueckung: true,
             noisegate: true,
             echounterdrueckung: true,
+            vertrauen: Vec::new(),
         }
     }
 }
@@ -123,12 +197,14 @@ impl Einstellungen {
     }
 
     /// Schreibt die Datei (Verzeichnis wird angelegt).
+    ///
+    /// Nur für den Eigentümer lesbar: hier steht das gemerkte Serverpasswort.
+    /// Mit `std::fs::write` lag es unter Linux für jeden Benutzer des Rechners
+    /// lesbar (0644).
     pub fn speichern(&self, pfad: &Path) -> Result<(), String> {
-        if let Some(eltern) = pfad.parent() {
-            std::fs::create_dir_all(eltern).map_err(|e| format!("Verzeichnis: {e}"))?;
-        }
         let text = serde_json::to_string_pretty(self).map_err(|e| format!("JSON: {e}"))?;
-        std::fs::write(pfad, text).map_err(|e| format!("Schreiben: {e}"))
+        sprechwerk_adapters::geheim_schreiben(pfad, text.as_bytes())
+            .map_err(|e| format!("Schreiben: {e}"))
     }
 }
 
@@ -167,6 +243,23 @@ mod tests {
         e.speichern(&pfad).unwrap();
         let geladen = Einstellungen::laden(&pfad);
         assert_eq!(geladen, e);
+        let _ = std::fs::remove_dir_all(&verzeichnis);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn einstellungen_mit_passwort_sind_nicht_fuer_alle_lesbar() {
+        use std::os::unix::fs::PermissionsExt;
+        let verzeichnis =
+            std::env::temp_dir().join(format!("sprechwerk-desktop-rechte-{}", std::process::id()));
+        let pfad = verzeichnis.join("einstellungen.json");
+        let e = Einstellungen {
+            passwort: "vereinsgeheim".into(),
+            ..Default::default()
+        };
+        e.speichern(&pfad).unwrap();
+        let rechte = std::fs::metadata(&pfad).unwrap().permissions().mode() & 0o777;
+        assert_eq!(rechte, 0o600, "einstellungen.json hat {rechte:o}");
         let _ = std::fs::remove_dir_all(&verzeichnis);
     }
 
@@ -252,5 +345,70 @@ mod tests {
         e.merke_verbindung("198.51.100.99:7443");
         assert_eq!(e.favoriten.len(), vorher, "kein Eintrag ohne Favorit");
         assert_eq!(e.server, "198.51.100.99:7443", "aber gemerkt wird er");
+    }
+
+    #[test]
+    fn zertifikat_wird_angeheftet_und_wieder_gefunden() {
+        let mut e = Einstellungen::default();
+        let fp = sprechwerk_protocol::zertifikat_fingerabdruck(b"verein");
+        assert!(
+            e.vertrauen_fuer("Verein.Example:7443").is_none(),
+            "erster Kontakt: noch nichts angeheftet"
+        );
+        e.merke_vertrauen("Verein.Example:7443", &fp);
+        assert_eq!(
+            e.vertrauen_fuer(" verein.example:7443 "),
+            Some(fp.as_str()),
+            "Adresse wird verglichen, nicht buchstabiert"
+        );
+        assert_eq!(e.vertrauen.len(), 1);
+
+        // Denselben Server erneut anheften ersetzt, statt zu sammeln.
+        let neu = sprechwerk_protocol::zertifikat_fingerabdruck(b"neu");
+        e.merke_vertrauen("verein.example:7443", &neu);
+        assert_eq!(e.vertrauen.len(), 1, "ein Eintrag je Adresse");
+        assert_eq!(e.vertrauen_fuer("verein.example:7443"), Some(neu.as_str()));
+    }
+
+    #[test]
+    fn vergessen_ist_eine_handlung_und_wirkt() {
+        let mut e = Einstellungen::default();
+        let fp = sprechwerk_protocol::zertifikat_fingerabdruck(b"verein");
+        e.merke_vertrauen("verein.example:7443", &fp);
+        assert!(e.vergiss_vertrauen("VEREIN.example:7443"));
+        assert!(e.vertrauen_fuer("verein.example:7443").is_none());
+        assert!(
+            !e.vergiss_vertrauen("verein.example:7443"),
+            "nichts zu vergessen ist keine Änderung"
+        );
+    }
+
+    #[test]
+    fn unbrauchbarer_fingerabdruck_wird_nicht_angeheftet() {
+        let mut e = Einstellungen::default();
+        e.merke_vertrauen("verein.example:7443", "");
+        e.merke_vertrauen("verein.example:7443", "3ff0");
+        assert!(
+            e.vertrauen.is_empty(),
+            "ein Eintrag ohne vollen Wert würde alles durchlassen"
+        );
+    }
+
+    #[test]
+    fn angeheftete_zertifikate_ueberleben_das_speichern() {
+        let verzeichnis =
+            std::env::temp_dir().join(format!("sprechwerk-vertrauen-{}", std::process::id()));
+        let pfad = verzeichnis.join("einstellungen.json");
+        let fp = sprechwerk_protocol::zertifikat_fingerabdruck(b"verein");
+        let mut e = Einstellungen::default();
+        e.merke_vertrauen("verein.example:7443", &fp);
+        e.speichern(&pfad).unwrap();
+        let geladen = Einstellungen::laden(&pfad);
+        assert_eq!(
+            geladen.vertrauen_fuer("verein.example:7443"),
+            Some(fp.as_str()),
+            "sonst wäre die Anheftung nach jedem Neustart weg"
+        );
+        let _ = std::fs::remove_dir_all(&verzeichnis);
     }
 }

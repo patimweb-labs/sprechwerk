@@ -63,7 +63,7 @@ Server kennt kein Fenster, das Fenster keine Domäne, `domain` kein Netz.
 
 ```text
 Mikrofon → 48 kHz mono → 20-ms-Rahmen → [PTT/Vorlauf] → Opus 32 kbit/s
-        → QUIC-Datagramm (4 Byte Kopf) → Server: Recht + Raum prüfen (≈16 µs)
+        → QUIC-Datagramm (6 Byte Kopf) → Server: Recht + Raum prüfen (≈16 µs)
         → QUIC-Datagramm → Jitter-Puffer (60 ms) → Opus-Decoder → Lautsprecher
 ```
 

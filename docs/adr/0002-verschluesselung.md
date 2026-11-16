@@ -69,3 +69,42 @@ nicht — und das steht so in der Anleitung, statt es zu verschweigen.
 | Nur Passwort im Klartext (wie TeamSpeak-Query) | indiskutabel |
 | Zertifikat von einer CA | Zusatzaufwand für Betreiber, kein Sicherheitsgewinn bei TOFU-fähigen Clients |
 | DTLS-SRTP je Medienstrom (WebRTC) | erst nötig, wenn Browser mitsprechen sollen |
+
+## Nachtrag 2026-11-14 — der Client prüfte gar nichts
+
+**Befund.** Punkt 3 dieser Entscheidung („Fingerabdruck beim ersten Verbinden
+bestätigt") stand seit dem ersten Tag in den Dokumenten, aber nicht im Code.
+`crates/adapters/src/lib.rs` hatte einen Prüfer, der für **jedes** Zertifikat
+`Ok(())` zurückgab — Zertifikat, TLS-1.2- und TLS-1.3-Unterschrift. Damit war
+der Transport zwar verschlüsselt (niemand konnte passiv mitlesen), aber nicht
+verbunden: wer sich in die Leitung stellt, zeigt sein eigenes Zertifikat, und
+der Client nimmt es an. Text, Steuerverkehr und — beim ersten Verbinden — das
+Serverpasswort wären lesbar gewesen. Ende-zu-Ende-Sprache hätte nur noch
+Geheimtext preisgegeben.
+
+**Zwei Fehler, nicht einer.** Auch mit Anheftung allein wäre die Lücke
+geblieben: ein Zertifikat ist ein *öffentlicher* Wert, er steht in jedem
+Handschlag. Wer ihn vorzeigt, muss den privaten Schlüssel nicht haben — solange
+niemand die Handschlag-Unterschrift prüft. Deshalb prüft der Client jetzt beides:
+den angehefteten Fingerabdruck **und** die Unterschrift, mit den Verfahren des
+Anbieters (`ring`), nicht mit einer eigenen Auswahl.
+
+**Was jetzt gebaut ist:**
+
+| Stück | Ort |
+|---|---|
+| Fingerabdruck-Rechnung an **einer** Stelle (Server-Anzeige = Client-Prüfung) | `crates/protocol/src/zertifikat.rs`, 6 Tests |
+| Anheften, Prüfen, Unterschrift prüfen, Grund merken | `crates/adapters/src/lib.rs` (`Zertifikatspruefung`), 3 Tests |
+| Abbruch **im Handschlag** — vor Kennung, Beweis und Serverpasswort | dort, `oeffnen_mit` |
+| Anheften beim ersten Kontakt, Vergessen als Handlung | `crates/desktop/src/einstellungen.rs` (`vertrauen`), 4 Tests |
+| Geprüfter Wert im Modell, im Fenster sichtbar | `crates/ipc` (`zustand.zertifikat`), `ui/src/views/ServerView.vue` |
+| Nachweis am echten Server: passend, fremd, erster Kontakt | `crates/server/tests/zertifikat.rs`, 3 Tests |
+| Nachweis durch das Fenster (Modell + Handschlag) | `crates/desktop/src/anwendung.rs`, 1 Test |
+
+Der Test `fremdes_zertifikat_bricht_ab_bevor_die_anmeldung_geht` prüft die
+Reihenfolge: nach einem abgelehnten Handschlag ist der Administratorplatz noch
+frei — also hat der Server die Anmeldung nie gesehen.
+
+**Was weiter gilt:** Wer den Schlüsselbund eines Mitglieds kopiert, ist dieses
+Mitglied. Das Anheften schützt gegen den *fremden* Server in der Leitung, nicht
+gegen ein gestohlenes Gerät.

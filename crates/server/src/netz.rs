@@ -35,9 +35,20 @@ pub fn zufall_hex(anzahl: usize) -> String {
 
 /// Startet den Dienst und kehrt erst zurück, wenn der Endpunkt endet.
 pub async fn lauschen(kern: Arc<Mutex<Kern>>) -> anyhow::Result<()> {
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .ok();
+    // Quantensicherheit (ADR 0010): derselbe Anbieter und dieselbe
+    // Gruppenreihenfolge wie im Client (`crates/adapters`). `ring` kennt kein
+    // ML-KEM, deshalb `aws-lc-rs`. Ein Anbieter je Prozess — zwei gehen nicht.
+    let anbieter = {
+        let mut a = rustls::crypto::aws_lc_rs::default_provider();
+        a.kx_groups = vec![
+            rustls::crypto::aws_lc_rs::kx_group::X25519MLKEM768,
+            rustls::crypto::aws_lc_rs::kx_group::X25519,
+        ];
+        a
+    };
+    // Erster Aufruf setzt den Standard des Prozesses (spätere geben ihn zurück).
+    anbieter.clone().install_default().ok();
+    let anbieter = Arc::new(anbieter);
 
     let (adresse, daten, staukontrolle, sprachpuffer) = {
         let k = kern.lock().expect("Sperre");
@@ -51,7 +62,9 @@ pub async fn lauschen(kern: Arc<Mutex<Kern>>) -> anyhow::Result<()> {
 
     let zert = crate::tls::laden_oder_erzeugen(&daten)?;
     // TLS 1.3 (von QUIC vorgeschrieben) mit dem eigenen Zertifikat.
-    let mut tls = rustls::ServerConfig::builder()
+    let mut tls = rustls::ServerConfig::builder_with_provider(anbieter)
+        .with_protocol_versions(&[&rustls::version::TLS13])
+        .context("TLS 1.3")?
         .with_no_client_auth()
         .with_single_cert(zert.kette.clone(), zert.schluessel.clone_key())
         .context("QUIC-Konfiguration")?;
@@ -323,13 +336,21 @@ async fn bediene(verbindung: quinn::Connection, kern: Arc<Mutex<Kern>>) -> anyho
                             verbindung.close(4u32.into(), b"zu viele Rahmen");
                             break Ok(());
                         }
-                        let antworten = {
+                        // Ausführen und Antwort zustellen unter **einer**
+                        // Sperre. `befehle` meldet die Änderung sofort an alle
+                        // anderen; lägen dazwischen zwei Sperren, könnte eine
+                        // andere Verbindung ihre Meldung *vor* unsere Antwort
+                        // in unser Postfach legen. Der Client überschreibt dann
+                        // mit der älteren Momentaufnahme (`Betreten {
+                        // anwesend }`) die neuere Meldung — wer gleichzeitig
+                        // kam, war für ihn verschwunden (und bekam als Folge
+                        // keinen Raumschlüssel). `senden` wartet nicht, die
+                        // Sperre bleibt also kurz.
+                        // Prüfung: `tests/rundlauf.rs`,
+                        // `gleichzeitiges_betreten_laesst_niemanden_verschwinden`.
+                        {
                             let mut k = kern.lock().expect("Sperre");
-                            k.befehle(ich, frame)
-                        };
-                        if !antworten.is_empty() {
-                            let k = kern.lock().expect("Sperre");
-                            for a in antworten {
+                            for a in k.befehle(ich, frame) {
                                 k.senden(ich, a);
                             }
                         }

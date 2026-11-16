@@ -9,6 +9,8 @@ sprechwerk-domain.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-uuid = { version = "1", features = ["v4", "serde"] }
+# Fingerabdruck des Server-Zertifikats: eine Rechnung für Server und Client.
+sha2.workspace = true
+hex.workspace = true
 
 [dev-dependencies]

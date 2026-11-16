@@ -9,7 +9,7 @@
 // der Hauptweg („Verbinden") steht sichtbar.
 import { computed, ref } from "vue";
 import * as UI from "@weppelmann/components";
-import { zuletztText } from "../format";
+import { fingerabdruckGruppiert, zuletztText } from "../format";
 import { IconMore, IconPlug, IconPlus } from "@weppelmann/icons";
 import {
   einstellungen,
@@ -19,6 +19,7 @@ import {
   modell,
   t,
   verbindeMit,
+  zertifikatVergessen,
 } from "../store";
 
 const zeigeHinzufuegen = ref(false);
@@ -42,6 +43,23 @@ const server = computed(() => {
   }
   return liste;
 });
+
+/** Der Fingerabdruck, den die laufende Verbindung geprüft hat.
+ *
+ * Er kommt aus dem Modell, nicht aus den Einstellungen: dort steht, was
+ * **geprüft** wurde — nicht, was angeheftet ist. Beides kann auseinandergehen,
+ * und genau dann ist die Anzeige wichtig.
+ */
+const zertifikat = computed(() => modell.zertifikat);
+const fingerabdruck = computed(() => fingerabdruckGruppiert(modell.zertifikat ?? ""));
+/** Ist dieser Server schon angeheftet? Bestimmt, ob „vergessen" etwas tut. */
+const angeheftet = computed(() =>
+  einstellungen.vertrauen.some((v) => v.server === einstellungen.server),
+);
+
+function vergissZertifikat() {
+  void zertifikatVergessen(einstellungen.server);
+}
 
 /** Menü einer Zeile: Verbinden, Bearbeiten, Entfernen. */
 function zeilenMenue(s: { server: string; gemerkt: boolean }): UI.MenuItem[] {
@@ -134,8 +152,25 @@ async function entfernen() {
         </div>
       </div>
 
-      <p class="fussnote">{{ t("server.footnote") }}</p>
+      <!-- Der Wert, der **geprüft** wurde: aus dem Modell, nicht aus den
+           Einstellungen. Nur so kann man ihn mit dem Serverbildschirm
+           vergleichen (TOFU, ADR 0002 §3). -->
+      <div v-if="zertifikat" class="zertifikat">
+        <div class="zertifikat__text">
+          <span class="zertifikat__titel">{{ t("server.certificate") }}</span>
+          <span class="zertifikat__wert">{{ fingerabdruck }}</span>
+          <span class="zertifikat__hinweis">{{ t("server.certificate_hint") }}</span>
+        </div>
+        <UI.WpButton
+          :label="t('server.certificate_forget')"
+          size="sm"
+          variant="secondary"
+          :disabled="!angeheftet"
+          @press="vergissZertifikat"
+        />
+      </div>
 
+      <p class="fussnote">{{ t("server.footnote") }}</p>
       <p v-if="modell.meldung" class="meldung">{{ modell.meldung }}</p>
     </div>
 
@@ -145,7 +180,7 @@ async function entfernen() {
       :description="t('server.add.desc')"
       :confirm-label="t('server.add')"
       @confirm="hinzufuegen"
-      @cancel="zeigeHinzufuegen = false"
+      @update:open="zeigeHinzufuegen = false"
     >
       <div class="dialogfelder">
         <UI.WpInput v-model="neuerName" :placeholder="t('server.add.name')" />
@@ -160,7 +195,7 @@ async function entfernen() {
       tone="warn"
       :confirm-label="t('server.remove.confirm')"
       @confirm="entfernen"
-      @cancel="zeigeEntfernen = null"
+      @update:open="zeigeEntfernen = null"
     />
   </div>
 </template>
@@ -188,7 +223,7 @@ async function entfernen() {
 }
 
 .kopf__text p {
-  margin: 2px 0 0;
+  margin: calc(var(--wp-space-1) / 2) 0 0;
   font-size: var(--wp-font-size-xs);
   color: var(--wp-color-text-muted);
 }
@@ -247,7 +282,7 @@ async function entfernen() {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  gap: 1px;
+  gap: var(--wp-size-border);
 }
 
 .name {
@@ -290,6 +325,47 @@ async function entfernen() {
   margin: 0;
   font-size: var(--wp-font-size-xs);
   color: var(--wp-color-text-faint);
+}
+
+/* Zertifikat der laufenden Verbindung: eine Zeile mit Wert, keine Karte. */
+.zertifikat {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wp-space-3);
+  padding: var(--wp-space-3);
+  border: var(--wp-size-border) solid var(--wp-color-border-subtle);
+  background: var(--wp-color-bg-panel);
+}
+
+.zertifikat__text {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--wp-space-1) / 2);
+  min-width: 0;
+}
+
+.zertifikat__titel {
+  font-size: var(--wp-font-size-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--wp-color-text-faint);
+}
+
+.zertifikat__wert {
+  font-family: var(--wp-font-family-mono);
+  font-size: var(--wp-font-size-sm);
+  color: var(--wp-color-text-default);
+  overflow-wrap: anywhere;
+}
+
+.zertifikat__hinweis {
+  font-size: var(--wp-font-size-xs);
+  color: var(--wp-color-text-muted);
+}
+
+.zertifikat > :last-child {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .meldung {

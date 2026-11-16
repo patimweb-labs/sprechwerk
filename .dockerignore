@@ -1,0 +1,35 @@
+# Was **nicht** in den Baukontext gehört.
+#
+# Ohne diese Datei schickt `podman build` bzw. `docker compose up` das ganze
+# Verzeichnis an den Bau-Prozess: hier liegen allein 50 GB in `target/` (Arbeits-
+# bereich plus Fensteranwendung). Das ist kein Bau, das ist ein Umzug — der
+# Containerbau lief deshalb praktisch nie.
+#
+# Aufruf: `docker compose up -d --build` (der Kontext ist danach wenige MB).
+
+# Baureste
+target/
+crates/desktop/target/
+crates/desktop/gen/
+
+# Das Fenster gehört nicht in den Container (eigene `[workspace]`, Tauri,
+# Node) — der Server braucht es nicht.
+crates/desktop/
+ui/node_modules/
+ui/dist/
+
+# Betriebsdaten und Sicherungen
+data/
+sicherungen/
+*.sqlitedb
+*.sqlitedb-wal
+*.sqlitedb-shm
+*.tmp
+
+# Verwaltung und Werkzeuge
+.git/
+.github/
+graph-out/
+scripts/
+docs/
+tests/

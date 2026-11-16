@@ -17,14 +17,15 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-rust-version = "1.80"
+# Keine `rust-version`: die Rust-Fassung legt `rust-toolchain.toml` fest (eine
+# Stelle, dieselbe für Entwickler, CI und Docker). Ein Feld, das kein Crate
+# erbt, war hier nur eine zweite, falsche Angabe (1.80).
 
 [workspace.dependencies]
 sprechwerk-domain = { path = "crates/domain" }
 sprechwerk-protocol = { path = "crates/protocol" }
 sprechwerk-store = { path = "crates/store" }
 sprechwerk-adapters = { path = "crates/adapters" }
-sprechwerk-ipc = { path = "crates/ipc" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -33,13 +34,21 @@ anyhow = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "signal", "sync", "io-util", "io-std"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-quinn = "0.11"
-rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+# Quantensicherheit (ADR 0010): die hybride Gruppe X25519MLKEM768 gibt es nur im
+# Anbieter `aws-lc-rs` — `ring` kennt kein ML-KEM. Der Anbieter ist C-Code
+# (`aws-lc-sys`), baut aber ohne zusätzliche Systempakete (C-Compiler genügt).
+# Ein Anbieter je Prozess: `ring` und `aws-lc-rs` schließen sich aus, deshalb
+# steht die Wahl hier und nirgends sonst.
+quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-aws-lc-rs"] }
+rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs", "std"] }
 rcgen = "0.13"
 ed25519-dalek = { version = "2", features = ["rand_core", "pkcs8"] }
 getrandom = "0.2"
 # Ende-zu-Ende: reine Rust-Krypto (kein C, auf allen drei Plattformen gleich).
 x25519-dalek = { version = "2", features = ["static_secrets"] }
+# Quantensicherer Anteil des Schlüsselaustauschs (ADR 0010 Schritt 2):
+# ML-KEM-768 nach FIPS-203, reines Rust, keine Systempakete.
+ml-kem = "0.2"
 chacha20poly1305 = "0.10"
 hkdf = "0.12"
 sha2 = "0.10"

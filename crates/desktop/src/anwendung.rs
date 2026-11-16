@@ -24,6 +24,9 @@ enum Auftrag {
         server: String,
         name: String,
         passwort: Option<String>,
+        /// Angehefteter Fingerabdruck des Server-Zertifikats (TOFU).
+        /// `None` beim ersten Kontakt.
+        erwartet: Option<String>,
         antwort: oneshot::Sender<Result<String, String>>,
     },
     Befehl {
@@ -106,6 +109,7 @@ impl Anwendung {
         server: String,
         name: String,
         passwort: Option<String>,
+        erwarteter_fingerabdruck: Option<String>,
     ) -> Result<String, String> {
         let (tx, rx) = oneshot::channel();
         self.auftrag
@@ -113,6 +117,7 @@ impl Anwendung {
                 server,
                 name,
                 passwort,
+                erwartet: erwarteter_fingerabdruck,
                 antwort: tx,
             })
             .map_err(|_| "Verbindungsthread ist beendet".to_string())?;
@@ -302,6 +307,7 @@ async fn lauf<F>(
                 server,
                 name,
                 passwort,
+                erwartet,
                 antwort,
             } => {
                 if let Ok(mut z) = zustand.lock() {
@@ -349,7 +355,15 @@ async fn lauf<F>(
                 };
                 eigener = Some(schluessel.clone());
 
-                match Netz::oeffnen(ziel, &schluessel, &name, passwort.as_deref()).await {
+                match Netz::oeffnen_mit(
+                    ziel,
+                    &schluessel,
+                    &name,
+                    passwort.as_deref(),
+                    erwartet.as_deref(),
+                )
+                .await
+                {
                     Ok(verbindung) => {
                         let server_name = verbindung.server_name.clone();
                         let raeume = verbindung.raeume.clone();
@@ -358,14 +372,16 @@ async fn lauf<F>(
                         let verlauf = verbindung.verlauf.clone();
                         let ich = verbindung.ich;
                         let rolle = verbindung.rolle;
+                        // Was der Server gezeigt hat: gehört ins Modell, sonst
+                        // kann niemand den angeheften Wert nachlesen.
+                        let zertifikat = verbindung.zertifikat.clone();
 
                         // Sprache: eingehende Datagramme in einer eigenen Aufgabe
                         // lesen (der Steuerstrom gehört der Leseschleife oben).
                         let quelle = verbindung.datagramm_quelle();
                         let (tx_sprache, rx_sprache) = mpsc::unbounded_channel::<Vec<u8>>();
                         tokio::spawn(async move {
-                            // Verbindung zu (`Err`) beendet die Aufgabe, ebenso
-                            // ein geschlossener Empfänger.
+                            // Verbindung zu: Aufgabe beenden.
                             while let Ok(d) = quelle.read_datagram().await {
                                 if tx_sprache.send(d.to_vec()).is_err() {
                                     break;
@@ -412,6 +428,11 @@ async fn lauf<F>(
                                     verlauf,
                                 },
                             );
+                            // **Nach** dem Verarbeiten setzen: die Begrüßung
+                            // baut den Stand neu auf (`*zustand =
+                            // aus_willkommen(..)`), ein vorher gesetzter Wert
+                            // wäre wieder weg.
+                            z.zertifikat = Some(zertifikat.clone());
                             // Der eigene Name gehört ins Modell (er kommt nicht
                             // über die Meldung zurück).
                             if let Some(sprechwerk_ipc::Verbindung::Verbunden { name: n, .. }) =
@@ -554,21 +575,18 @@ fn verschluessle(
     datagramm: Vec<u8>,
 ) -> Vec<u8> {
     let raum = aktueller.lock().ok().and_then(|r| *r);
-    match (raum, raum.and_then(|r| verwaltung.hole(r).map(|k| (r, k)))) {
-        // Ohne Verschlüsselung geht der Rahmen **nicht** hinaus — ein
-        // Klartext-Rahmen in einem verschlüsselten Raum wäre ein Datenleck.
-        (_, Some((raum, schluessel))) => {
-            sprechwerk_adapters::verschluesselt::rahmen_verschluesseln(
-                &datagramm,
-                &schluessel,
-                raum.text().as_str(),
-            )
-            .unwrap_or_default()
-        }
-        _ => {
-            // Kein verschlüsselter Raum: unverändert hinaus.
-            datagramm
-        }
+    let schluessel = raum.and_then(|r| verwaltung.hole(r).map(|k| (r, k)));
+    match schluessel {
+        // Ein Rahmen, der sich nicht verschlüsseln lässt, wird verworfen
+        // (leeres Feld) — unverschlüsselt hinausgehen wäre ein Leck.
+        Some((raum, schluessel)) => sprechwerk_adapters::verschluesselt::rahmen_verschluesseln(
+            &datagramm,
+            &schluessel,
+            raum.text().as_str(),
+        )
+        .unwrap_or_default(),
+        // Kein verschlüsselter Raum: unverändert hinaus.
+        None => datagramm,
     }
 }
 
@@ -636,5 +654,153 @@ fn nimm_schluesselpaket(
 fn melden<F: Fn(Zustand)>(zustand: &Arc<Mutex<Zustand>>, melde: &F) {
     if let Ok(z) = zustand.lock() {
         melde(z.clone());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn freier_port() -> u16 {
+        std::net::UdpSocket::bind("127.0.0.1:0")
+            .expect("Port")
+            .local_addr()
+            .expect("Adresse")
+            .port()
+    }
+
+    /// Startet den echten Server aus dem Arbeitsbereich.
+    ///
+    /// `crates/desktop` liegt außerhalb des Arbeitsbereichs (Tauri hat eine
+    /// eigene Sperrdatei); fehlt das Programm, sagt der Test, was zu tun ist,
+    /// statt still zu überspringen.
+    struct Pruefserver {
+        kind: std::process::Child,
+        verzeichnis: std::path::PathBuf,
+        adresse: std::net::SocketAddr,
+    }
+
+    impl Drop for Pruefserver {
+        fn drop(&mut self) {
+            let _ = self.kind.kill();
+            let _ = self.kind.wait();
+            let _ = std::fs::remove_dir_all(&self.verzeichnis);
+        }
+    }
+
+    fn server_starten(name: &str) -> Pruefserver {
+        let programm =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/sprechwerk");
+        assert!(
+            programm.exists(),
+            "{} fehlt — vorher `cargo build -p sprechwerk-server` im Arbeitsbereich ausführen",
+            programm.display()
+        );
+        let verzeichnis = std::env::temp_dir().join(format!(
+            "sprechwerk-anwendung-{}-{name}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&verzeichnis);
+        std::fs::create_dir_all(&verzeichnis).expect("Verzeichnis");
+        let port = freier_port();
+        let mut kind = std::process::Command::new(&programm)
+            .env("SPRECHWERK_DATEN", &verzeichnis)
+            .env("SPRECHWERK_PORT", port.to_string())
+            .env("SPRECHWERK_BIND", "127.0.0.1")
+            .env("SPRECHWERK_NAME", "Anwendungstest")
+            .env("SPRECHWERK_SICHERUNG_AKTIV", "0")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("Server startet");
+
+        // Auf „lauscht auf" warten; danach die Ausgabe weiterlesen, sonst
+        // stirbt der Server am nächsten `println!` (Broken pipe).
+        {
+            use std::io::BufRead;
+            let stdout = kind.stdout.take().expect("stdout");
+            let mut leser = std::io::BufReader::new(stdout);
+            let mut bereit = false;
+            for _ in 0..200 {
+                let mut zeile = String::new();
+                if leser.read_line(&mut zeile).unwrap_or(0) == 0 {
+                    break;
+                }
+                if zeile.contains("lauscht auf") {
+                    bereit = true;
+                    break;
+                }
+            }
+            assert!(bereit, "Server meldet sich nicht");
+            std::thread::spawn(move || {
+                let mut rest = String::new();
+                let _ = std::io::Read::read_to_string(&mut leser, &mut rest);
+            });
+        }
+
+        Pruefserver {
+            kind,
+            verzeichnis,
+            adresse: format!("127.0.0.1:{port}").parse().expect("Adresse"),
+        }
+    }
+
+    impl Pruefserver {
+        fn fingerabdruck(&self) -> String {
+            let der = std::fs::read(self.verzeichnis.join("zertifikat.der"))
+                .expect("Zertifikat im Datenverzeichnis");
+            sprechwerk_protocol::zertifikat_fingerabdruck(&der)
+        }
+    }
+
+    /// Die ganze Kette vom Fenster bis zum Handschlag: ein angehefteter Wert
+    /// entscheidet, ob die Verbindung zustande kommt — und der gesehene Wert
+    /// landet im Modell, damit die Oberfläche ihn zeigen kann.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn angeheftes_zertifikat_entscheidet_ueber_die_verbindung() {
+        let server = server_starten("zertifikat");
+        let verzeichnis = std::env::temp_dir().join(format!(
+            "sprechwerk-anwendung-schluessel-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&verzeichnis);
+        let anwendung = Anwendung::starten(
+            verzeichnis.join("schluessel"),
+            Arc::new(crate::sprech::Sprechbetrieb::neu()),
+            Arc::new(crate::verschluesselung::Schluesselverwaltung::neu()),
+            |_| {},
+        );
+
+        // Falscher Wert: die Verbindung darf nicht zustande kommen, und der
+        // Grund muss ankommen (nicht „TLS-Fehler").
+        let falsch = sprechwerk_protocol::zertifikat_fingerabdruck(b"boeser-server");
+        let fehler = anwendung
+            .verbinden(server.adresse.to_string(), "Ada".into(), None, Some(falsch))
+            .await
+            .expect_err("fremdes Zertifikat");
+        assert!(
+            fehler.contains("anderes Zertifikat"),
+            "Meldung nennt den Grund: {fehler}"
+        );
+
+        // Richtiger Wert: Verbindung steht, und der geprüfte Wert steht im
+        // Modell — sonst könnte die Oberfläche ihn nicht anzeigen.
+        let richtig = server.fingerabdruck();
+        anwendung
+            .verbinden(
+                server.adresse.to_string(),
+                "Ada".into(),
+                None,
+                Some(richtig.clone()),
+            )
+            .await
+            .expect("passendes Zertifikat");
+        assert_eq!(
+            anwendung.zustand().zertifikat,
+            Some(richtig),
+            "der geprüfte Fingerabdruck gehört ins Modell"
+        );
+
+        let _ = std::fs::remove_dir_all(&verzeichnis);
     }
 }

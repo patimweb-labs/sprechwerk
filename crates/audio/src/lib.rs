@@ -123,13 +123,6 @@ pub struct Pfad {
     pegel: Arc<AtomicU8>,
     /// Läuft der Pfad noch?
     laeuft: Arc<AtomicBool>,
-    /// Was gerade abgespielt wurde — Referenz für die Echounterdrückung.
-    ///
-    /// Der Feldwert wird nicht gelesen: er **hält den Puffer am Leben**, den die
-    /// Threads über ihre Klone benutzen. Fiele er weg, wäre der Puffer weg,
-    /// sobald der letzte Klon entsteht.
-    #[allow(dead_code)]
-    gehoert: Arc<Mutex<std::collections::VecDeque<Vec<f32>>>>,
     /// Umstellen der Sendeseite.
     einstellungen: Kanal<Sendeeinstellungen>,
     /// Wie die Geräte heißen (für die Oberfläche). Die Geräte selbst gehören
@@ -251,7 +244,10 @@ impl Pfad {
         {
             let laeuft = laeuft.clone();
             let steuerung = steuerung.clone();
-            let gehoert_ausgabe = gehoert_aufnahme.clone();
+            // Der Puffer gehört dem Wiedergabethread; der Aufnahmethread hat
+            // seine eigene Kopie. `Pfad` hält ihn nicht — sonst wäre das Feld
+            // ein zweiter Besitzer ohne Aufgabe.
+            let gehoert_ausgabe = gehoert_aufnahme;
             std::thread::Builder::new()
                 .name("sprechwerk-wiedergabe".into())
                 .spawn(move || {
@@ -313,7 +309,6 @@ impl Pfad {
             pegel,
             laeuft,
             einstellungen: stell_tx,
-            gehoert: gehoert_aufnahme,
             name_aufnahme,
             name_wiedergabe,
         })

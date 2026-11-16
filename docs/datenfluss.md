@@ -40,10 +40,20 @@ Server vergeben hat.
    und markiert den Raum als `hier`.
 5. Der Raum bekommt zusätzlich ein `Anwesenheit`-Rundruf an die anderen.
 
+**Reihenfolge ist Teil des Vertrags.** Die Antwort `Betreten { anwesend }` ist
+eine Momentaufnahme, und der Client **ersetzt** damit seine Mitgliederliste.
+Eine Meldung über jemanden, der danach kam, muss deshalb auch danach
+ankommen — sonst überschreibt die ältere Aufnahme die neuere Meldung, und der
+Späterkommende fehlt dauerhaft (als Schlüsselwart: er bekommt nie einen
+Raumschlüssel). Der Server sichert das, indem er Befehl ausführen und Antwort
+ins Postfach legen **unter einer Sperre** erledigt (`crates/server/src/netz.rs`).
+Geprüft am Draht: `gleichzeitiges_betreten_laesst_niemanden_verschwinden`
+in `crates/server/tests/rundlauf.rs` (sechs Clients, zwölf Runden).
+
 ## 3. Sprache
 
 ```text
-Client A: Opus-Rahmen + 4 Byte Kopf → QUIC-Datagramm
+Client A: Opus-Rahmen + 6 Byte Kopf → QUIC-Datagramm
 Server:   Kopf prüfen, Recht prüfen (Rollen), Raum aus dem Sitzungszustand
          → send_datagram an alle anderen im Raum (kein Puffer, kein Warten)
 Client B: Kopf lesen, Jitter-Puffer, dekodieren, ausgeben

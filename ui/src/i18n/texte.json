@@ -155,6 +155,30 @@
   "es": "Tu identidad está en este equipo (archivo de clave). Llévala a otro dispositivo — si no, allí eres un miembro nuevo.",
   "fr": "Ton identité réside sur cette machine (fichier de clé). Emporte-la ailleurs — sinon tu y es un nouveau membre."
  },
+ "server.certificate": {
+  "de": "Zertifikat dieses Servers",
+  "en": "This server's certificate",
+  "es": "Certificado de este servidor",
+  "fr": "Certificat de ce serveur"
+ },
+ "server.certificate_hint": {
+  "de": "Beim ersten Verbinden angeheftet und seitdem geprüft. Vergleiche ihn mit dem Wert, den der Server beim Start anzeigt.",
+  "en": "Pinned on the first connection and checked ever since. Compare it with the value the server prints at startup.",
+  "es": "Fijado en la primera conexión y comprobado desde entonces. Compáralo con el valor que el servidor muestra al arrancar.",
+  "fr": "Épinglé à la première connexion et vérifié depuis. Compare-le à la valeur que le serveur affiche au démarrage."
+ },
+ "server.certificate_forget": {
+  "de": "Zertifikat vergessen",
+  "en": "Forget certificate",
+  "es": "Olvidar certificado",
+  "fr": "Oublier le certificat"
+ },
+ "server.certificate_forgotten": {
+  "de": "Zertifikat vergessen — beim nächsten Verbinden wird neu angeheftet",
+  "en": "Certificate forgotten — it will be pinned again on the next connection",
+  "es": "Certificado olvidado — se fijará de nuevo en la próxima conexión",
+  "fr": "Certificat oublié — il sera épinglé à nouveau à la prochaine connexion"
+ },
  "server.add.title": {
   "de": "Server hinzufügen",
   "en": "Add server",

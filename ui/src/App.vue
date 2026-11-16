@@ -37,6 +37,7 @@ import {
   trennen,
   verbunden,
   meineRolle,
+  rolle,
 } from "./store";
 import SprechwerkMarke from "./marke/SprechwerkMarke.vue";
 import ServerView from "./views/ServerView.vue";
@@ -219,7 +220,7 @@ async function tonUmschalten() {
           <UI.WpAvatar :name="eigenerName" size="sm" tone="accent" :muted="lokalStumm" />
           <span class="eigener">
             <span class="eigener__name">{{ eigenerName }}</span>
-            <span class="eigener__rolle">{{ meineRolle }}</span>
+            <span class="eigener__rolle">{{ meineRolle ? rolle(meineRolle) : "" }}</span>
           </span>
           <UI.WpIconButton
             :icon="IconUnplug"
@@ -301,12 +302,12 @@ async function tonUmschalten() {
 }
 
 .guete.warn {
-  color: var(--wp-color-warning, var(--wp-color-text));
-  font-weight: 600;
+  color: var(--wp-color-status-warn);
+  font-weight: var(--wp-font-weight-semibold);
 }
 
 .pegel {
-  width: 88px;
+  width: calc(var(--wp-space-8) + var(--wp-space-5));
   margin-right: var(--wp-space-1);
 }
 
@@ -318,10 +319,10 @@ async function tonUmschalten() {
 }
 
 .marke__zeichen {
-  width: 18px;
-  height: 18px;
+  width: calc(var(--wp-space-4) + var(--wp-space-1) / 2);
+  height: calc(var(--wp-space-4) + var(--wp-space-1) / 2);
   /* Weiß, wie die Zeichnung in der Marke selbst — nicht der Akzent. */
-  color: var(--wp-color-text);
+  color: var(--wp-color-text-default);
 }
 
 .marke__text {
@@ -351,8 +352,8 @@ async function tonUmschalten() {
 
 /* Der Stecker: grau, wenn getrennt; Akzent, wenn die Verbindung steht. */
 .marke__stecker {
-  width: 12px;
-  height: 12px;
+  width: var(--wp-font-size-sm);
+  height: var(--wp-font-size-sm);
   flex: none;
   color: var(--wp-color-text-faint);
 }

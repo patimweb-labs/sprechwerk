@@ -4,6 +4,11 @@
 //! ersten Start erzeugt der Server ein selbst signiertes Zertifikat, legt es im
 //! Datenverzeichnis ab und zeigt den Fingerabdruck an. Der Client muss diesen
 //! Fingerabdruck bestätigen — genau wie bei SSH beim ersten Verbinden.
+//!
+//! Die Rechnung für den Fingerabdruck steht **nicht** hier, sondern in
+//! `sprechwerk_protocol::zertifikat`: Client und Server müssen Bit für Bit
+//! dasselbe rechnen, sonst prüft der Client etwas anderes, als der Server
+//! anzeigt.
 
 use anyhow::Context;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
@@ -33,13 +38,10 @@ pub fn laden_oder_erzeugen(daten: &Path) -> anyhow::Result<Zertifikat> {
             let z = erzeugt.cert.der().to_vec();
             let k = erzeugt.key_pair.serialize_der();
             std::fs::write(&zert_pfad, &z)?;
-            std::fs::write(&key_pfad, &k)?;
-            // Der Schlüssel ist ein Geheimnis: nur der Eigentümer darf lesen.
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = std::fs::set_permissions(&key_pfad, std::fs::Permissions::from_mode(0o600));
-            }
+            // Der Schlüssel ist ein Geheimnis: nur der Eigentümer darf lesen —
+            // und zwar ab dem ersten Byte, nicht erst nach einem `chmod`.
+            geheim_schreiben(&key_pfad, &k)
+                .with_context(|| format!("TLS-Schlüssel {}", key_pfad.display()))?;
             (z, k)
         }
     };
@@ -52,24 +54,58 @@ pub fn laden_oder_erzeugen(daten: &Path) -> anyhow::Result<Zertifikat> {
     })
 }
 
-/// SHA-256 über das Zertifikat als Hex.
-pub fn fingerabdruck(zert_der: &[u8]) -> String {
-    // ring ist über rustls ohnehin da; SHA-256 direkt daraus.
-    let digest = ring_sha256(zert_der);
-    hex::encode(digest)
+/// Schreibt eine Datei mit Rechten 0600 **von Anfang an** (unter Unix).
+///
+/// Dieselbe Rechnung wie `sprechwerk_adapters::geheim_schreiben`; der Server
+/// hängt bewusst nicht an der Client-Kiste. Erst schreiben und dann `chmod`
+/// ließe ein Fenster, in dem der TLS-Schlüssel für alle lesbar ist.
+fn geheim_schreiben(pfad: &Path, inhalt: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut optionen = std::fs::OpenOptions::new();
+    optionen.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        optionen.mode(0o600);
+    }
+    let mut datei = optionen.open(pfad)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        datei.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    datei.write_all(inhalt)?;
+    datei.sync_all()
 }
 
-fn ring_sha256(daten: &[u8]) -> [u8; 32] {
-    // SHA-256 ohne zusätzliche Abhängigkeit: `ring` ist über rustls vorhanden.
-    let digest = ring::digest::digest(&ring::digest::SHA256, daten);
-    let mut aus = [0u8; 32];
-    aus.copy_from_slice(digest.as_ref());
-    aus
+/// SHA-256 über das Zertifikat als Hex.
+///
+/// Delegiert an `sprechwerk_protocol`: die Anzeige des Servers und die Prüfung
+/// des Clients sind **dieselbe** Funktion, nicht zwei gleiche.
+pub fn fingerabdruck(zert_der: &[u8]) -> String {
+    sprechwerk_protocol::zertifikat_fingerabdruck(zert_der)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn tls_schluessel_ist_nur_fuer_den_dienst_lesbar() {
+        use std::os::unix::fs::PermissionsExt;
+        let daten =
+            std::env::temp_dir().join(format!("sprechwerk-tls-rechte-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&daten);
+        laden_oder_erzeugen(&daten).unwrap();
+        let rechte = std::fs::metadata(daten.join("schluessel.der"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(rechte, 0o600, "TLS-Schlüssel hat {rechte:o}");
+        let _ = std::fs::remove_dir_all(&daten);
+    }
 
     #[test]
     fn zertifikat_wird_einmal_erzeugt_und_dann_geladen() {

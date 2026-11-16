@@ -14,10 +14,75 @@
 use anyhow::{Context, Result};
 use sprechwerk_adapters::{Schluessel, Verbindung};
 use sprechwerk_audio::opus::{Kodierer, RAHMEN_SAMPLES};
-use sprechwerk_audio::Empfänger;
+use sprechwerk_audio::{Empfänger, Pfad, Sendeeinstellungen};
 use sprechwerk_protocol::Sprachkopf;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
+
+/// Ein vollwertiger Endpunkt: echter Audiopfad und echter Server.
+///
+/// Das ist derselbe Weg, den das Fenster benutzt — nur ohne Fenster. Damit
+/// lässt sich Sprache auf **einem** Rechner prüfen: virtuelle Geräte speisen
+/// das Mikrofon, ein Mitschnitt nimmt die Wiedergabe ab, und dazwischen liegt
+/// die ganze Kette (Rauschunterdrückung, Gate, Opus, Vorlauf, Server,
+/// Jitter-Puffer, Opus, Wiedergabe).
+async fn endpunkt(
+    verbindung: Verbindung,
+    mikrofon: Option<String>,
+    lautsprecher: Option<String>,
+    entrauschen: bool,
+    gate: bool,
+    dauer: f64,
+) -> Result<()> {
+    let einstellungen = Sendeeinstellungen {
+        entrauschen,
+        noisegate: gate,
+        ..Default::default()
+    };
+    // `Pfad` bleibt in dieser Aufgabe: er ist nicht `Sync` (der Kanal der
+    // fertigen Datagramme ist ein `std`-Empfänger), und ein Gerät gehört
+    // ohnehin dem Thread, der es geöffnet hat.
+    let pfad = Pfad::starten(
+        mikrofon.as_deref().filter(|s| !s.is_empty()),
+        lautsprecher.as_deref().filter(|s| !s.is_empty()),
+        einstellungen,
+    )?;
+    let (geraet_mic, geraet_ls) = pfad.geraete();
+    println!("Geräte: Mikrofon „{geraet_mic}“, Wiedergabe „{geraet_ls}“");
+
+    let quelle = verbindung.datagramm_quelle();
+    let mut gesendet = 0u64;
+    let mut empfangen = 0u64;
+    let mut hoechster_pegel = 0u8;
+    let ende = Instant::now() + Duration::from_secs_f64(dauer);
+    let mut weiter = true;
+    while weiter && Instant::now() < ende {
+        tokio::select! {
+            // Aus dem Netz in den Jitter-Puffer (und damit in die Wiedergabe).
+            gelesen = quelle.read_datagram() => {
+                match gelesen {
+                    Ok(d) => {
+                        pfad.hoeren(d.to_vec());
+                        empfangen += 1;
+                    }
+                    // Verbindung zu: nichts mehr zu holen.
+                    Err(_) => weiter = false,
+                }
+            }
+            // Im Takt von 5 ms: fertige Datagramme hinausschicken.
+            _ = tokio::time::sleep(Duration::from_millis(5)) => {
+                while let Some(d) = pfad.naechstes_datagramm() {
+                    verbindung.sprache_senden(bytes::Bytes::from(d))?;
+                    gesendet += 1;
+                }
+                hoechster_pegel = hoechster_pegel.max(pfad.pegel());
+            }
+        }
+    }
+    println!("gesendet: {gesendet}, empfangen: {empfangen}, höchster Pegel: {hoechster_pegel}");
+    pfad.stoppen();
+    Ok(())
+}
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -25,7 +90,11 @@ fn main() -> Result<()> {
         eprintln!(
             "Aufruf:\n  sprechprobe ton --server ADDR --name N --raum R --dauer S [--hz 440]\n  \
              sprechprobe mitschnitt --server ADDR --name N --raum R --dauer S --wav DATEI\n  \
-             sprechprobe rauschboden --server ADDR --name N --raum R --dauer S --wav DATEI"
+             sprechprobe rauschboden --server ADDR --name N --raum R --dauer S --wav DATEI\n  \
+             sprechprobe endpunkt --server ADDR --name N --raum R --dauer S \\\n                 --mikrofon GERAET --lautsprecher GERAET [--entrauschen 0|1] [--gate 0|1]\n\n\
+             `ton` und `mitschnitt` senden und hören **ohne** Gerät (nur Netz und Codec).\n\
+             `endpunkt` nimmt den **echten** Audiopfad: Aufnahme, Rauschunterdrückung,\n\
+             Noisegate, Opus, Vorlauf, Jitter-Puffer, Wiedergabe."
         );
         std::process::exit(2);
     }
@@ -77,6 +146,11 @@ fn main() -> Result<()> {
     let mut hz = 440.0f64;
     let mut schluessel = std::env::temp_dir().join("sprechprobe.schluessel");
     let mut neuer_raum: Option<String> = None;
+    // Nur für `endpunkt`: die Geräte des echten Pfads.
+    let mut mikrofon: Option<String> = None;
+    let mut lautsprecher: Option<String> = None;
+    let mut entrauschen = true;
+    let mut gate = true;
 
     let mut i = 2;
     while i < args.len() {
@@ -89,6 +163,10 @@ fn main() -> Result<()> {
             "--wav" => wav = Some(wert),
             "--hz" => hz = wert.parse().context("--hz")?,
             "--schluessel" => schluessel = wert.into(),
+            "--mikrofon" => mikrofon = Some(wert),
+            "--lautsprecher" => lautsprecher = Some(wert),
+            "--entrauschen" => entrauschen = wert != "0",
+            "--gate" => gate = wert != "0",
             // Raum anlegen und dort eintreten (für Prüfungen mit zwei Räumen).
             "--neuer-raum" => neuer_raum = Some(wert),
             anderes => anyhow::bail!("unbekannt: {anderes}"),
@@ -151,6 +229,12 @@ fn main() -> Result<()> {
             // Antwort abwarten (Betreten schickt den Verlauf mit).
             let _ = verbindung.empfang().await;
             println!("im Raum {nummer}");
+        }
+
+        // Der echte Pfad: Aufnahme, Rauschunterdrückung, Gate, Opus, Vorlauf,
+        // Jitter-Puffer, Wiedergabe — plus echter Server.
+        if art == "endpunkt" {
+            return endpunkt(verbindung, mikrofon, lautsprecher, entrauschen, gate, dauer).await;
         }
 
         let quelle = verbindung.datagramm_quelle();

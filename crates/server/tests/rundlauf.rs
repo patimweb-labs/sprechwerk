@@ -564,3 +564,103 @@ async fn ping_und_pong_gehen_schnell() {
         "die Umlaufzeit ist mit {p50} µs zu hoch für eine lokale Verbindung"
     );
 }
+
+/// **Reihenfolge am Draht:** die Antwort auf das eigene `Betreten` muss vor
+/// den Meldungen über Späterkommende ankommen.
+///
+/// Der Client ersetzt mit der Antwort (`Betreten { anwesend }`) seine ganze
+/// Mitgliederliste. Kam die Meldung „Clemens ist jetzt hier" **vor** dieser
+/// Momentaufnahme an, war Clemens danach für immer weg — und war der Client
+/// Schlüsselwart, bekam Clemens nie einen Raumschlüssel (gefunden 2026-11-14,
+/// `schluesselwechsel_im_laufenden_gespraech` kippte unter Last). Ursache war
+/// eine Lücke zwischen „Befehl ausführen" und „Antwort ins Postfach legen", in
+/// der eine andere Verbindung die Sperre nehmen konnte.
+///
+/// Geprüft wird, was der Nutzer davon hat: nach einem gleichzeitigen Betreten
+/// sieht **jeder** alle anderen im Raum. Mehrere Runden, weil ein Rennen nicht
+/// bei jedem Lauf auftritt.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn gleichzeitiges_betreten_laesst_niemanden_verschwinden() {
+    const LEUTE: usize = 6;
+    const RUNDEN: usize = 12;
+
+    let server = Testserver::starten("gleichzeitig", &[("SPRECHWERK_RAHMEN_JE_SEKUNDE", "1000")]);
+    server.bereit().await;
+
+    let mut alle = Vec::new();
+    for i in 0..LEUTE {
+        let v = Verbindung::oeffnen(server.adresse, &Schluessel::neu(), &format!("P{i}"), None)
+            .await
+            .expect("anmelden");
+        alle.push(v);
+    }
+
+    // Räume anlegen (die erste Verbindung ist Administrator).
+    for r in 0..RUNDEN {
+        alle[0]
+            .sende(ClientFrame::RaumAnlegen {
+                name: format!("Runde {r}"),
+            })
+            .await
+            .unwrap();
+    }
+    let raeume = loop {
+        warte_auf(&mut alle[0], |f| matches!(f, ServerFrame::Raeume { .. })).await;
+        let ids: Vec<_> = alle[0]
+            .raeume
+            .iter()
+            .filter(|r| r.name.starts_with("Runde "))
+            .map(|r| r.id)
+            .collect();
+        if ids.len() == RUNDEN {
+            break ids;
+        }
+    };
+
+    let schranke = std::sync::Arc::new(tokio::sync::Barrier::new(LEUTE));
+    let aufgaben: Vec<_> = alle
+        .into_iter()
+        .map(|mut v| {
+            let schranke = schranke.clone();
+            let raeume = raeume.clone();
+            tokio::spawn(async move {
+                // Fehler sammeln statt aussteigen: wer aussteigt, lässt die
+                // anderen an der Schranke hängen.
+                let mut fehler = Vec::new();
+                'runde: for raum in raeume {
+                    schranke.wait().await;
+                    v.sende(ClientFrame::Betreten { raum }).await.unwrap();
+                    let frist = tokio::time::Instant::now() + Duration::from_secs(3);
+                    loop {
+                        let da = v.mitglieder.iter().filter(|m| m.raum == Some(raum)).count();
+                        if da == LEUTE {
+                            break;
+                        }
+                        let rest = frist.saturating_duration_since(tokio::time::Instant::now());
+                        if rest.is_zero() {
+                            fehler
+                                .push(format!("{} sieht in {raum:?} nur {da} von {LEUTE}", v.ich));
+                            continue 'runde;
+                        }
+                        match tokio::time::timeout(rest, v.empfang()).await {
+                            Ok(Ok(Some(_))) | Err(_) => {}
+                            Ok(Ok(None)) => panic!("Verbindung geschlossen"),
+                            Ok(Err(e)) => panic!("Verbindungsfehler: {e}"),
+                        }
+                    }
+                }
+                fehler
+            })
+        })
+        .collect();
+
+    let mut fehler = Vec::new();
+    for a in aufgaben {
+        fehler.extend(a.await.expect("Aufgabe"));
+    }
+    assert!(
+        fehler.is_empty(),
+        "verschwundene Mitglieder:\n{}",
+        fehler.join("\n")
+    );
+}

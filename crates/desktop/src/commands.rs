@@ -24,6 +24,13 @@ pub fn zustand(anwendung: State<'_, Arc<Anwendung>>) -> Zustand {
 }
 
 /// Verbindet zu einem Server.
+///
+/// **Zwei Aufgaben in einem Aufruf** (TOFU, ADR 0002 §3): vorher den
+/// angehefteten Fingerabdruck aus den Einstellungen nehmen und mitgeben — er
+/// entscheidet **im Handschlag**, ob die Verbindung zustande kommt; nachher den
+/// gesehenen Wert anheften, falls es der erste Kontakt war. Nach der Prüfung
+/// anheften wäre zu spät: der Handschlag ist dann längst gelaufen und Kennung,
+/// Beweis und Serverpasswort sind über die Leitung gegangen.
 #[tauri::command]
 pub async fn verbinden(
     anwendung: State<'_, Arc<Anwendung>>,
@@ -33,11 +40,21 @@ pub async fn verbinden(
     name: String,
     passwort: Option<String>,
 ) -> Result<String, String> {
-    let ergebnis = anwendung.verbinden(server.clone(), name, passwort).await;
+    let erwartet = Einstellungen::laden(&pfad.0)
+        .vertrauen_fuer(&server)
+        .map(str::to_string);
+    let ergebnis = anwendung
+        .verbinden(server.clone(), name, passwort, erwartet)
+        .await;
     if ergebnis.is_ok() {
         // „Zuletzt verbunden" je Eintrag merken: wer drei Server hat, will bei
         // jedem sehen, wann er dort war.
         let mut e = Einstellungen::laden(&pfad.0);
+        // Der Wert aus dem Modell ist **derselbe**, der geprüft wurde — nicht
+        // ein zweimal berechneter.
+        if let Some(fingerabdruck) = anwendung.zustand().zertifikat {
+            e.merke_vertrauen(&server, &fingerabdruck);
+        }
         e.merke_verbindung(&server);
         let _ = e.speichern(&pfad.0);
         // Der Sprechpfad gehört zur Verbindung: ohne Verbindung kein Ton.
@@ -57,6 +74,21 @@ pub async fn trennen(anwendung: State<'_, Arc<Anwendung>>) -> Result<(), String>
         Antwort::Fehler { text } => Err(text),
         _ => Ok(()),
     }
+}
+
+/// Vergisst den angehefteten Fingerabdruck eines Servers.
+///
+/// Der **einzige** Weg, eine Abweichung zu übergehen — und bewusst eine
+/// sichtbare Handlung: ein neu aufgesetzter Server braucht sie, ein Angreifer
+/// darf sie nicht auslösen können. Der nächste Kontakt heftet neu an.
+#[tauri::command]
+pub fn zertifikat_vergessen(
+    pfad: State<'_, EinstellungenPfad>,
+    server: String,
+) -> Result<(), String> {
+    let mut e = Einstellungen::laden(&pfad.0);
+    e.vergiss_vertrauen(&server);
+    e.speichern(&pfad.0)
 }
 
 /// Betritt einen Raum.
