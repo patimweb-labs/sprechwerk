@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.0](https://github.com/patimweb-labs/sprechwerk/compare/v1.0.0...v1.1.0) (2026-11-16)
+
+
+### Neu
+
+* Ton ohne pactl — Opus und Geräte auf Windows und macOS ([cb86d15](https://github.com/patimweb-labs/sprechwerk/commit/cb86d158eaeab241eeb3cd2e5e262301129a055c))
+
+
+### Dokumentation
+
+* README, AUDIO und ADR 0007 für alle vier Paketwege ([783eba2](https://github.com/patimweb-labs/sprechwerk/commit/783eba2174078d7ba768395b3109963da99cd5ff))
+
+
+### Bau und Pakete
+
+* Pakete für Linux, Flatpak, Windows und macOS ([7f6d6c3](https://github.com/patimweb-labs/sprechwerk/commit/7f6d6c38cdfdef4e058b64eba33c23820fe0e3e4))
+
 ## 1.0.0 (2026-11-16)
 
 
