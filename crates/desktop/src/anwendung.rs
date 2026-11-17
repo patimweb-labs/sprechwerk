@@ -12,8 +12,10 @@
 
 use crate::sprech::Sprechbetrieb;
 use crate::verschluesselung::Schluesselverwaltung;
+use sprechwerk_adapters::serverschluessel::{Bund, Lesbar};
 use sprechwerk_adapters::{Schluessel, Verbindung as Netz};
 use sprechwerk_ipc::{abbilden, Antwort, Befehl, Zustand};
+use sprechwerk_protocol::inhalt::Inhalt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
@@ -170,6 +172,9 @@ async fn lauf<F>(
     // Der eigene Anmeldeschlüssel — nötig, um Raumschlüssel zu verteilen und
     // Umschläge zu öffnen.
     let mut eigener: Option<Schluessel> = None;
+    // Serverschlüssel der aktuellen Verbindung (ADR 0012): liest und schreibt
+    // den Chat. Neu je Verbindung, gemerkt in einer Datei neben dem Schlüssel.
+    let mut bund: Option<Bund> = None;
     // Kommende Sprache aus dem Netz (eigene Aufgabe, eigener Pfad).
     let mut sprache: Option<mpsc::UnboundedReceiver<Vec<u8>>> = None;
     // Raum, in dem wir gerade sitzen — für Ver- und Entschlüsselung im
@@ -219,6 +224,13 @@ async fn lauf<F>(
                             nimm_schluesselpaket(v, &verwaltung, e, paket);
                         }
                     }
+                    // Serverschlüssel: Stand, Bitten, Pakete — Antworten gehen
+                    // sofort hinaus, das Modell sieht davon nur das Ergebnis.
+                    if let (Some(v), Some(e), Some(b)) =
+                        (netz.as_mut(), eigener.as_ref(), bund.as_mut())
+                    {
+                        serverschluessel_bedienen(v, b, e, &frame).await;
+                    }
                     // Jemand bittet um den Schlüssel: die Verteilung neu
                     // anstoßen, damit der nächste Durchlauf ihn bedient.
                     if let sprechwerk_protocol::ServerFrame::SchluesselAnfrage { raum, .. } = &frame
@@ -237,6 +249,9 @@ async fn lauf<F>(
                     if let Ok(mut z) = zustand.lock() {
                         let vorher = z.aktueller_raum;
                         abbilden::verarbeite(&mut z, frame);
+                        if let Some(b) = bund.as_ref() {
+                            chat_lesen(&mut z, b);
+                        }
                         if let Some(ms) = gemessen {
                             z.latenz_ms = Some(ms);
                         }
@@ -407,6 +422,20 @@ async fn lauf<F>(
                             }
                         });
 
+                        // Serverschlüssel: gemerkte laden, Stand melden, ggf.
+                        // einen anlegen (erster Client auf einem neuen Server).
+                        let mut neuer_bund = Bund::laden(
+                            Some(schluessel_pfad.with_file_name("serverschluessel.json")),
+                            &zertifikat,
+                        );
+                        let mut verbindung = verbindung;
+                        for rahmen in neuer_bund.stand(verbindung.serverschluessel.clone()) {
+                            if let Err(fehler) = verbindung.sende(rahmen).await {
+                                eprintln!("Serverschlüssel: {fehler}");
+                            }
+                        }
+                        bund = Some(neuer_bund);
+
                         sprache = Some(rx_sprache);
                         netz = Some(verbindung);
                         // Verschlüsselte Räume: Schlüssel besorgen (oder, als
@@ -426,6 +455,7 @@ async fn lauf<F>(
                                     mitglieder,
                                     raum,
                                     verlauf,
+                                    serverschluessel: Default::default(),
                                 },
                             );
                             // **Nach** dem Verarbeiten setzen: die Begrüßung
@@ -433,6 +463,9 @@ async fn lauf<F>(
                             // aus_willkommen(..)`), ein vorher gesetzter Wert
                             // wäre wieder weg.
                             z.zertifikat = Some(zertifikat.clone());
+                            if let Some(b) = bund.as_ref() {
+                                chat_lesen(&mut z, b);
+                            }
                             // Der eigene Name gehört ins Modell (er kommt nicht
                             // über die Meldung zurück).
                             if let Some(sprechwerk_ipc::Verbindung::Verbunden { name: n, .. }) =
@@ -467,6 +500,7 @@ async fn lauf<F>(
                     if let Some(v) = netz.take() {
                         v.schliessen();
                     }
+                    bund = None;
                     sprache = None;
                     sprech.stoppen();
                     if let Ok(mut z) = zustand.lock() {
@@ -488,7 +522,23 @@ async fn lauf<F>(
                     Befehl::Betreten { raum } => {
                         sprechwerk_protocol::ClientFrame::Betreten { raum }
                     }
-                    Befehl::Text { text } => sprechwerk_protocol::ClientFrame::Text { text },
+                    Befehl::Text { text } => {
+                        // Ende zu Ende (ADR 0012): ohne Schlüssel geht nichts
+                        // hinaus — schon gar nicht im Klartext.
+                        let geheim = match (bund.as_ref(), verbindung.raum) {
+                            (Some(b), Some(raum)) => b
+                                .verschluesseln(raum, verbindung.ich, &Inhalt::Text { text })
+                                .map_err(|f| f.to_string()),
+                            _ => Err("in keinem Raum".to_string()),
+                        };
+                        match geheim {
+                            Ok(text) => sprechwerk_protocol::ClientFrame::Text { text },
+                            Err(text) => {
+                                let _ = antwort.send(Antwort::Fehler { text });
+                                continue;
+                            }
+                        }
+                    }
                     Befehl::NachrichtLoeschen { nachricht } => {
                         sprechwerk_protocol::ClientFrame::NachrichtLoeschen { nachricht }
                     }
@@ -516,13 +566,15 @@ async fn lauf<F>(
                     Befehl::MitgliedTrennen { mitglied, grund } => {
                         sprechwerk_protocol::ClientFrame::Trennen { mitglied, grund }
                     }
-                    Befehl::RaumVerschluesseln { raum, an } => {
-                        sprechwerk_protocol::ClientFrame::RaumVerschluesseln { raum, an }
-                    }
                     Befehl::Sperren { mitglied, grund } => {
                         sprechwerk_protocol::ClientFrame::MitgliedSperren { mitglied, grund }
                     }
                     Befehl::Ping => {
+                        // Fehlt ein Serverschlüssel, im Takt nachmelden — der
+                        // Server bittet dann einen Halter, der online ist.
+                        if let Some(meldung) = bund.as_mut().and_then(|b| b.nachmelden()) {
+                            let _ = verbindung.sende(meldung).await;
+                        }
                         // Zeit **vor** dem Senden stellen: sonst fehlt die
                         // Sendedauer in der Messung.
                         ping_gesendet = Some(std::time::Instant::now());
@@ -651,6 +703,66 @@ fn nimm_schluesselpaket(
     }
 }
 
+/// Beantwortet die Serverschlüssel-Rahmen (ADR 0012).
+async fn serverschluessel_bedienen(
+    verbindung: &mut Netz,
+    bund: &mut Bund,
+    eigener: &Schluessel,
+    rahmen: &sprechwerk_protocol::ServerFrame,
+) {
+    use sprechwerk_protocol::ServerFrame;
+    let antworten = match rahmen {
+        ServerFrame::Serverschluessel { stand } => bund.stand(stand.clone()),
+        ServerFrame::ServerschluesselAnfrage { fuer, kennung, id } => {
+            match bund.anfrage(*fuer, kennung, id, eigener) {
+                Ok(paket) => vec![paket],
+                Err(fehler) => {
+                    eprintln!("Serverschlüssel nicht weitergegeben: {fehler}");
+                    Vec::new()
+                }
+            }
+        }
+        ServerFrame::ServerschluesselPaket {
+            von_kennung,
+            id,
+            daten,
+            unterschrift,
+            ..
+        } => match bund.paket(von_kennung, id, daten, unterschrift, eigener) {
+            Ok(meldung) => vec![meldung],
+            Err(fehler) => {
+                eprintln!("Serverschlüssel-Paket abgelehnt: {fehler}");
+                Vec::new()
+            }
+        },
+        _ => Vec::new(),
+    };
+    for a in antworten.into_iter().chain(bund.nachmelden()) {
+        if let Err(fehler) = verbindung.sende(a).await {
+            eprintln!("Serverschlüssel: {fehler}");
+        }
+    }
+}
+
+/// Entschlüsselt, was im Modell noch auf seinen Schlüssel wartet, und sagt der
+/// Oberfläche, ob geschrieben werden kann.
+fn chat_lesen(z: &mut Zustand, bund: &Bund) {
+    use sprechwerk_ipc::NachrichtInhalt;
+    abbilden::entschluesseln(z, |n| match bund.lesen(n) {
+        Lesbar::Inhalt(Inhalt::Text { text }) => NachrichtInhalt::Text { text },
+        Lesbar::Unbekannt { art } => NachrichtInhalt::Neuer { art },
+        // Bleibt „wartet" und wird beim nächsten Mal erneut versucht.
+        Lesbar::SchluesselFehlt => NachrichtInhalt::Wartet,
+        Lesbar::Unlesbar => NachrichtInhalt::Unlesbar,
+        Lesbar::Leer => NachrichtInhalt::Geloescht,
+    });
+    z.textschluessel = if bund.kann_schreiben() {
+        sprechwerk_ipc::Textschluessel::Bereit
+    } else {
+        sprechwerk_ipc::Textschluessel::Wartet
+    };
+}
+
 fn melden<F: Fn(Zustand)>(zustand: &Arc<Mutex<Zustand>>, melde: &F) {
     if let Ok(z) = zustand.lock() {
         melde(z.clone());
@@ -709,6 +821,8 @@ mod tests {
             .env("SPRECHWERK_BIND", "127.0.0.1")
             .env("SPRECHWERK_NAME", "Anwendungstest")
             .env("SPRECHWERK_SICHERUNG_AKTIV", "0")
+            // Keine Verwaltung (Port 7444, Browser) für Testserver.
+            .env("SPRECHWERK_VERWALTUNG_AKTIV", "0")
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .spawn()
@@ -751,6 +865,99 @@ mod tests {
                 .expect("Zertifikat im Datenverzeichnis");
             sprechwerk_protocol::zertifikat_fingerabdruck(&der)
         }
+    }
+
+    fn anwendung_fuer(name: &str) -> (Anwendung, std::path::PathBuf) {
+        let verzeichnis = std::env::temp_dir().join(format!(
+            "sprechwerk-anwendung-{name}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&verzeichnis);
+        let anwendung = Anwendung::starten(
+            verzeichnis.join("schluessel"),
+            Arc::new(crate::sprech::Sprechbetrieb::neu()),
+            Arc::new(crate::verschluesselung::Schluesselverwaltung::neu()),
+            |_| {},
+        );
+        (anwendung, verzeichnis)
+    }
+
+    async fn bis(frist_s: u64, was: &str, bedingung: impl Fn() -> bool) {
+        let ende = std::time::Instant::now() + std::time::Duration::from_secs(frist_s);
+        while !bedingung() {
+            assert!(
+                std::time::Instant::now() < ende,
+                "Zeitüberschreitung: {was}"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
+
+    /// Chat Ende zu Ende, vom Fenster bis zum Fenster (ADR 0012): Ada legt den
+    /// Serverschlüssel an, Bosse bekommt ihn von Ada, schreibt — Ada liest den
+    /// Klartext, in der Datenbank des Servers steht er nicht.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn chat_ist_ende_zu_ende_verschluesselt() {
+        use sprechwerk_ipc::{NachrichtInhalt, Textschluessel};
+        let server = server_starten("chat-e2e");
+        let (ada, ada_dir) = anwendung_fuer("chat-ada");
+        let (bosse, bosse_dir) = anwendung_fuer("chat-bosse");
+        let adresse = server.adresse.to_string();
+
+        ada.verbinden(adresse.clone(), "Ada".into(), None, None)
+            .await
+            .expect("Ada");
+        bis(5, "Ada hat den Schlüssel", || {
+            ada.zustand().textschluessel == Textschluessel::Bereit
+        })
+        .await;
+        bosse
+            .verbinden(adresse, "Bosse".into(), None, None)
+            .await
+            .expect("Bosse");
+        bis(5, "Bosse bekommt den Schlüssel von Ada", || {
+            bosse.zustand().textschluessel == Textschluessel::Bereit
+        })
+        .await;
+
+        let antwort = bosse
+            .befehl(Befehl::Text {
+                text: "Kassenstand: 1312 Euro".into(),
+            })
+            .await;
+        assert!(matches!(antwort, Antwort::Ok), "{antwort:?}");
+        bis(5, "Ada liest Bosses Nachricht", || {
+            ada.zustand().nachrichten.iter().any(|n| {
+                n.inhalt
+                    == NachrichtInhalt::Text {
+                        text: "Kassenstand: 1312 Euro".into(),
+                    }
+            })
+        })
+        .await;
+
+        // Der Server hat nur Geheimtext.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        for datei in std::fs::read_dir(&server.verzeichnis).unwrap().flatten() {
+            if let Ok(bytes) = std::fs::read(datei.path()) {
+                assert!(
+                    !bytes.windows(10).any(|w| w == b"Kassenstan"),
+                    "Klartext in {}",
+                    datei.path().display()
+                );
+            }
+        }
+        // Die Schlüssel liegen beim Client, nur für den Eigentümer lesbar.
+        let datei = bosse_dir.join("serverschluessel.json");
+        assert!(datei.exists(), "Bosse merkt sich den Schlüssel");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let rechte = std::fs::metadata(&datei).unwrap().permissions().mode() & 0o777;
+            assert_eq!(rechte, 0o600);
+        }
+        let _ = std::fs::remove_dir_all(ada_dir);
+        let _ = std::fs::remove_dir_all(bosse_dir);
     }
 
     /// Die ganze Kette vom Fenster bis zum Handschlag: ein angehefteter Wert
