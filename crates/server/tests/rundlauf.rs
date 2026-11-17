@@ -145,13 +145,7 @@ async fn zwei_clients_sehen_sich_und_texten() {
     // Ada schreibt, Bosse liest — der Server sieht nur Geheimtext.
     let geheim = ada
         .bund
-        .verschluesseln(
-            raum,
-            ada.v.ich,
-            &Inhalt::Text {
-                text: "Guten Abend".into(),
-            },
-        )
+        .verschluesseln(raum, ada.v.ich, &Inhalt::text("Guten Abend"))
         .unwrap();
     ada.v
         .sende(ClientFrame::Text { text: geheim })
@@ -167,9 +161,7 @@ async fn zwei_clients_sehen_sich_und_texten() {
             assert_eq!(nachricht.verfasser_name, "Ada");
             assert_eq!(
                 bosse.bund.lesen(&nachricht),
-                Lesbar::Inhalt(Inhalt::Text {
-                    text: "Guten Abend".into()
-                })
+                Lesbar::Inhalt(Inhalt::text("Guten Abend"))
             );
         }
         anderes => panic!("unerwartet: {anderes:?}"),
