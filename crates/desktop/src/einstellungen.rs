@@ -71,6 +71,10 @@ pub struct Einstellungen {
     /// Echounterdrückung: die eigene Wiedergabe aus der Aufnahme rechnen.
     /// Nötig, wenn über Lautsprecher gesprochen wird (sonst pfeift es).
     pub echounterdrueckung: bool,
+    /// Link-Vorschauen erzeugen (ADR 0012 §2): beim Schreiben eines Links
+    /// ruft **dieses** Gerät die Seite ab — die Seite sieht also die eigene
+    /// Adresse. Wer das nicht will, schaltet es ab; Links bleiben anklickbar.
+    pub link_vorschau: bool,
     /// Angeheftete Server-Zertifikate (TOFU, ADR 0002 §3).
     ///
     /// **Warum an der Adresse und nicht am Favoriten?** Man kann sich mit einem
@@ -182,6 +186,7 @@ impl Default for Einstellungen {
             rauschunterdrueckung: true,
             noisegate: true,
             echounterdrueckung: true,
+            link_vorschau: true,
             vertrauen: Vec::new(),
         }
     }

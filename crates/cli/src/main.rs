@@ -82,7 +82,7 @@ impl Sitzung {
             .ok_or_else(|| anyhow::anyhow!("in keinem Raum"))?;
         let geheim = self
             .bund
-            .verschluesseln(raum, self.verbindung.ich, &Inhalt::Text { text })?;
+            .verschluesseln(raum, self.verbindung.ich, &Inhalt::text(text))?;
         self.verbindung
             .sende(ClientFrame::Text { text: geheim })
             .await
@@ -448,7 +448,13 @@ fn zeige(frame: &ServerFrame, bund: &Bund) {
 /// Was von einer Nachricht angezeigt wird.
 fn lesbar(l: Lesbar) -> String {
     match l {
-        Lesbar::Inhalt(Inhalt::Text { text }) => text,
+        Lesbar::Inhalt(Inhalt::Text { text, .. }) => text,
+        Lesbar::Inhalt(Inhalt::Reaktion { ziel, zeichen, weg }) => {
+            format!(
+                "{} {zeichen} auf {ziel}",
+                if weg { "nimmt zurück:" } else { "reagiert" }
+            )
+        }
         Lesbar::Unbekannt { art } => format!("(„{art}“ — neuere Version nötig)"),
         Lesbar::SchluesselFehlt => "(verschlüsselt — Schlüssel fehlt noch)".into(),
         Lesbar::Unlesbar => "(unlesbar — verändert oder beschädigt)".into(),

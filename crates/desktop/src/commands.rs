@@ -106,13 +106,85 @@ pub async fn betreten(
     }
 }
 
-/// Schreibt einen Text in den aktuellen Raum.
+/// Schreibt einen Text in den aktuellen Raum, wahlweise mit Effekt.
 #[tauri::command]
-pub async fn text_senden(anwendung: State<'_, Arc<Anwendung>>, text: String) -> Result<(), String> {
-    match anwendung
-        .befehl(sprechwerk_ipc::Befehl::Text { text })
-        .await
-    {
+pub async fn text_senden(
+    anwendung: State<'_, Arc<Anwendung>>,
+    text: String,
+    effekt: Option<sprechwerk_ipc::Effekt>,
+) -> Result<(), String> {
+    ergebnis(
+        anwendung
+            .befehl(sprechwerk_ipc::Befehl::Text { text, effekt })
+            .await,
+    )
+}
+
+/// Reagiert auf eine Nachricht — oder nimmt die eigene Reaktion zurück.
+#[tauri::command]
+pub async fn reagieren(
+    anwendung: State<'_, Arc<Anwendung>>,
+    nachricht: sprechwerk_domain::MessageId,
+    zeichen: String,
+) -> Result<(), String> {
+    ergebnis(
+        anwendung
+            .befehl(sprechwerk_ipc::Befehl::Reagieren { nachricht, zeichen })
+            .await,
+    )
+}
+
+/// Spielt den Effekt einer Nachricht noch einmal ab.
+#[tauri::command]
+pub async fn effekt_zeigen(
+    anwendung: State<'_, Arc<Anwendung>>,
+    nachricht: sprechwerk_domain::MessageId,
+) -> Result<(), String> {
+    ergebnis(
+        anwendung
+            .befehl(sprechwerk_ipc::Befehl::EffektZeigen { nachricht })
+            .await,
+    )
+}
+
+/// Der erste Link im Entwurf (oder keiner mehr).
+#[tauri::command]
+pub async fn vorschau(
+    anwendung: State<'_, Arc<Anwendung>>,
+    url: Option<String>,
+) -> Result<(), String> {
+    ergebnis(
+        anwendung
+            .befehl(sprechwerk_ipc::Befehl::Vorschau { url })
+            .await,
+    )
+}
+
+/// Die Vorschau des Entwurfs nicht mitschicken.
+#[tauri::command]
+pub async fn vorschau_verwerfen(anwendung: State<'_, Arc<Anwendung>>) -> Result<(), String> {
+    ergebnis(
+        anwendung
+            .befehl(sprechwerk_ipc::Befehl::VorschauVerwerfen)
+            .await,
+    )
+}
+
+/// Öffnet einen Link im Browser des Systems. Nur `http(s)` — ein Link im Chat
+/// kommt von einem anderen Mitglied und darf kein Programm starten.
+#[tauri::command]
+pub fn link_oeffnen(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    if !sprechwerk_ipc::abbilden::ist_weblink(&url) {
+        return Err("nur http- und https-Links".to_string());
+    }
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|f| f.to_string())
+}
+
+fn ergebnis(antwort: Antwort) -> Result<(), String> {
+    match antwort {
         Antwort::Fehler { text } => Err(text),
         _ => Ok(()),
     }

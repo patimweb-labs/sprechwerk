@@ -14,8 +14,9 @@ use crate::sprech::Sprechbetrieb;
 use crate::verschluesselung::Schluesselverwaltung;
 use sprechwerk_adapters::serverschluessel::{Bund, Lesbar};
 use sprechwerk_adapters::{Schluessel, Verbindung as Netz};
+use sprechwerk_ipc::Linkentwurf;
 use sprechwerk_ipc::{abbilden, Antwort, Befehl, Zustand};
-use sprechwerk_protocol::inhalt::Inhalt;
+use sprechwerk_protocol::inhalt::{Inhalt, Linkvorschau};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
@@ -34,6 +35,12 @@ enum Auftrag {
     Befehl {
         befehl: Befehl,
         antwort: oneshot::Sender<Antwort>,
+    },
+    /// Eine Link-Vorschau ist abgerufen (oder nicht zu haben). Kommt von der
+    /// Abrufaufgabe zurück in die Schleife — nur dort wird das Modell geändert.
+    Vorschau {
+        url: String,
+        vorschau: Option<Linkvorschau>,
     },
 }
 
@@ -59,6 +66,7 @@ impl Anwendung {
         F: Fn(Zustand) + Send + 'static,
     {
         let (tx, rx) = mpsc::unbounded_channel();
+        let rueck = tx.clone();
         let zustand = Arc::new(Mutex::new(Zustand::neu()));
 
         let zustand_thread = zustand.clone();
@@ -79,6 +87,7 @@ impl Anwendung {
                 };
                 laufzeit.block_on(lauf(
                     rx,
+                    rueck,
                     zustand_thread,
                     sprech_thread,
                     verwaltung,
@@ -160,6 +169,7 @@ where
 /// Die Schleife: Aufträge annehmen, Rahmen des Servers verarbeiten.
 async fn lauf<F>(
     mut rx: mpsc::UnboundedReceiver<Auftrag>,
+    rueck: mpsc::UnboundedSender<Auftrag>,
     zustand: Arc<Mutex<Zustand>>,
     sprech: Arc<Sprechbetrieb>,
     verwaltung: Arc<Schluesselverwaltung>,
@@ -182,6 +192,8 @@ async fn lauf<F>(
     let aktueller: Arc<Mutex<Option<sprechwerk_domain::RoomId>>> = Arc::new(Mutex::new(None));
     // Wann das letzte Lebenszeichen hinausging (für die Umlaufzeit).
     let mut ping_gesendet: Option<std::time::Instant> = None;
+    // Ruft Link-Vorschauen ab (ADR 0012 §2: der Absender, nicht die Empfänger).
+    let holer = sprechwerk_linkvorschau::Holer::neu().ok();
 
     loop {
         let mut auftrag: Option<Auftrag> = None;
@@ -246,11 +258,20 @@ async fn lauf<F>(
                         None
                     };
                     let mut raum_wechsel = false;
+                    // Eine neue Nachricht spielt ihren Effekt — eine aus dem
+                    // Verlauf nicht (sonst knallt es bei jedem Raumwechsel).
+                    let neu_angekommen = match &frame {
+                        sprechwerk_protocol::ServerFrame::Text { nachricht } => Some(nachricht.id),
+                        _ => None,
+                    };
                     if let Ok(mut z) = zustand.lock() {
                         let vorher = z.aktueller_raum;
                         abbilden::verarbeite(&mut z, frame);
                         if let Some(b) = bund.as_ref() {
                             chat_lesen(&mut z, b);
+                        }
+                        if let Some(id) = neu_angekommen {
+                            abbilden::effekt_ausloesen(&mut z, id);
                         }
                         if let Some(ms) = gemessen {
                             z.latenz_ms = Some(ms);
@@ -488,7 +509,67 @@ async fn lauf<F>(
                 }
             }
 
+            Auftrag::Vorschau { url, vorschau } => {
+                if let Ok(mut z) = zustand.lock() {
+                    // Nur, wenn der Entwurf noch auf genau diesen Link wartet —
+                    // sonst ist die Antwort veraltet.
+                    if matches!(&z.entwurf, Linkentwurf::Laedt { url: u } if *u == url) {
+                        z.entwurf = match vorschau {
+                            Some(vorschau) => Linkentwurf::Fertig { vorschau },
+                            None => Linkentwurf::Ohne { url },
+                        };
+                    }
+                }
+                melden(&zustand, &melde);
+            }
+
             Auftrag::Befehl { befehl, antwort } => {
+                // Befehle, die nur das Modell betreffen.
+                let nur_modell = match &befehl {
+                    Befehl::EffektZeigen { nachricht } => {
+                        if let Ok(mut z) = zustand.lock() {
+                            abbilden::effekt_ausloesen(&mut z, *nachricht);
+                        }
+                        true
+                    }
+                    Befehl::Vorschau { url } => {
+                        if let Ok(mut z) = zustand.lock() {
+                            z.entwurf = entwurf_fuer(&z.entwurf, url.as_deref(), |u| {
+                                let Some(h) = holer.clone() else {
+                                    return false;
+                                };
+                                let rueck = rueck.clone();
+                                let url = u.to_string();
+                                tokio::spawn(async move {
+                                    let vorschau = h.holen(&url).await.ok();
+                                    let _ = rueck.send(Auftrag::Vorschau { url, vorschau });
+                                });
+                                true
+                            });
+                        }
+                        true
+                    }
+                    Befehl::VorschauVerwerfen => {
+                        if let Ok(mut z) = zustand.lock() {
+                            z.entwurf = match &z.entwurf {
+                                Linkentwurf::Laedt { url } | Linkentwurf::Ohne { url } => {
+                                    Linkentwurf::Ohne { url: url.clone() }
+                                }
+                                Linkentwurf::Fertig { vorschau } => Linkentwurf::Ohne {
+                                    url: vorschau.url.clone(),
+                                },
+                                Linkentwurf::Keiner => Linkentwurf::Keiner,
+                            };
+                        }
+                        true
+                    }
+                    _ => false,
+                };
+                if nur_modell {
+                    melden(&zustand, &melde);
+                    let _ = antwort.send(Antwort::Ok);
+                    continue;
+                }
                 // Befehle, die ohne Netz beantwortet werden.
                 if matches!(befehl, Befehl::Zustand) {
                     let _ = antwort.send(Antwort::Zustand {
@@ -518,20 +599,48 @@ async fn lauf<F>(
                     continue;
                 };
 
+                // Nach dem Senden eines Texts ist der Entwurf leer.
+                let mut entwurf_leeren = false;
                 let rahmen = match befehl {
                     Befehl::Betreten { raum } => {
                         sprechwerk_protocol::ClientFrame::Betreten { raum }
                     }
-                    Befehl::Text { text } => {
-                        // Ende zu Ende (ADR 0012): ohne Schlüssel geht nichts
-                        // hinaus — schon gar nicht im Klartext.
-                        let geheim = match (bund.as_ref(), verbindung.raum) {
-                            (Some(b), Some(raum)) => b
-                                .verschluesseln(raum, verbindung.ich, &Inhalt::Text { text })
-                                .map_err(|f| f.to_string()),
-                            _ => Err("in keinem Raum".to_string()),
+                    Befehl::Text { text, effekt } => {
+                        // Die Vorschau geht mit, wenn ihr Link noch im Text
+                        // steht — weggelöscht heißt: nicht gewollt.
+                        let vorschau = zustand.lock().ok().and_then(|z| match &z.entwurf {
+                            Linkentwurf::Fertig { vorschau } if text.contains(&vorschau.url) => {
+                                Some(vorschau.clone())
+                            }
+                            _ => None,
+                        });
+                        entwurf_leeren = true;
+                        let inhalt = Inhalt::Text {
+                            text,
+                            effekt,
+                            vorschau,
                         };
-                        match geheim {
+                        match geheim_schreiben(bund.as_ref(), verbindung, &inhalt) {
+                            Ok(text) => sprechwerk_protocol::ClientFrame::Text { text },
+                            Err(text) => {
+                                let _ = antwort.send(Antwort::Fehler { text });
+                                continue;
+                            }
+                        }
+                    }
+                    Befehl::Reagieren { nachricht, zeichen } => {
+                        // Schon gesetzt? Dann zurücknehmen — entschieden am
+                        // Modell, nicht in der Oberfläche.
+                        let weg = zustand
+                            .lock()
+                            .map(|z| abbilden::meine_reaktion(&z, nachricht, &zeichen))
+                            .unwrap_or(false);
+                        let inhalt = Inhalt::Reaktion {
+                            ziel: nachricht.text(),
+                            zeichen,
+                            weg,
+                        };
+                        match geheim_schreiben(bund.as_ref(), verbindung, &inhalt) {
                             Ok(text) => sprechwerk_protocol::ClientFrame::Text { text },
                             Err(text) => {
                                 let _ = antwort.send(Antwort::Fehler { text });
@@ -595,11 +704,22 @@ async fn lauf<F>(
                     Befehl::Entsperren { kennung, adresse } => {
                         sprechwerk_protocol::ClientFrame::Entsperren { kennung, adresse }
                     }
-                    Befehl::Zustand | Befehl::Verbinden { .. } | Befehl::Trennen => unreachable!(),
+                    Befehl::Zustand
+                    | Befehl::Verbinden { .. }
+                    | Befehl::Trennen
+                    | Befehl::EffektZeigen { .. }
+                    | Befehl::Vorschau { .. }
+                    | Befehl::VorschauVerwerfen => unreachable!(),
                 };
 
                 match verbindung.sende(rahmen).await {
                     Ok(()) => {
+                        if entwurf_leeren {
+                            if let Ok(mut z) = zustand.lock() {
+                                z.entwurf = Linkentwurf::Keiner;
+                            }
+                            melden(&zustand, &melde);
+                        }
                         let _ = antwort.send(Antwort::Ok);
                     }
                     Err(fehler) => {
@@ -749,18 +869,67 @@ async fn serverschluessel_bedienen(
 fn chat_lesen(z: &mut Zustand, bund: &Bund) {
     use sprechwerk_ipc::NachrichtInhalt;
     abbilden::entschluesseln(z, |n| match bund.lesen(n) {
-        Lesbar::Inhalt(Inhalt::Text { text }) => NachrichtInhalt::Text { text },
+        Lesbar::Inhalt(inhalt) => abbilden::inhalt_abbilden(inhalt),
         Lesbar::Unbekannt { art } => NachrichtInhalt::Neuer { art },
         // Bleibt „wartet" und wird beim nächsten Mal erneut versucht.
         Lesbar::SchluesselFehlt => NachrichtInhalt::Wartet,
         Lesbar::Unlesbar => NachrichtInhalt::Unlesbar,
         Lesbar::Leer => NachrichtInhalt::Geloescht,
     });
+    abbilden::reaktionen_zaehlen(z);
     z.textschluessel = if bund.kann_schreiben() {
         sprechwerk_ipc::Textschluessel::Bereit
     } else {
         sprechwerk_ipc::Textschluessel::Wartet
     };
+}
+
+/// Verschlüsselt einen Inhalt für den aktuellen Raum (ADR 0012): ohne
+/// Schlüssel geht nichts hinaus — schon gar nicht im Klartext.
+fn geheim_schreiben(
+    bund: Option<&Bund>,
+    verbindung: &Netz,
+    inhalt: &Inhalt,
+) -> Result<String, String> {
+    match (bund, verbindung.raum) {
+        (Some(b), Some(raum)) => b
+            .verschluesseln(raum, verbindung.ich, inhalt)
+            .map_err(|f| f.to_string()),
+        _ => Err("in keinem Raum".to_string()),
+    }
+}
+
+/// Der nächste Stand der Link-Vorschau, wenn sich der erste Link im Entwurf
+/// ändert. `abrufen` startet den Abruf und sagt, ob das ging.
+///
+/// Derselbe Link wird nicht zweimal geholt — auch nicht, wenn man ihn
+/// weggeklickt hat (`Ohne`): sonst käme die Vorschau beim nächsten Tastendruck
+/// wieder.
+fn entwurf_fuer(
+    jetzt: &Linkentwurf,
+    url: Option<&str>,
+    abrufen: impl FnOnce(&str) -> bool,
+) -> Linkentwurf {
+    let Some(url) = url.filter(|u| abbilden::ist_weblink(u)) else {
+        return Linkentwurf::Keiner;
+    };
+    let gleich = match jetzt {
+        Linkentwurf::Laedt { url: u } | Linkentwurf::Ohne { url: u } => u == url,
+        Linkentwurf::Fertig { vorschau } => vorschau.url == url,
+        Linkentwurf::Keiner => false,
+    };
+    if gleich {
+        return jetzt.clone();
+    }
+    if abrufen(url) {
+        Linkentwurf::Laedt {
+            url: url.to_string(),
+        }
+    } else {
+        Linkentwurf::Ohne {
+            url: url.to_string(),
+        }
+    }
 }
 
 fn melden<F: Fn(Zustand)>(zustand: &Arc<Mutex<Zustand>>, melde: &F) {
@@ -896,6 +1065,60 @@ mod tests {
     /// Chat Ende zu Ende, vom Fenster bis zum Fenster (ADR 0012): Ada legt den
     /// Serverschlüssel an, Bosse bekommt ihn von Ada, schreibt — Ada liest den
     /// Klartext, in der Datenbank des Servers steht er nicht.
+    /// Eine Seite mit Titel, ausgeliefert von einem winzigen HTTP-Server.
+    async fn kleine_seite() -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let hoerer = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let adresse = format!("http://{}/heim", hoerer.local_addr().unwrap());
+        tokio::spawn(async move {
+            while let Ok((mut s, _)) = hoerer.accept().await {
+                let mut puffer = [0u8; 2048];
+                let _ = s.read(&mut puffer).await;
+                let koerper = r#"<meta property="og:title" content="Vereinsheim">"#;
+                let antwort = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{koerper}",
+                    koerper.len()
+                );
+                let _ = s.write_all(antwort.as_bytes()).await;
+            }
+        });
+        adresse
+    }
+
+    #[test]
+    fn entwurf_holt_jeden_link_nur_einmal() {
+        let geholt = std::cell::Cell::new(0);
+        let holen = |_: &str| {
+            geholt.set(geholt.get() + 1);
+            true
+        };
+        let a = "https://example.org/a";
+        let laedt = entwurf_fuer(&Linkentwurf::Keiner, Some(a), holen);
+        assert_eq!(laedt, Linkentwurf::Laedt { url: a.into() });
+        // Derselbe Link beim nächsten Tastendruck: nicht noch einmal.
+        let holen = |_: &str| {
+            geholt.set(geholt.get() + 1);
+            true
+        };
+        assert_eq!(entwurf_fuer(&laedt, Some(a), holen), laedt);
+        // Weggeklickt bleibt weggeklickt.
+        let ohne = Linkentwurf::Ohne { url: a.into() };
+        assert_eq!(entwurf_fuer(&ohne, Some(a), |_| unreachable!()), ohne);
+        // Kein Link, oder keiner, den man abrufen darf: nichts.
+        for nein in [None, Some("javascript:alert(1)"), Some("example.org")] {
+            assert_eq!(
+                entwurf_fuer(&laedt, nein, |_| unreachable!()),
+                Linkentwurf::Keiner
+            );
+        }
+        // Abruf nicht möglich (kein Holer): ohne Vorschau.
+        assert_eq!(
+            entwurf_fuer(&Linkentwurf::Keiner, Some(a), |_| false),
+            Linkentwurf::Ohne { url: a.into() }
+        );
+        assert_eq!(geholt.get(), 1);
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn chat_ist_ende_zu_ende_verschluesselt() {
         use sprechwerk_ipc::{NachrichtInhalt, Textschluessel};
@@ -923,6 +1146,7 @@ mod tests {
         let antwort = bosse
             .befehl(Befehl::Text {
                 text: "Kassenstand: 1312 Euro".into(),
+                effekt: Some(sprechwerk_ipc::Effekt::Konfetti),
             })
             .await;
         assert!(matches!(antwort, Antwort::Ok), "{antwort:?}");
@@ -931,7 +1155,74 @@ mod tests {
                 n.inhalt
                     == NachrichtInhalt::Text {
                         text: "Kassenstand: 1312 Euro".into(),
+                        effekt: Some(sprechwerk_ipc::Effekt::Konfetti),
+                        vorschau: None,
                     }
+            })
+        })
+        .await;
+        // Neu angekommen: der Effekt spielt bei Ada.
+        let auftritt = ada.zustand().effekt.expect("Effekt bei Ada");
+        assert_eq!(auftritt.effekt, sprechwerk_ipc::Effekt::Konfetti);
+
+        // Ada reagiert — Bosse sieht es an seiner Nachricht, nicht als Beitrag.
+        let ziel = auftritt.nachricht;
+        let antwort = ada
+            .befehl(Befehl::Reagieren {
+                nachricht: ziel,
+                zeichen: "👍".into(),
+            })
+            .await;
+        assert!(matches!(antwort, Antwort::Ok), "{antwort:?}");
+        let reaktionen = |a: &Anwendung| {
+            a.zustand()
+                .nachrichten
+                .iter()
+                .find(|n| n.id == ziel)
+                .map(|n| n.reaktionen.clone())
+                .unwrap_or_default()
+        };
+        bis(5, "Bosse sieht Adas Reaktion", || {
+            reaktionen(&bosse)
+                .first()
+                .is_some_and(|r| r.zeichen == "👍" && r.anzahl == 1 && !r.ich)
+        })
+        .await;
+        bis(5, "Ada sieht ihre eigene", || {
+            reaktionen(&ada).first().is_some_and(|r| r.ich)
+        })
+        .await;
+        // Noch einmal: zurückgenommen.
+        ada.befehl(Befehl::Reagieren {
+            nachricht: ziel,
+            zeichen: "👍".into(),
+        })
+        .await;
+        bis(5, "Reaktion ist zurückgenommen", || {
+            reaktionen(&bosse).is_empty() && reaktionen(&ada).is_empty()
+        })
+        .await;
+
+        // Link-Vorschau: Ada ruft ab, Bosse bekommt sie mit der Nachricht.
+        let seite = kleine_seite().await;
+        ada.befehl(Befehl::Vorschau {
+            url: Some(seite.clone()),
+        })
+        .await;
+        bis(5, "Vorschau ist abgerufen", || {
+            matches!(ada.zustand().entwurf, Linkentwurf::Fertig { .. })
+        })
+        .await;
+        ada.befehl(Befehl::Text {
+            text: format!("Hier: {seite}"),
+            effekt: None,
+        })
+        .await;
+        assert_eq!(ada.zustand().entwurf, Linkentwurf::Keiner);
+        bis(5, "Bosse sieht die Vorschau", || {
+            bosse.zustand().nachrichten.iter().any(|n| {
+                matches!(&n.inhalt, NachrichtInhalt::Text { vorschau: Some(v), .. }
+                    if v.titel == "Vereinsheim" && v.url == seite)
             })
         })
         .await;
@@ -941,7 +1232,8 @@ mod tests {
         for datei in std::fs::read_dir(&server.verzeichnis).unwrap().flatten() {
             if let Ok(bytes) = std::fs::read(datei.path()) {
                 assert!(
-                    !bytes.windows(10).any(|w| w == b"Kassenstan"),
+                    !bytes.windows(10).any(|w| w == b"Kassenstan")
+                        && !bytes.windows(11).any(|w| w == b"Vereinsheim"),
                     "Klartext in {}",
                     datei.path().display()
                 );
