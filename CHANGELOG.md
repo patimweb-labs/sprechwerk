@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.3.0](https://github.com/patimweb-labs/sprechwerk/compare/v1.2.0...v1.3.0) (2026-11-17)
+
+
+### Neu
+
+* Chat mit Reaktionen, Effekten und Link-Vorschau (ADR 0012 Stufe 2) ([87e566f](https://github.com/patimweb-labs/sprechwerk/commit/87e566f206cb913ddb4afd762481af8e3a51ae0a))
+* **client:** Reaktionen, Effekte und Vorschau in Fenster und CLI ([1a10c43](https://github.com/patimweb-labs/sprechwerk/commit/1a10c435b4c5299e63461a0e8a629b8a05d92505))
+* **ipc:** Inhalte prüfen und für die Oberfläche abbilden ([06c0671](https://github.com/patimweb-labs/sprechwerk/commit/06c067109300c63c09db8d8c9748661148c2f24f))
+* Reaktionen, Effekte und Link-Vorschau im Inhalt ([70e8200](https://github.com/patimweb-labs/sprechwerk/commit/70e8200149887c1c42fb38e91b1591f10967ae58))
+* **ui:** Chat mit Beiträgen, Reaktionen und Effektbühne ([54490e9](https://github.com/patimweb-labs/sprechwerk/commit/54490e9f6d3da64100145af4547a0e95b6663ac6))
+
+
+### Dokumentation
+
+* ADR 0012 Stufe 2, SPEC und neue Bilder ([30cc7c8](https://github.com/patimweb-labs/sprechwerk/commit/30cc7c80c26440492deb8ad9c3b3e832307d6e7c))
+* README komplett überarbeitet ([d9538b1](https://github.com/patimweb-labs/sprechwerk/commit/d9538b145ce866607040c3e640161adbdb5ece67))
+
+
+### Bau und Pakete
+
+* Sperrdateien auf 1.2.0 nachziehen ([0e403d3](https://github.com/patimweb-labs/sprechwerk/commit/0e403d35cae9ca450270df0680ea77aa286535e8))
+
 ## [1.2.0](https://github.com/patimweb-labs/sprechwerk/compare/v1.1.0...v1.2.0) (2026-11-17)
 
 
