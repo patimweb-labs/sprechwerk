@@ -13,6 +13,7 @@ pub mod abbilden;
 
 use serde::{Deserialize, Serialize};
 use sprechwerk_domain::{MemberId, MessageId, Role, RoomId};
+pub use sprechwerk_protocol::inhalt::{Effekt, Linkvorschau};
 
 /// Rolle der Verbindung.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -79,8 +80,23 @@ pub struct Mitglied {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "zustand", rename_all = "snake_case")]
 pub enum NachrichtInhalt {
-    /// Entschlüsselter Text.
-    Text { text: String },
+    /// Entschlüsselter Text, wahlweise mit Effekt und Link-Vorschau.
+    Text {
+        text: String,
+        /// Nur bekannte Effekte — ein unbekannter fällt hier weg.
+        #[serde(default)]
+        effekt: Option<Effekt>,
+        /// Geprüft: `http(s)`, Längen begrenzt, Bild ist Base64.
+        #[serde(default)]
+        vorschau: Option<Linkvorschau>,
+    },
+    /// Eine Reaktion auf eine andere Nachricht. Die Oberfläche zeigt sie nicht
+    /// als eigenen Beitrag, sondern zusammengefasst am Ziel (`reaktionen`).
+    Reaktion {
+        ziel: MessageId,
+        zeichen: String,
+        weg: bool,
+    },
     /// Verschlüsselt, der Schlüssel fehlt noch (kommt von einem Mitglied).
     Wartet,
     /// Verändert, umgehängt oder beschädigt.
@@ -108,6 +124,49 @@ pub struct Nachricht {
     pub geloescht: bool,
     /// Darf ich sie löschen? (eigene Nachricht oder Moderator)
     pub loeschbar: bool,
+    /// Zusammengefasste Reaktionen auf diese Nachricht, in der Reihenfolge,
+    /// in der das erste Zeichen kam.
+    #[serde(default)]
+    pub reaktionen: Vec<Reaktionen>,
+}
+
+/// Wie oft ein Zeichen an einer Nachricht steht.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Reaktionen {
+    pub zeichen: String,
+    pub anzahl: usize,
+    /// Bin ich dabei? Dann nimmt ein Klick die eigene zurück.
+    pub ich: bool,
+    /// Wer reagiert hat (für den Hinweis beim Darüberfahren).
+    pub namen: Vec<String>,
+}
+
+/// Ein Effekt, der gerade abspielen soll.
+///
+/// `nr` zählt bei jedem Auftritt hoch: dieselbe Nachricht zweimal abgespielt
+/// ist zweimal ein neuer Wert — die Oberfläche spielt ab, wenn `nr` sich
+/// ändert, und braucht dafür keinen eigenen Zustand.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Effektauftritt {
+    pub nachricht: MessageId,
+    pub effekt: Effekt,
+    pub nr: u64,
+}
+
+/// Link-Vorschau des Entwurfs im Eingabefeld (ADR 0012 §2: der Absender ruft
+/// ab, nicht die Empfänger).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "art", rename_all = "snake_case")]
+pub enum Linkentwurf {
+    /// Kein Link im Entwurf.
+    #[default]
+    Keiner,
+    /// Wird abgerufen.
+    Laedt { url: String },
+    /// Liegt vor und geht mit dem Text hinaus.
+    Fertig { vorschau: Linkvorschau },
+    /// Keine Vorschau für diesen Link (nicht abrufbar oder weggeklickt).
+    Ohne { url: String },
 }
 
 /// Der vollständige Modellstand für die Oberfläche.
@@ -139,6 +198,12 @@ pub struct Zustand {
     /// Liegt der Serverschlüssel zum Schreiben vor? (ADR 0012)
     #[serde(default)]
     pub textschluessel: Textschluessel,
+    /// Effekt, der gerade abspielt (zuletzt angekommen oder wiederholt).
+    #[serde(default)]
+    pub effekt: Option<Effektauftritt>,
+    /// Link-Vorschau des Entwurfs.
+    #[serde(default)]
+    pub entwurf: Linkentwurf,
     /// Umlaufzeit zum Server in Millisekunden (aus Ping/Pong gemessen).
     ///
     /// Sie wird **im Rust-Teil** gemessen, nicht im Fenster: nur dort sitzt die
@@ -309,7 +374,26 @@ pub enum Befehl {
     },
     Text {
         text: String,
+        #[serde(default)]
+        effekt: Option<Effekt>,
     },
+    /// Mit einem Zeichen reagieren — oder, wenn ich es schon gesetzt habe,
+    /// zurücknehmen. Was davon, entscheidet der Rust-Teil am Modell.
+    Reagieren {
+        nachricht: MessageId,
+        zeichen: String,
+    },
+    /// Den Effekt einer Nachricht noch einmal abspielen.
+    EffektZeigen {
+        nachricht: MessageId,
+    },
+    /// Der erste Link im Entwurf hat sich geändert (`None`: keiner mehr).
+    Vorschau {
+        #[serde(default)]
+        url: Option<String>,
+    },
+    /// Die Vorschau des Entwurfs nicht mitschicken.
+    VorschauVerwerfen,
     NachrichtLoeschen {
         nachricht: MessageId,
     },
@@ -443,6 +527,7 @@ mod tests {
     fn befehle_haben_stabile_namen() {
         let text = serde_json::to_string(&Befehl::Text {
             text: "hallo".into(),
+            effekt: None,
         })
         .unwrap();
         assert!(text.contains("\"befehl\":\"text\""), "{text}");
