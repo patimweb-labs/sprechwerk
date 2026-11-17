@@ -71,6 +71,8 @@ async fn versuche_server() -> Option<(Testserver, SocketAddr)> {
         .env("SPRECHWERK_BIND", "127.0.0.1")
         .env("SPRECHWERK_NAME", "Verschlüsselungstest")
         .env("SPRECHWERK_SICHERUNG_AKTIV", "0")
+        // Keine Verwaltung (Port 7444, Browser) für Testserver.
+        .env("SPRECHWERK_VERWALTUNG_AKTIV", "0")
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
@@ -185,28 +187,19 @@ async fn verschluesselte_sprache_geht_durch_den_server() {
         warte_auf(v, |f| matches!(f, ServerFrame::Betreten { .. })).await;
     }
 
-    // A schaltet die Verschlüsselung ein.
-    a.sende(ClientFrame::RaumVerschluesseln { raum, an: true })
-        .await
-        .unwrap();
-    // Gezielt auf die Meldung warten, die den Raum als verschlüsselt zeigt —
-    // seit dem Betreten kommen Raumlisten auch ohne Verschlüsselung.
-    let verschluesselt = match warte_auf(&mut a, |f| {
-        matches!(f, ServerFrame::Raeume { raeume }
-            if raeume.iter().any(|r| r.id == raum && r.verschluesselt))
-    })
-    .await
-    {
-        ServerFrame::Raeume { raeume } => {
-            raeume
-                .iter()
-                .find(|r| r.id == raum)
-                .expect("Raum")
-                .verschluesselt
-        }
-        _ => unreachable!(),
-    };
-    assert!(verschluesselt, "der Raum gilt jetzt als verschlüsselt");
+    // Jeder Raum ist von Anfang an verschlüsselt (ADR 0012) — kein Schalter.
+    assert!(
+        a.raeume.iter().any(|r| r.id == raum && r.verschluesselt),
+        "der neue Raum ist verschlüsselt"
+    );
+    // A muss Bosse kommen sehen, bevor sie für ihn verpacken kann.
+    if !a.mitglieder.iter().any(|m| m.name == "Bosse") {
+        warte_auf(&mut a, |f| {
+            matches!(f, ServerFrame::Anwesenheit { mitglied, anwesend: true, .. }
+                if mitglied.name == "Bosse")
+        })
+        .await;
+    }
 
     // Die Mitglieder kennen ihre Kennungen (für den Austausch).
     let mitglieder = a.mitglieder.clone();
@@ -670,26 +663,19 @@ async fn schluesselanfrage_wird_an_den_raum_weitergeleitet() {
         warte_auf(v, |f| matches!(f, ServerFrame::Betreten { .. })).await;
     }
 
-    // Ohne Verschlüsselung: die Bitte ist sinnlos, also abgelehnt.
-    b.sende(ClientFrame::SchluesselAnfrage { raum })
+    // Wer nicht im Raum ist, kann nicht fragen.
+    fremd
+        .sende(ClientFrame::SchluesselAnfrage { raum })
         .await
         .unwrap();
-    let absage = warte_auf(&mut b, |f| matches!(f, ServerFrame::Fehler { .. })).await;
+    let absage = warte_auf(&mut fremd, |f| matches!(f, ServerFrame::Fehler { .. })).await;
     assert!(
         matches!(absage, ServerFrame::Fehler { .. }),
-        "Anfrage in einem offenen Raum muss abgelehnt werden"
+        "Anfrage von außerhalb muss abgelehnt werden"
     );
 
-    // Mit Verschlüsselung: A (im Raum) bekommt sie, der Fremde nicht.
-    a.sende(ClientFrame::RaumVerschluesseln { raum, an: true })
-        .await
-        .unwrap();
-    warte_auf(&mut b, |f| {
-        matches!(f, ServerFrame::Raeume { raeume }
-            if raeume.iter().any(|r| r.id == raum && r.verschluesselt))
-    })
-    .await;
-
+    // Jeder Raum ist verschlüsselt (ADR 0012): A (im Raum) bekommt die Bitte,
+    // der Fremde nicht.
     b.sende(ClientFrame::SchluesselAnfrage { raum })
         .await
         .unwrap();

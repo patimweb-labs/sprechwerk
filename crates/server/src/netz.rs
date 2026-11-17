@@ -34,7 +34,10 @@ pub fn zufall_hex(anzahl: usize) -> String {
 }
 
 /// Startet den Dienst und kehrt erst zurück, wenn der Endpunkt endet.
-pub async fn lauschen(kern: Arc<Mutex<Kern>>) -> anyhow::Result<()> {
+///
+/// Das Zertifikat lädt der Aufrufer (`main`): die Verwaltungsoberfläche zeigt
+/// denselben Fingerabdruck an.
+pub async fn lauschen(kern: Arc<Mutex<Kern>>, zert: crate::tls::Zertifikat) -> anyhow::Result<()> {
     // Quantensicherheit (ADR 0010): derselbe Anbieter und dieselbe
     // Gruppenreihenfolge wie im Client (`crates/adapters`). `ring` kennt kein
     // ML-KEM, deshalb `aws-lc-rs`. Ein Anbieter je Prozess — zwei gehen nicht.
@@ -50,17 +53,15 @@ pub async fn lauschen(kern: Arc<Mutex<Kern>>) -> anyhow::Result<()> {
     anbieter.clone().install_default().ok();
     let anbieter = Arc::new(anbieter);
 
-    let (adresse, daten, staukontrolle, sprachpuffer) = {
+    let (adresse, staukontrolle, sprachpuffer) = {
         let k = kern.lock().expect("Sperre");
         (
             k.konfig.adresse(),
-            k.konfig.server.daten.clone(),
             k.konfig.server.staukontrolle.clone(),
             k.konfig.server.sprachpuffer_kib * 1024,
         )
     };
 
-    let zert = crate::tls::laden_oder_erzeugen(&daten)?;
     // TLS 1.3 (von QUIC vorgeschrieben) mit dem eigenen Zertifikat.
     let mut tls = rustls::ServerConfig::builder_with_provider(anbieter)
         .with_protocol_versions(&[&rustls::version::TLS13])

@@ -7,8 +7,10 @@
 mod gesundheit;
 mod kern;
 mod konfig;
+mod mitschrift;
 mod netz;
 mod tls;
+mod verwaltung;
 
 use anyhow::Context;
 use std::sync::{Arc, Mutex};
@@ -114,6 +116,49 @@ fn betrieb_sicherung() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Wartet auf die Aufforderung, sich zu beenden.
+///
+/// **Gefunden 2026-11-17:** Hier stand nur `ctrl_c()` — das ist SIGINT. `docker
+/// stop` schickt aber SIGTERM, und als Prozess 1 im Container hat der Server
+/// dafür keine Vorgabebehandlung: das Signal verpuffte, nach 10 s kam SIGKILL,
+/// das letzte Speichern fiel aus. Unter Windows schließt man das Programm über
+/// das Konsolenfenster (`CTRL_CLOSE_EVENT`), nicht mit Ctrl-C.
+async fn ende_abwarten() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        match signal(SignalKind::terminate()) {
+            Ok(mut term) => {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = term.recv() => {}
+                }
+            }
+            Err(_) => {
+                let _ = tokio::signal::ctrl_c().await;
+            }
+        }
+    }
+    #[cfg(windows)]
+    {
+        match tokio::signal::windows::ctrl_close() {
+            Ok(mut schliessen) => {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = schliessen.recv() => {}
+                }
+            }
+            Err(_) => {
+                let _ = tokio::signal::ctrl_c().await;
+            }
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
     let erster = args.next();
@@ -159,11 +204,16 @@ fn main() -> anyhow::Result<()> {
     // `SPRECHWERK_LOG` erschien **keine** Zeile (kein Start, kein „lauscht",
     // keine Sprachrahmen-Zähler) — in `docker logs` war der Server stumm
     // (gefunden von `scripts/lastprobe.sh`, 2026-11-13).
+    //
+    // Jede Zeile geht außerdem in die Mitschrift, die die Verwaltungsoberfläche
+    // zeigt — dieselben Zeilen wie in `docker logs`, keine zweite Quelle.
     let filter = tracing_subscriber::EnvFilter::try_from_env("SPRECHWERK_LOG")
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("sprechwerk=info"));
+    let mitschrift = mitschrift::Mitschrift::neu();
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(false)
+        .with_writer(mitschrift.schreiber())
         .init();
 
     let konfig = konfig::Konfig::laden(&konfig_pfad)
@@ -182,6 +232,49 @@ fn main() -> anyhow::Result<()> {
 
     laufzeit.block_on(async move {
         let kern = Arc::new(Mutex::new(kern::Kern::neu(konfig.clone())?));
+        let zert = tls::laden_oder_erzeugen(&konfig.server.daten)?;
+
+        // Verwaltung im Browser (SPEC §2, Nachtrag 2026-11-17). Scheitert sie
+        // (Port belegt), läuft der Sprachdienst trotzdem — sie ist Beiwerk.
+        if konfig.verwaltung.aktiv {
+            let code = verwaltung::code_waehlen(&konfig.verwaltung.code);
+            let link = verwaltung::anmeldelink(
+                &konfig.verwaltung.bind,
+                konfig.verwaltung.port,
+                &code,
+            );
+            let v = verwaltung::Verwaltung {
+                kern: kern.clone(),
+                mitschrift: mitschrift.clone(),
+                code: code.into(),
+                fingerabdruck: zert.fingerabdruck.clone().into(),
+                gestartet: kern::jetzt_ms(),
+            };
+            let adresse = konfig.verwaltung_adresse();
+            let browser = konfig.verwaltung.browser;
+            tokio::spawn(async move {
+                let bedienen = verwaltung::bedienen(v, &adresse);
+                tokio::pin!(bedienen);
+                // Erst lauschen, dann den Link nennen und den Browser öffnen —
+                // sonst landet der Browser vor einer geschlossenen Tür.
+                tokio::select! {
+                    ergebnis = &mut bedienen => {
+                        if let Err(fehler) = ergebnis {
+                            tracing::error!(adresse = %adresse, fehler = %fehler, "Verwaltung nicht gestartet");
+                        }
+                        return;
+                    }
+                    _ = tokio::time::sleep(Duration::from_millis(200)) => {}
+                }
+                tracing::info!(adresse = %adresse, "Verwaltung bereit: {link}");
+                if browser {
+                    verwaltung::browser_oeffnen(&link);
+                }
+                if let Err(fehler) = bedienen.await {
+                    tracing::error!(fehler = %fehler, "Verwaltung beendet");
+                }
+            });
+        }
 
         // Lebenszeichen für den Container-Healthcheck (siehe `gesundheit.rs`).
         // Sofort einmal schreiben: sonst gilt der Dienst in den ersten Sekunden
@@ -286,7 +379,7 @@ fn main() -> anyhow::Result<()> {
         // Signalbehandlung: bei SIGTERM/Ctrl-C noch einmal speichern.
         let kern_signal = kern.clone();
         tokio::spawn(async move {
-            let _ = tokio::signal::ctrl_c().await;
+            ende_abwarten().await;
             tracing::info!("beende, Zustand wird gespeichert");
             if let Ok(mut k) = kern_signal.lock() {
                 let _ = k.speichern();
@@ -294,6 +387,6 @@ fn main() -> anyhow::Result<()> {
             std::process::exit(0);
         });
 
-        netz::lauschen(kern).await
+        netz::lauschen(kern, zert).await
     })
 }

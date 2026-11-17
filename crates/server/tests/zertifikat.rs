@@ -65,6 +65,8 @@ async fn versuche_server() -> Option<(Testserver, SocketAddr)> {
         .env("SPRECHWERK_BIND", "127.0.0.1")
         .env("SPRECHWERK_NAME", "Zertifikatstest")
         .env("SPRECHWERK_SICHERUNG_AKTIV", "0")
+        // Keine Verwaltung (Port 7444, Browser) für Testserver.
+        .env("SPRECHWERK_VERWALTUNG_AKTIV", "0")
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
