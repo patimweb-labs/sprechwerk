@@ -26,6 +26,8 @@ PROXY_PORT_A=$((PORT + 20))
 PROXY_PORT_B=$((PORT + 21))
 DATEN="$(mktemp -d)"
 SERVER="$WURZEL/target/debug/sprechwerk"
+# Prüfserver ohne Verwaltung im Browser (kein Port 7444, kein Browserfenster).
+export SPRECHWERK_VERWALTUNG_AKTIV=0
 PROBE="$WURZEL/target/debug/sprechprobe"
 
 aufraeumen() {

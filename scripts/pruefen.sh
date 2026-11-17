@@ -78,6 +78,9 @@ if [[ -d ui/node_modules ]]; then
   berichte "vue-tsc (ui)" "$?"
   ( cd ui && npm test --silent >/tmp/sprechwerk-pruefung-ui.log 2>&1 )
   berichte "vitest (ui, Ansichten)" "$?"
+  # Verwaltung im Browser (ADR 0011): bauen, damit der Server sie einbettet.
+  ( cd ui && npm run --silent verwaltung >/tmp/sprechwerk-pruefung-verwaltung.log 2>&1 )
+  berichte "Verwaltung bauen (ui)" "$?"
   if [[ "$NUR_TESTS" -eq 0 ]]; then
     # Echter Browser: Stile, Sichtbarkeit, alle drei Themes (docs/bilder/).
     ( cd ui && npm run --silent bilder >/tmp/sprechwerk-pruefung-bilder.log 2>&1 )

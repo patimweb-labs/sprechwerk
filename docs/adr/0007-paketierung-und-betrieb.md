@@ -22,7 +22,9 @@ entscheidet.
 * **OCI-Image, multi-arch** (`linux/amd64`, `linux/arm64`) — Raspberry-tauglich.
 * Nicht als root, `/data` als Volume, `HEALTHCHECK` über eine Sprachverbindung
   (nicht über einen TCP-Port — den gibt es nicht).
-* Nur `7443/udp` nach außen; keine eingehenden TCP-Ports.
+* Nur `7443/udp` nach außen; keine eingehenden TCP-Ports. (Die Verwaltung im
+  Browser, ADR 0011, lauscht auf `7444/tcp` — im Container nur an
+  `127.0.0.1` des Hosts weitergereicht, also nicht „nach außen".)
 * **Betriebswerkzeuge im Image**: `export`, `import`, `sicherung` — ein
   Rettungsweg, der auch dann funktioniert, wenn der Dienst nicht startet.
 * **Kennzahlen** (Prometheus-Format, optional): verbundene Clients,
@@ -51,8 +53,8 @@ des Release-PRs erzeugt Tag, Änderungsliste und hängt an das GitHub-Release:
 | Fenster Flatpak | `.flatpak` (x86_64), GNOME-Laufzeit 51 | aus dem `.deb` umgepackt |
 | Fenster Windows | NSIS-`.exe` (ohne Adminrechte), `.msi` | `windows-2025` |
 | Fenster macOS | `.dmg`, universal (arm64 + x86_64), ab macOS 11 | `macos-15` |
-| Server + CLI | `.tar.gz` je x86_64 und aarch64 | eigener Läufer je Architektur |
-| Container | `ghcr.io/patimweb-labs/sprechwerk`, amd64 + arm64 | eigener Läufer je Architektur, kein QEMU |
+| Server + CLI | Linux `.tar.gz` je x86_64 und aarch64, Windows `.zip`, macOS `.tar.gz` (universal) — mit eingebauter Verwaltung (ADR 0011) | `server.yml`, eigener Läufer je System |
+| Container | `ghcr.io/patimweb-labs/sprechwerk`, amd64 + arm64 | eigener Läufer je Architektur, kein QEMU; Verwaltung aus `server.yml` |
 | Prüfsummen | `SHA256SUMS` | — |
 
 Die Fenster-Pakete baut `.github/workflows/pakete.yml`; denselben Baustein ruft

@@ -22,6 +22,8 @@ PORT="${1:-17443}"
 DATEN="$(mktemp -d)"
 PROBE="$WURZEL/target/debug/sprechprobe"
 SERVER="$WURZEL/target/debug/sprechwerk"
+# Prüfserver ohne Verwaltung im Browser (kein Port 7444, kein Browserfenster).
+export SPRECHWERK_VERWALTUNG_AKTIV=0
 RAUM_MS=3000
 
 aufraeumen() {

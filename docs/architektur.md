@@ -24,7 +24,10 @@ flowchart TB
     subgraph Server["Server"]
         SRV["crates/server<br/>QUIC-Dienst, Verteilung"]
         STORE["crates/store<br/>SQLite, Export, Sicherung"]
+        VERW["crates/server::verwaltung<br/>HTTP 127.0.0.1:7444"]
     end
+
+    BROWSER["ui/src/verwaltung — Vue 3<br/>im Browser des Betreibers"]
 
     UI -->|invoke/event| DESK
     DESK --> IPC
@@ -36,6 +39,8 @@ flowchart TB
     SRV --> DOM
     SRV --> STORE
     STORE --> DOM
+    BROWSER -->|"HTTP, JSON"| VERW
+    VERW --> SRV
 ```
 
 ## Grenzen
@@ -48,6 +53,7 @@ flowchart TB
 | `ipc` | Modell für die Oberfläche bauen | Fenster, Sockets |
 | `desktop` | Befehle weiterreichen, Ereignisse senden | Rechnen |
 | `ui` | Darstellen, Ereignisse auslösen | Eigene Wahrheit halten |
+| `server::verwaltung` | Stand zeigen, Rollen als Betreiber setzen (ADR 0011) | Räume, Sperren, Konfiguration ändern |
 
 Die letzte Zeile ist die wichtigste: die Oberfläche hat **einen** Zustand, und
 der kommt vollständig aus dem Rust-Teil (`crates/ipc::Zustand`). Ein Klick löst
