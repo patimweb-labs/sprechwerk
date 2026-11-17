@@ -1992,7 +1992,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-adapters"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "aec3",
  "anyhow",
@@ -2019,7 +2019,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-audio"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -2033,7 +2033,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-cli"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "ed25519-dalek",
@@ -2048,7 +2048,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-domain"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "hex",
  "serde",
@@ -2058,7 +2058,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-ipc"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2068,7 +2068,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-protocol"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "hex",
  "serde",
@@ -2080,7 +2080,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-server"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2108,7 +2108,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-store"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "rusqlite",
  "serde",
