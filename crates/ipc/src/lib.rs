@@ -74,13 +74,35 @@ pub struct Mitglied {
     pub ich: bool,
 }
 
+/// Was eine Nachricht zeigt (ADR 0012) — ein Summentyp, kein Text mit
+/// Sonderwerten: die Oberfläche entscheidet nach `zustand`, nicht nach Inhalt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "zustand", rename_all = "snake_case")]
+pub enum NachrichtInhalt {
+    /// Entschlüsselter Text.
+    Text { text: String },
+    /// Verschlüsselt, der Schlüssel fehlt noch (kommt von einem Mitglied).
+    Wartet,
+    /// Verändert, umgehängt oder beschädigt.
+    Unlesbar,
+    /// Eine Art, die diese Version nicht kennt.
+    Neuer { art: String },
+    /// Gelöscht.
+    Geloescht,
+}
+
 /// Eine Nachricht im aktuellen Raum.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Nachricht {
     pub id: MessageId,
     pub verfasser: MemberId,
     pub verfasser_name: String,
-    pub text: String,
+    pub inhalt: NachrichtInhalt,
+    /// Die Nachricht, wie der Server sie geschickt hat (Geheimtext). Bleibt im
+    /// Rust-Teil — die Oberfläche bekommt nur `inhalt`. Daraus wird neu
+    /// entschlüsselt, sobald ein Schlüssel ankommt.
+    #[serde(skip)]
+    pub roh: Option<sprechwerk_domain::Message>,
     /// Zeit in Millisekunden seit der Epoche.
     pub zeit: i64,
     pub geloescht: bool,
@@ -114,6 +136,9 @@ pub struct Zustand {
     /// Modell und wird angezeigt, statt nur in einer Notiz zu verschwinden.
     #[serde(default)]
     pub schluessel: Vec<Schluesselstand>,
+    /// Liegt der Serverschlüssel zum Schreiben vor? (ADR 0012)
+    #[serde(default)]
+    pub textschluessel: Textschluessel,
     /// Umlaufzeit zum Server in Millisekunden (aus Ping/Pong gemessen).
     ///
     /// Sie wird **im Rust-Teil** gemessen, nicht im Fenster: nur dort sitzt die
@@ -132,6 +157,19 @@ pub struct Zustand {
     pub protokoll: Vec<Eintrag>,
     /// Letzte Meldung an den Nutzer (Fehler, Hinweis).
     pub meldung: Option<String>,
+}
+
+/// Stand des Serverschlüssels für die Anzeige.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Textschluessel {
+    /// Nicht verbunden.
+    #[default]
+    Unbekannt,
+    /// Schreiben und Lesen gehen.
+    Bereit,
+    /// Fehlt noch — ein Mitglied, das ihn hat, muss online sein.
+    Wartet,
 }
 
 /// Wie viele Protokollzeilen ein Aufruf ohne Angabe liest.
@@ -310,11 +348,6 @@ pub enum Befehl {
         mitglied: MemberId,
         #[serde(default)]
         grund: String,
-    },
-    /// Ende-zu-Ende-Verschlüsselung eines Raums ein-/ausschalten.
-    RaumVerschluesseln {
-        raum: RoomId,
-        an: bool,
     },
     /// Ein Mitglied sperren und trennen.
     Sperren {

@@ -87,6 +87,20 @@ pub struct Mitgliedsansicht {
     pub raum_seit: i64,
 }
 
+/// Welche Serverschlüssel es gibt (ADR 0012 §1). Der Server kennt nur die
+/// Kennungen, nie die Schlüssel.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Schluesselstand {
+    /// Mit diesem wird geschrieben. `None`: es gibt noch keinen (neuer Server)
+    /// oder er wurde nach einer Sperre verworfen — der nächste Client erzeugt
+    /// einen.
+    #[serde(default)]
+    pub aktuell: Option<String>,
+    /// Alle, mit denen je geschrieben wurde (ältester zuerst) — zum Lesen.
+    #[serde(default)]
+    pub alle: Vec<String>,
+}
+
 /// Kopf eines Sprach-Datagramms.
 ///
 /// ```text
@@ -202,8 +216,28 @@ pub enum ClientFrame {
     Betreten { raum: RoomId },
     /// Raum verlassen.
     Verlassen,
-    /// Text in den aktuellen Raum schreiben.
+    /// Nachricht in den aktuellen Raum schreiben.
+    ///
+    /// `text` ist **Geheimtext** (`geheimtext::zerlegen`), verschlüsselt mit
+    /// dem aktuellen Serverschlüssel. Klartext nimmt der Server nicht an
+    /// (ADR 0012).
     Text { text: String },
+    /// Einen Serverschlüssel festlegen, wenn es keinen aktuellen gibt.
+    ///
+    /// Der Server nimmt den **ersten** an; kommt ein zweiter, antwortet er mit
+    /// dem Stand, und der Client verwirft seinen.
+    ServerschluesselAnlegen { id: String },
+    /// Welche Serverschlüssel dieser Client hält.
+    ServerschluesselVorhanden { ids: Vec<String> },
+    /// Ein Serverschlüssel für **ein** anderes Mitglied, verpackt und
+    /// unterschrieben wie ein [`ClientFrame::Schluesselpaket`]. Der Server
+    /// leitet es unverändert weiter.
+    ServerschluesselPaket {
+        fuer: sprechwerk_domain::MemberId,
+        id: String,
+        daten: String,
+        unterschrift: String,
+    },
     /// Nachricht löschen.
     NachrichtLoeschen {
         nachricht: sprechwerk_domain::MessageId,
@@ -347,6 +381,32 @@ pub enum ServerFrame {
         /// Dessen Verlauf.
         #[serde(default)]
         verlauf: Vec<Message>,
+        /// Serverschlüssel (Kennungen).
+        #[serde(default)]
+        serverschluessel: Schluesselstand,
+    },
+    /// Der Stand der Serverschlüssel hat sich geändert (angelegt, verworfen).
+    Serverschluessel { stand: Schluesselstand },
+    /// Bitte an einen Halter: `fuer` fehlt der Schlüssel `id`.
+    ///
+    /// Der Server **vermittelt** nur — er weiß, wer verbunden ist und welche
+    /// Kennungen er hält. Der Halter verpackt den Schlüssel für `kennung`
+    /// (den öffentlichen Schlüssel des Empfängers) und unterschreibt.
+    ServerschluesselAnfrage {
+        fuer: sprechwerk_domain::MemberId,
+        kennung: String,
+        id: String,
+    },
+    /// Ein Serverschlüssel, weitergeleitet vom Absender.
+    ServerschluesselPaket {
+        von: sprechwerk_domain::MemberId,
+        /// Öffentlicher Schlüssel des Absenders — für die Unterschrift und den
+        /// Umschlag. Der Empfänger kennt den Absender sonst vielleicht nicht
+        /// (er sitzt in einem anderen Raum).
+        von_kennung: String,
+        id: String,
+        daten: String,
+        unterschrift: String,
     },
     /// Bestätigung eines Raumwechsels samt Verlauf.
     Betreten {
@@ -507,6 +567,25 @@ mod tests {
                 mitglieder: Vec::new(),
                 raum: None,
                 verlauf: Vec::new(),
+                serverschluessel: Schluesselstand {
+                    aktuell: Some("ab".repeat(16)),
+                    alle: vec!["cd".repeat(16), "ab".repeat(16)],
+                },
+            },
+            ServerFrame::Serverschluessel {
+                stand: Schluesselstand::default(),
+            },
+            ServerFrame::ServerschluesselAnfrage {
+                fuer: ich,
+                kennung: "ab".repeat(32),
+                id: "ab".repeat(16),
+            },
+            ServerFrame::ServerschluesselPaket {
+                von: ich,
+                von_kennung: "ab".repeat(32),
+                id: "ab".repeat(16),
+                daten: "00".into(),
+                unterschrift: "11".into(),
             },
             ServerFrame::Betreten {
                 raum,
@@ -583,7 +662,7 @@ mod tests {
                 }],
             },
         ];
-        assert_eq!(rahmen.len(), 17, "ServerFrame-Arten: Liste ergänzen");
+        assert_eq!(rahmen.len(), 20, "ServerFrame-Arten: Liste ergänzen");
 
         for f in &rahmen {
             let json = serde_json::to_string(f).expect("serialisieren");

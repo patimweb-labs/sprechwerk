@@ -189,7 +189,9 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
                 zustand.nachrichten.retain(|n| n.id != nachricht);
             } else if let Some(n) = zustand.nachrichten.iter_mut().find(|n| n.id == nachricht) {
                 n.geloescht = true;
-                n.text = String::new();
+                n.inhalt = crate::NachrichtInhalt::Geloescht;
+                n.roh = None;
+                n.loeschbar = false;
             }
         }
 
@@ -198,6 +200,10 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
         // Beide gehören der Schlüsselverwaltung, nicht dem Modell: der eine
         // bringt einen Schlüssel, der andere bittet darum.
         ServerFrame::Schluesselpaket { .. } | ServerFrame::SchluesselAnfrage { .. } => {}
+        // Serverschlüssel ebenso (ADR 0012): Auftrag an den Schlüsselbund.
+        ServerFrame::Serverschluessel { .. }
+        | ServerFrame::ServerschluesselAnfrage { .. }
+        | ServerFrame::ServerschluesselPaket { .. } => {}
 
         ServerFrame::Sperrliste { sperren } => {
             zustand.sperren = sperren
@@ -335,14 +341,37 @@ fn nachricht_abbilden(n: &Message, zustand: &Zustand) -> Nachricht {
     let ich = zustand.ich();
     let loeschbar = !n.geloescht
         && (Some(n.verfasser) == ich || darf(eigene_rolle, Capability::PersonEingreifen));
+    // Entschlüsselt wird im Rust-Teil, der die Schlüssel hat
+    // (`entschluesseln`) — hier steht nur, dass es noch zu tun ist.
+    let leer = n.geloescht || n.text.is_empty();
     Nachricht {
         id: n.id,
         verfasser: n.verfasser,
         verfasser_name: n.verfasser_name.clone(),
-        text: n.text.clone(),
+        inhalt: if leer {
+            crate::NachrichtInhalt::Geloescht
+        } else {
+            crate::NachrichtInhalt::Wartet
+        },
+        roh: (!leer).then(|| n.clone()),
         zeit: n.zeit,
         geloescht: n.geloescht,
         loeschbar,
+    }
+}
+
+/// Setzt den Inhalt aller Nachrichten neu, mit dem, was `lesen` aus der rohen
+/// Nachricht macht. Rein: wer liest (Schlüsselbund), entscheidet der Aufrufer.
+///
+/// Gerufen nach jedem Rahmen und sobald ein Schlüssel ankommt — dann werden
+/// aus „wartet" lesbare Nachrichten, ohne dass der Verlauf neu geladen wird.
+pub fn entschluesseln(zustand: &mut Zustand, lesen: impl Fn(&Message) -> crate::NachrichtInhalt) {
+    for n in zustand.nachrichten.iter_mut() {
+        if let Some(roh) = &n.roh {
+            if matches!(n.inhalt, crate::NachrichtInhalt::Wartet) {
+                n.inhalt = lesen(roh);
+            }
+        }
     }
 }
 
@@ -442,7 +471,17 @@ mod tests {
             },
         );
         assert_eq!(z.nachrichten.len(), 1);
-        assert_eq!(z.nachrichten[0].text, "passt");
+        assert_eq!(z.nachrichten[0].inhalt, crate::NachrichtInhalt::Wartet);
+        // Wer den Schlüssel hat, macht daraus Text.
+        entschluesseln(&mut z, |m| crate::NachrichtInhalt::Text {
+            text: m.text.clone(),
+        });
+        assert_eq!(
+            z.nachrichten[0].inhalt,
+            crate::NachrichtInhalt::Text {
+                text: "passt".into()
+            }
+        );
     }
 
     #[test]

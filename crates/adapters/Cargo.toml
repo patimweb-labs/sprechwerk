@@ -25,3 +25,6 @@ hkdf.workspace = true
 sha2.workspace = true
 nnnoiseless.workspace = true
 aec3.workspace = true
+# Serverschlüssel (ADR 0012): Datei der gemerkten Schlüssel, Fehlertexte.
+serde_json.workspace = true
+thiserror.workspace = true

@@ -9,7 +9,10 @@
 use thiserror::Error;
 
 /// Version der Protokollsprache. Wird im ersten Rahmen beider Seiten geprüft.
-pub const PROTOKOLL_VERSION: u16 = 1;
+///
+/// **2** (2026-11-17, ADR 0012): Text nur noch als Geheimtext, Serverschlüssel.
+/// Ein Client der Version 1 legte Klartext ab — er wird abgewiesen.
+pub const PROTOKOLL_VERSION: u16 = 2;
 
 /// Obergrenze eines Rahmens (1 MiB). Schützt gegen Längenfelder, die nicht zur
 /// Verbindung passen.
