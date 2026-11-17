@@ -14,7 +14,37 @@ use std::collections::BTreeMap;
 pub const DEFAULT_ROOM_NAME: &str = "Empfang";
 
 /// Obergrenze einer Nachricht in Zeichen (**Festlegung SPEC §6**).
+///
+/// Seit ADR 0012 prüft das der **Client** vor dem Verschlüsseln — der Server
+/// sieht nur Geheimtext und prüft dessen Länge ([`MAX_GESPEICHERT_LEN`]).
 pub const MAX_MESSAGE_LEN: usize = 4_000;
+
+/// Obergrenze dessen, was als Nachricht gespeichert wird (Geheimtext, Byte).
+///
+/// Großzügig über `sprechwerk_protocol::geheimtext::MAX_GEHEIMTEXT_LEN` (dort
+/// geprüft): Text, Link-Vorschau mit kleinem Bild, Liste der Anhänge.
+pub const MAX_GESPEICHERT_LEN: usize = 640 * 1024;
+
+/// Welche Serverschlüssel es gibt — **nur Kennungen** (ADR 0012 §1).
+///
+/// Die Schlüssel selbst kennt der Server nicht; sie liegen bei den Mitgliedern.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Serverschluessel {
+    /// Mit diesem wird geschrieben; `None` heißt: ein Client soll einen anlegen.
+    #[serde(default)]
+    pub aktuell: Option<String>,
+    /// Alle, die je galten (ältester zuerst).
+    #[serde(default)]
+    pub alle: Vec<String>,
+}
+
+/// Ist das eine Schlüsselkennung (16 Byte, kleines Hex)?
+pub fn ist_schluesselkennung(id: &str) -> bool {
+    id.len() == 32
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
 
 /// Fehler, die eine Zustandsänderung ablehnen kann.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -33,6 +63,10 @@ pub enum Error {
     LetzterAdministrator,
     #[error("Nachricht ist zu lang (höchstens {MAX_MESSAGE_LEN} Zeichen)")]
     NachrichtZuLang,
+    #[error("ungültige Schlüsselkennung")]
+    SchluesselUngueltig,
+    #[error("Räume sind immer Ende zu Ende verschlüsselt")]
+    ImmerVerschluesselt,
     #[error("der Raum ist gesperrt")]
     RaumGesperrt,
     #[error("gesperrt: {0}")]
@@ -153,6 +187,9 @@ pub struct State {
     pub nachrichten: Vec<Message>,
     pub protokoll: Vec<AuditEntry>,
     pub sperren: Vec<Ban>,
+    /// Kennungen der Serverschlüssel (ADR 0012).
+    #[serde(default)]
+    pub serverschluessel: Serverschluessel,
     #[serde(default)]
     naechste_laufnummer: u64,
 }
@@ -192,6 +229,10 @@ fn adresse_normalisieren(text: &str) -> Result<String, Error> {
 /// Aktuelles Format des Exports.
 pub const FORMAT_VERSION: u32 = 1;
 
+/// Name des Handelnden im Prüfprotokoll, wenn der Betreiber über die
+/// Verwaltungsoberfläche des Servers eingreift (kein Mitglied, keine Kennung).
+pub const BETREIBER: &str = "Betreiber (Verwaltung)";
+
 /// Eine Zeile des Prüfprotokolls, bevor sie geschrieben wird.
 ///
 /// Benannte Felder statt acht Stellungen: an den meisten Stellen stehen drei
@@ -222,6 +263,7 @@ impl State {
             nachrichten: Vec::new(),
             protokoll: Vec::new(),
             sperren: Vec::new(),
+            serverschluessel: Serverschluessel::default(),
             naechste_laufnummer: 1,
         };
         let id = RoomId::neu();
@@ -232,8 +274,9 @@ impl State {
                 name: DEFAULT_ROOM_NAME.to_string(),
                 reihenfolge: 0,
                 angelegt_am: jetzt_ms,
-                verschluesselt: false,
-                verschluesselt_seit: 0,
+                // Jeder Raum ist Ende zu Ende verschlüsselt (ADR 0012 §4).
+                verschluesselt: true,
+                verschluesselt_seit: jetzt_ms,
             },
         );
         state
@@ -452,8 +495,8 @@ impl State {
                 name: name.clone(),
                 reihenfolge,
                 angelegt_am: jetzt_ms,
-                verschluesselt: false,
-                verschluesselt_seit: 0,
+                verschluesselt: true,
+                verschluesselt_seit: jetzt_ms,
             },
         );
         self.protokolliere(Protokollzeile {
@@ -473,9 +516,8 @@ impl State {
     /// Benennt einen Raum um.
     /// Schaltet die Ende-zu-Ende-Verschlüsselung eines Raums ein oder aus.
     ///
-    /// **Nur Sprache.** Text wird dauerhaft gespeichert und bleibt damit
-    /// serverseitig lesbar; ein „Ende-zu-Ende" für gespeicherten Text wäre ein
-    /// anderes Versprechen (siehe ADR 0006).
+    /// Seit ADR 0012 sind alle Räume verschlüsselt: „ein" ändert nichts mehr,
+    /// „aus" wird abgelehnt.
     pub fn raum_verschluesseln(
         &mut self,
         wer: MemberId,
@@ -494,6 +536,11 @@ impl State {
         let Some(r) = self.raeume.get_mut(&raum) else {
             return Err(Error::RaumUnbekannt);
         };
+        // Seit ADR 0012 gibt es kein „aus": ein unverschlüsselter Raum wäre
+        // eine Lücke im Versprechen, und niemand merkte sie.
+        if !an {
+            return Err(Error::ImmerVerschluesselt);
+        }
         if r.verschluesselt == an {
             return Ok(());
         }
@@ -512,6 +559,120 @@ impl State {
             ergebnis: String::new(),
         });
         Ok(())
+    }
+
+    // ---- Ende zu Ende (ADR 0012) ----------------------------------------
+
+    /// Legt den Serverschlüssel fest — **nur die Kennung**, wenn es keinen
+    /// aktuellen gibt.
+    ///
+    /// `Ok(true)`: angenommen. `Ok(false)`: es gibt schon einen (ein anderer
+    /// Client war schneller), der Aufrufer verwirft seinen.
+    pub fn serverschluessel_anlegen(
+        &mut self,
+        wer: MemberId,
+        id: &str,
+        jetzt_ms: i64,
+    ) -> Result<bool, Error> {
+        let handelnder_name = self
+            .mitglieder
+            .get(&wer)
+            .ok_or(Error::MitgliedUnbekannt)?
+            .name
+            .clone();
+        if !ist_schluesselkennung(id) {
+            return Err(Error::SchluesselUngueltig);
+        }
+        if self.serverschluessel.aktuell.is_some() {
+            return Ok(false);
+        }
+        self.serverschluessel.aktuell = Some(id.to_string());
+        if !self.serverschluessel.alle.iter().any(|a| a == id) {
+            self.serverschluessel.alle.push(id.to_string());
+        }
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: Some(wer),
+            handelnder_name: &handelnder_name,
+            aktion: "serverschluessel_angelegt",
+            ziel: id.to_string(),
+            vorher: None,
+            nachher: None,
+            grund: None,
+            ergebnis: String::new(),
+        });
+        Ok(true)
+    }
+
+    /// Verwirft den aktuellen Serverschlüssel: ab jetzt wird mit einem neuen
+    /// geschrieben, den die Verbundenen erzeugen und weitergeben.
+    ///
+    /// Gerufen nach einer **Sperre** — die gesperrte Person hält den alten
+    /// Schlüssel und soll Neues nicht mehr lesen können, auch nicht mit Hilfe
+    /// eines Datenbankauszugs. Lesen bleibt mit den alten Schlüsseln möglich.
+    pub fn serverschluessel_verwerfen(
+        &mut self,
+        handelnder_name: &str,
+        grund: &str,
+        jetzt_ms: i64,
+    ) {
+        let Some(alt) = self.serverschluessel.aktuell.take() else {
+            return;
+        };
+        self.protokolliere(Protokollzeile {
+            zeit: jetzt_ms,
+            handelnder: None,
+            handelnder_name,
+            aktion: "serverschluessel_verworfen",
+            ziel: alt,
+            vorher: None,
+            nachher: None,
+            grund: Some(grund.to_string()),
+            ergebnis: String::new(),
+        });
+    }
+
+    /// Entfernt alle Nachrichten, die **Klartext** enthalten (ADR 0012 §5).
+    ///
+    /// `ist_geheim` entscheidet über die Form (die Domain kennt das
+    /// Leitungsformat nicht). Leere Texte (vom Moderator gelöschte) bleiben —
+    /// sie verraten nichts. Liefert die Zahl der entfernten Nachrichten und
+    /// schreibt sie ins Prüfprotokoll.
+    pub fn klartext_entfernen(
+        &mut self,
+        ist_geheim: impl Fn(&str) -> bool,
+        jetzt_ms: i64,
+    ) -> usize {
+        let vorher = self.nachrichten.len();
+        self.nachrichten
+            .retain(|n| n.text.is_empty() || ist_geheim(&n.text));
+        let entfernt = vorher - self.nachrichten.len();
+        if entfernt > 0 {
+            self.protokolliere(Protokollzeile {
+                zeit: jetzt_ms,
+                handelnder: None,
+                handelnder_name: "Server",
+                aktion: "klartext_entfernt",
+                ziel: String::new(),
+                vorher: Some(entfernt.to_string()),
+                nachher: Some("0".into()),
+                grund: Some("Umstellung auf Ende-zu-Ende (ADR 0012)".into()),
+                ergebnis: String::new(),
+            });
+        }
+        entfernt
+    }
+
+    /// Stellt alle Räume auf Ende-zu-Ende-Sprache um (ADR 0012 §4). Liefert,
+    /// wie viele umgestellt wurden.
+    pub fn alle_raeume_verschluesseln(&mut self, jetzt_ms: i64) -> usize {
+        let mut zahl = 0;
+        for r in self.raeume.values_mut().filter(|r| !r.verschluesselt) {
+            r.verschluesselt = true;
+            r.verschluesselt_seit = jetzt_ms;
+            zahl += 1;
+        }
+        zahl
     }
 
     pub fn raum_umbenennen(
@@ -808,7 +969,7 @@ impl State {
         if text.is_empty() {
             return Err(Error::NameUngueltig);
         }
-        if text.chars().count() > MAX_MESSAGE_LEN {
+        if text.len() > MAX_GESPEICHERT_LEN {
             self.protokolliere(Protokollzeile {
                 zeit: jetzt_ms,
                 handelnder: Some(wer),
@@ -932,6 +1093,33 @@ impl State {
             ziel.text(),
         );
         ergebnis?;
+        self.rolle_umsetzen(Some(wer), &handelnder_name, ziel, rolle, jetzt_ms)
+    }
+
+    /// Setzt die Rolle eines Mitglieds **als Betreiber** — aus der
+    /// Verwaltungsoberfläche des Servers, nicht über eine Verbindung.
+    ///
+    /// Der Betreiber ist kein Mitglied: wer an den Server-Rechner kommt (oder
+    /// den Zugangscode der Verwaltung kennt), kann ohnehin alles. Deshalb keine
+    /// Rechteprüfung — aber dieselbe Regel „der letzte Administrator bleibt"
+    /// und derselbe Protokolleintrag, mit [`BETREIBER`] als Handelndem.
+    pub fn rolle_setzen_als_betreiber(
+        &mut self,
+        ziel: MemberId,
+        rolle: Role,
+        jetzt_ms: i64,
+    ) -> Result<(), Error> {
+        self.rolle_umsetzen(None, BETREIBER, ziel, rolle, jetzt_ms)
+    }
+
+    fn rolle_umsetzen(
+        &mut self,
+        wer: Option<MemberId>,
+        handelnder_name: &str,
+        ziel: MemberId,
+        rolle: Role,
+        jetzt_ms: i64,
+    ) -> Result<(), Error> {
         let alt = {
             let m = self.mitglieder.get(&ziel).ok_or(Error::MitgliedUnbekannt)?;
             m.rolle
@@ -947,8 +1135,8 @@ impl State {
             if weitere == 0 {
                 self.protokolliere(Protokollzeile {
                     zeit: jetzt_ms,
-                    handelnder: Some(wer),
-                    handelnder_name: &handelnder_name,
+                    handelnder: wer,
+                    handelnder_name,
                     aktion: "rolle_gesetzt",
                     ziel: ziel.text(),
                     vorher: Some(alt.text().into()),
@@ -965,8 +1153,8 @@ impl State {
             .rolle = rolle;
         self.protokolliere(Protokollzeile {
             zeit: jetzt_ms,
-            handelnder: Some(wer),
-            handelnder_name: &handelnder_name,
+            handelnder: wer,
+            handelnder_name,
             aktion: "rolle_gesetzt",
             ziel: ziel.text(),
             vorher: Some(alt.text().into()),
@@ -1556,13 +1744,49 @@ mod tests {
     }
 
     #[test]
+    fn betreiber_setzt_rollen_ohne_eigene_kennung() {
+        let mut s = zustand();
+        let a = admin(&mut s);
+        let b = s.anmelden("k2", "Bosse", 1_101).unwrap();
+        // Bosse ist Mitglied und darf selbst nichts vergeben …
+        assert_eq!(
+            s.rolle_setzen(b, b, Role::Administrator, 1_102),
+            Err(Error::RechtFehlt(Capability::RollenVergeben))
+        );
+        // … der Betreiber macht ihn zum Administrator.
+        s.rolle_setzen_als_betreiber(b, Role::Administrator, 1_103)
+            .unwrap();
+        assert_eq!(s.mitglied(b).unwrap().rolle, Role::Administrator);
+        let zeile = s.protokoll.last().unwrap();
+        assert_eq!(zeile.handelnder, None);
+        assert_eq!(zeile.handelnder_name, BETREIBER);
+        assert_eq!(zeile.aktion, "rolle_gesetzt");
+        assert_eq!(zeile.ergebnis, "erlaubt");
+        // Auch der Betreiber nimmt nicht den letzten Administrator weg.
+        s.rolle_setzen_als_betreiber(a, Role::Mitglied, 1_104)
+            .unwrap();
+        assert_eq!(
+            s.rolle_setzen_als_betreiber(b, Role::Gast, 1_105),
+            Err(Error::LetzterAdministrator)
+        );
+        assert_eq!(
+            s.rolle_setzen_als_betreiber(MemberId::neu(), Role::Gast, 1_106),
+            Err(Error::MitgliedUnbekannt)
+        );
+    }
+
+    #[test]
     fn nachricht_zu_lang_wird_abgelehnt() {
         let mut s = zustand();
         let a = admin(&mut s);
         let empfang = s.wurzel_raum().unwrap();
         s.betreten(a, empfang, 1_000).unwrap();
-        let lang = "x".repeat(MAX_MESSAGE_LEN + 1);
+        // Der Server prüft die Länge des **Geheimtexts** (ADR 0012).
+        let lang = "x".repeat(MAX_GESPEICHERT_LEN + 1);
         assert_eq!(s.text_senden(a, &lang, 1_001), Err(Error::NachrichtZuLang));
+        assert!(s
+            .text_senden(a, &"x".repeat(MAX_GESPEICHERT_LEN), 1_002)
+            .is_ok());
     }
 
     /// Eine Sperre greift beim Anmelden — und nur bei **derselben**
@@ -1593,8 +1817,8 @@ mod tests {
     fn verlassen_dreht_die_epoche() {
         let mut s = zustand();
         let a = admin(&mut s);
-        let raum = s.raum_anlegen(a, "Geheim", 1_010).unwrap();
-        s.raum_verschluesseln(a, raum, true, 1_020).unwrap();
+        // Jeder Raum ist von Anfang an verschlüsselt (ADR 0012 §4).
+        let raum = s.raum_anlegen(a, "Geheim", 1_020).unwrap();
         let seit = s.raeume.get(&raum).unwrap().verschluesselt_seit;
         assert_eq!(seit, 1_020);
 
@@ -1624,11 +1848,11 @@ mod tests {
             "zwei Drehungen in derselben Millisekunde müssen trotzdem steigen"
         );
 
-        // Ohne Verschlüsselung wird nichts gedreht.
-        let offen = s.raum_anlegen(a, "Offen", 2_000).unwrap();
-        s.betreten(c, offen, 2_000).unwrap();
+        // Unverschlüsselte Räume gibt es nicht mehr (ADR 0012) — jeder dreht.
+        let zweiter = s.raum_anlegen(a, "Zweiter", 2_000).unwrap();
+        s.betreten(c, zweiter, 2_000).unwrap();
         s.verlassen(c, 2_100).unwrap();
-        assert_eq!(s.raeume.get(&offen).unwrap().verschluesselt_seit, 0);
+        assert!(s.raeume.get(&zweiter).unwrap().verschluesselt_seit >= 3_000);
     }
 
     /// Eine Sperre mit unsinniger Kennung oder Adresse wird abgewiesen: sie
@@ -1834,27 +2058,31 @@ mod tests {
     }
 
     #[test]
-    fn verschluesselung_ist_je_raum_und_wird_protokolliert() {
+    fn raeume_sind_immer_verschluesselt() {
         let mut st = zustand();
         let admin = st.anmelden("k1", "Ada", 1_000).unwrap();
         let raum = *st.raeume.keys().next().unwrap();
-        assert!(!st.raeume[&raum].verschluesselt, "Vorgabe: aus");
+        assert!(st.raeume[&raum].verschluesselt, "Vorgabe: an (ADR 0012)");
+        let neu = st.raum_anlegen(admin, "Vorstand", 1_050).unwrap();
+        assert!(st.raeume[&neu].verschluesselt);
+        assert_eq!(st.raeume[&neu].verschluesselt_seit, 1_050);
 
-        st.raum_verschluesseln(admin, raum, true, 1_000).unwrap();
-        assert!(st.raeume[&raum].verschluesselt);
-        // Der Eintrag steht im Prüfprotokoll, mit vorher/nachher.
-        let eintrag = st.protokoll.last().expect("Protokolleintrag");
-        assert_eq!(eintrag.aktion, "raum_verschluesselt");
-        assert_eq!(eintrag.vorher.as_deref(), Some("aus"));
-        assert_eq!(eintrag.nachher.as_deref(), Some("an"));
-
-        // Wiederholtes Einschalten ändert nichts und schreibt nichts.
-        let vorher_anzahl = st.protokoll.len();
+        // „Ein" ändert nichts, „aus" gibt es nicht mehr.
+        let vorher = st.protokoll.len();
         st.raum_verschluesseln(admin, raum, true, 1_100).unwrap();
-        assert_eq!(st.protokoll.len(), vorher_anzahl);
+        assert_eq!(st.protokoll.len(), vorher);
+        assert_eq!(
+            st.raum_verschluesseln(admin, raum, false, 1_200),
+            Err(Error::ImmerVerschluesselt)
+        );
+        assert!(st.raeume[&raum].verschluesselt);
 
-        st.raum_verschluesseln(admin, raum, false, 1_200).unwrap();
-        assert!(!st.raeume[&raum].verschluesselt);
+        // Alte Räume (aus der Datenbank) werden umgestellt.
+        st.raeume.get_mut(&raum).unwrap().verschluesselt = false;
+        assert_eq!(st.alle_raeume_verschluesseln(1_300), 1);
+        assert!(st.raeume[&raum].verschluesselt);
+        assert_eq!(st.raeume[&raum].verschluesselt_seit, 1_300);
+        assert_eq!(st.alle_raeume_verschluesseln(1_400), 0);
     }
 
     #[test]
@@ -1863,7 +2091,95 @@ mod tests {
         let _admin = st.anmelden("k1", "Ada", 1_000).unwrap();
         let mitglied = st.anmelden("k2", "Bosse", 1_001).unwrap();
         let raum = *st.raeume.keys().next().unwrap();
-        assert!(st.raum_verschluesseln(mitglied, raum, true, 1_000).is_err());
-        assert!(!st.raeume[&raum].verschluesselt);
+        assert!(st
+            .raum_verschluesseln(mitglied, raum, false, 1_000)
+            .is_err());
+        assert!(st.raeume[&raum].verschluesselt);
+    }
+
+    /// Der erste Client legt den Serverschlüssel fest, ein zweiter nicht.
+    #[test]
+    fn serverschluessel_erster_gewinnt() {
+        let mut st = zustand();
+        let ada = st.anmelden("k1", "Ada", 1_000).unwrap();
+        let bosse = st.anmelden("k2", "Bosse", 1_001).unwrap();
+        let a = "aa".repeat(16);
+        let b = "bb".repeat(16);
+        assert_eq!(st.serverschluessel_anlegen(ada, &a, 1_002), Ok(true));
+        assert_eq!(st.serverschluessel_anlegen(bosse, &b, 1_003), Ok(false));
+        assert_eq!(st.serverschluessel.aktuell.as_deref(), Some(a.as_str()));
+        assert_eq!(st.serverschluessel.alle, vec![a.clone()]);
+        assert_eq!(
+            st.protokoll.last().unwrap().aktion,
+            "serverschluessel_angelegt"
+        );
+
+        // Kaputte Kennungen kommen nicht hinein.
+        st.serverschluessel_verwerfen("Ada", "Sperre", 1_004);
+        for kaputt in ["", "AA", &"AA".repeat(16), &"zz".repeat(16)] {
+            assert_eq!(
+                st.serverschluessel_anlegen(ada, kaputt, 1_005),
+                Err(Error::SchluesselUngueltig)
+            );
+        }
+        assert_eq!(
+            st.serverschluessel_anlegen(MemberId::neu(), &b, 1_005),
+            Err(Error::MitgliedUnbekannt)
+        );
+    }
+
+    /// Nach einer Sperre wird mit einem neuen Schlüssel geschrieben; die alten
+    /// bleiben zum Lesen in der Liste.
+    #[test]
+    fn verworfener_serverschluessel_bleibt_zum_lesen() {
+        let mut st = zustand();
+        let ada = st.anmelden("k1", "Ada", 1_000).unwrap();
+        let a = "aa".repeat(16);
+        let b = "bb".repeat(16);
+        st.serverschluessel_anlegen(ada, &a, 1_001).unwrap();
+        st.serverschluessel_verwerfen("Ada", "Sperre: Spam", 1_002);
+        assert_eq!(st.serverschluessel.aktuell, None);
+        let eintrag = st.protokoll.last().unwrap();
+        assert_eq!(eintrag.aktion, "serverschluessel_verworfen");
+        assert_eq!(eintrag.grund.as_deref(), Some("Sperre: Spam"));
+        // Zweimal verwerfen schreibt nichts Doppeltes.
+        let zahl = st.protokoll.len();
+        st.serverschluessel_verwerfen("Ada", "Sperre", 1_003);
+        assert_eq!(st.protokoll.len(), zahl);
+
+        assert_eq!(st.serverschluessel_anlegen(ada, &b, 1_004), Ok(true));
+        assert_eq!(st.serverschluessel.alle, vec![a, b.clone()]);
+        assert_eq!(st.serverschluessel.aktuell, Some(b));
+    }
+
+    /// Altbestand: Klartext wird entfernt, Geheimtext und leere (gelöschte)
+    /// Nachrichten bleiben — und es steht im Prüfprotokoll.
+    #[test]
+    fn klartext_wird_entfernt() {
+        let mut st = zustand();
+        let ada = st.anmelden("k1", "Ada", 1_000).unwrap();
+        let raum = st.wurzel_raum().unwrap();
+        st.betreten(ada, raum, 1_000).unwrap();
+        st.text_senden(ada, "Guten Abend", 1_001).unwrap();
+        st.text_senden(ada, "e1.geheim", 1_002).unwrap();
+        let weg = st.text_senden(ada, "gelöscht", 1_003).unwrap();
+        st.nachrichten
+            .iter_mut()
+            .find(|n| n.id == weg.id)
+            .unwrap()
+            .text
+            .clear();
+
+        let entfernt = st.klartext_entfernen(|t| t.starts_with("e1."), 1_004);
+        assert_eq!(entfernt, 1);
+        assert_eq!(st.nachrichten.len(), 2);
+        assert!(st.nachrichten.iter().all(|n| n.text != "Guten Abend"));
+        let eintrag = st.protokoll.last().unwrap();
+        assert_eq!(eintrag.aktion, "klartext_entfernt");
+        assert_eq!(eintrag.vorher.as_deref(), Some("1"));
+        // Beim nächsten Start: nichts mehr zu tun, kein neuer Eintrag.
+        let zahl = st.protokoll.len();
+        assert_eq!(st.klartext_entfernen(|t| t.starts_with("e1."), 1_005), 0);
+        assert_eq!(st.protokoll.len(), zahl);
     }
 }

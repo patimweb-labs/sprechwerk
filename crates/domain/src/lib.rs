@@ -15,6 +15,6 @@ pub mod state;
 pub use ids::{MemberId, MessageId, RoomId};
 pub use role::{Capability, Role};
 pub use state::{
-    AuditEntry, Ban, Error, Member, Message, Room, State, DEFAULT_ROOM_NAME, FORMAT_VERSION,
-    MAX_MESSAGE_LEN,
+    ist_schluesselkennung, AuditEntry, Ban, Error, Member, Message, Room, Serverschluessel, State,
+    DEFAULT_ROOM_NAME, FORMAT_VERSION, MAX_GESPEICHERT_LEN, MAX_MESSAGE_LEN,
 };
