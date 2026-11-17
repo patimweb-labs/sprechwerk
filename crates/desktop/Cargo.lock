@@ -3902,7 +3902,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-adapters"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "aec3",
  "anyhow",
@@ -3929,7 +3929,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-audio"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -3943,7 +3943,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-desktop"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -3964,7 +3964,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-domain"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "hex",
  "serde",
@@ -3974,7 +3974,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-ipc"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3984,7 +3984,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-protocol"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "hex",
  "serde",

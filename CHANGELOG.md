@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.2.0](https://github.com/patimweb-labs/sprechwerk/compare/v1.1.0...v1.2.0) (2026-11-17)
+
+
+### Neu
+
+* **client:** Fenster und Referenzclient folgen der neuen Rollen- und Schlüssellage ([aac6823](https://github.com/patimweb-labs/sprechwerk/commit/aac6823442a9ad59a030be3df7c7cbce164463a5))
+* **domain:** Rolle durch den Betreiber setzen, letzter Administrator bleibt ([b44092d](https://github.com/patimweb-labs/sprechwerk/commit/b44092d6b818e1251eb6f2d38955580f324e0a58))
+* **server:** Verwaltung im Browser und Betrieb ohne Docker ([992ff06](https://github.com/patimweb-labs/sprechwerk/commit/992ff067945165315eef61dbac5a0ad89ec7a0dd))
+* Text und Anhänge als Geheimtext im Protokoll ([71ad9c7](https://github.com/patimweb-labs/sprechwerk/commit/71ad9c70706035e86e3c5e15719af4dc03a30134))
+* **ui:** Verwaltungsseite im Browser und Sprechtaste ([ddfedea](https://github.com/patimweb-labs/sprechwerk/commit/ddfedeaede80bada3a285dbb947f41ff15937cc2))
+* Verwaltung im Browser, Ende-zu-Ende für Text und Anhänge ([9dfef08](https://github.com/patimweb-labs/sprechwerk/commit/9dfef083da96668b53e2977cf9792b4a00526870))
+
+
+### Dokumentation
+
+* ADRs 0011/0012, SPEC, README und Skripte nachgezogen ([acdd278](https://github.com/patimweb-labs/sprechwerk/commit/acdd278682e7a7de4680bf355a8ff5d33399a656))
+
 ## [1.1.0](https://github.com/patimweb-labs/sprechwerk/compare/v1.0.0...v1.1.0) (2026-11-16)
 
 
