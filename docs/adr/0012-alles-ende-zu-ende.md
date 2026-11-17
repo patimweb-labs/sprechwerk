@@ -1,15 +1,16 @@
 # ADR 0012 — Alles Ende zu Ende: Text, Sprache, Anhänge
 
-**Status:** Stufe 1 umgesetzt (2026-11-17), Stufen 2–3 geplant
+**Status:** Stufen 1 und 2 umgesetzt (2026-11-17), Stufe 3 geplant
 **Entscheidung (Nutzer, 2026-11-17):** „Das muss in sich geschlossen sein —
 wenig Sinn, die Sprache zu verschlüsseln, aber den Text nicht." Lesen dürfen
 **die Mitglieder des Servers**, nicht der Betreiber. Wer als Betreiber lesen
 will, verbindet sich mit dem Client — dann ist er Mitglied wie jeder andere.
 **Ändert:** SPEC §3 „Text bleibt serverseitig lesbar" (Nachtrag 2026-11-17),
 ADR 0006 „Nur Sprache" und „je Raum einschaltbar".
-**Betrifft:** `crates/protocol` (`geheimtext.rs`, neue Rahmen),
-`crates/adapters` (`serverschluessel.rs`), `crates/domain`, `crates/store`,
-`crates/server`, `crates/desktop`, `crates/cli`, `ui/`
+**Betrifft:** `crates/protocol` (`geheimtext.rs`, `inhalt.rs`, neue Rahmen),
+`crates/adapters` (`serverschluessel.rs`), `crates/linkvorschau` (neu, Stufe 2),
+`crates/domain`, `crates/store`, `crates/server`, `crates/ipc`,
+`crates/desktop`, `crates/cli`, `ui/`
 
 ## Was versprochen wird
 
@@ -97,15 +98,25 @@ Der Inhalt ist versioniertes JSON (`sprechwerk_protocol::inhalt::Inhalt`):
 
 | Art | Felder | Stufe |
 |---|---|---|
-| `text` | `text` | 1 |
+| `text` | `text`, optional `effekt`, optional `vorschau { url, titel, beschreibung, bild }` | 1, 2 |
 | `reaktion` | `ziel` (Nachricht), `zeichen`, `weg` | 2 |
-| `effekt` | `text`, `effekt` (z. B. Konfetti) | 2 |
-| `link` | `text`, `vorschau { url, titel, beschreibung, bild }` | 2 |
 | `anhang` | `text`, `dateien [{ id, name, typ, groesse, schluessel, pruefsumme, vorschau }]` | 3 |
 
 Eine neue Art braucht **keine** Protokolländerung — der Server sieht nur
 Geheimtext. Ein älterer Client zeigt eine unbekannte Art als „neuere Version
 nötig", statt sie falsch darzustellen.
+
+*Umgesetzt anders als zuerst geplant (Stufe 2):* Effekt und Vorschau sind
+**optionale Felder am Text**, keine eigenen Arten `effekt` und `link`. So kann
+eine Nachricht beides haben, und ein Client der Stufe 1 liest sie noch als Text
+(unbekannte Felder übergeht er) — er zeigt nur keinen Effekt und keine Karte.
+Ein unbekannter Effekt wird zu `unbekannt` und fällt weg; der Text bleibt.
+
+**Was ein Mitglied schickt, wird geprüft** (`ipc::abbilden::inhalt_abbilden`):
+ein Vorschau-Link muss `http(s)` sein, Titel und Beschreibung werden gekürzt,
+das Bild muss Base64 sein; eine Reaktion braucht eine gültige
+Nachrichtenkennung und ein kurzes Zeichen ohne Leerraum. Der Schlüssel sagt
+nur, dass ein Mitglied es geschickt hat — nicht, dass es harmlos ist.
 
 **Reaktionen** sind eigene Umschläge, die auf eine Nachricht zeigen; der Client
 fasst sie zusammen. Der Server kann sie nicht zählen — er weiß nicht, dass es
@@ -115,6 +126,33 @@ Reaktionen sind.
 Bild), packt die Vorschau in den Umschlag. Empfänger rufen nichts ab und
 verraten ihre Adresse keiner fremden Seite; der Server sieht nichts. Wie
 Signal. *Nutzerentscheidung 2026-11-17.*
+
+Umsetzung in `crates/linkvorschau` (eigenes Crate, damit der Server weder
+HTTP-Client noch Bilddecoder mitbaut):
+
+* Abruf mit `reqwest` (rustls, Anbieter `aws-lc-rs` wie quinn, Zertifikate des
+  Systems), 8 s Frist, höchstens 5 Weiterleitungen, höchstens 512 KiB HTML
+  (der Kopf steht vorn) und 8 MiB Bild; neutrale Kennung
+  `sprechwerk-linkvorschau`, keine Cookies.
+* Gelesen werden nur `<title>` und `<meta>` im Kopf (`og:*`, `twitter:*`,
+  `description`) — ein kleiner Leser statt eines HTML-Parsers.
+* Das Bild wird mit `image` dekodiert (Grenzen gegen Pixelbomben), auf
+  höchstens 480 px verkleinert, Durchsichtiges auf Weiß gesetzt und als JPEG
+  neu geschrieben (≤ 120 KiB): kein Originalbild, keine Metadaten.
+* Der Entwurf zeigt die Vorschau über dem Eingabefeld (`Zustand.entwurf`); sie
+  lässt sich wegklicken und geht nur mit, wenn ihr Link noch im Text steht.
+  Ein Link wird je Entwurf nur einmal abgerufen.
+* **Abschaltbar** (Einstellungen → Chat): dann wird nichts abgerufen, Links
+  bleiben anklickbar. Anklicken öffnet den **Browser des Systems**
+  (`tauri-plugin-opener`, aufgerufen aus Rust nach der Prüfung auf `http(s)`),
+  nie das Fenster selbst.
+
+**Effekte** (Konfetti, Herzen, Beben) spielen einmal, wenn eine Nachricht
+**neu ankommt** — nicht beim Laden des Verlaufs, nicht nach einem
+Raumwechsel. `Zustand.effekt { nachricht, effekt, nr }`: die Oberfläche spielt,
+wenn `nr` sich ändert; „noch einmal" zählt `nr` hoch. Mit
+`prefers-reduced-motion` spielt nichts, der Effekt steht nur als Wort am
+Beitrag.
 
 ### 3. Anhänge (Stufe 3)
 
@@ -178,4 +216,11 @@ Rechners lesbar).
 * Der Server kann nicht mehr nach Inhalt suchen, filtern oder Vorschauen bauen
   — Suche muss später im Client laufen.
 * Neues Mitglied allein online: wartet auf einen Halter (siehe oben).
+* Jede Reaktion ist eine eigene gespeicherte Nachricht (zählt zur Aufbewahrung
+  und zum Verlauf). Reaktionen auf Nachrichten außerhalb des geladenen
+  Verlaufs fallen still weg.
+* Link-Vorschau: die Seite sieht die Adresse des **Absenders**; ein Bild
+  macht den Umschlag bis zu ~160 KiB groß (Base64). Neue Abhängigkeiten im
+  Fenster: `reqwest`, `image`, `url`, `base64` (in `crates/linkvorschau`) und
+  `tauri-plugin-opener`.
 * Protokollversion 2: alte Clients verbinden sich nicht mehr.

@@ -121,8 +121,8 @@ Lizenzbedingungen (Stand 2026) und können sich ändern.
 
 ## Stand heute
 
-Lauffähig und geprüft: **238 Tests** im Arbeitsbereich, **41** in der
-Fensteranwendung, **61** in der Oberfläche, dazu die Ansichten im echten
+Lauffähig und geprüft: **284 Tests** im Arbeitsbereich, **43** in der
+Fensteranwendung, **84** in der Oberfläche, dazu die Ansichten im echten
 Browser und sechs Messskripte, die einen echten Server starten.
 
 * **Sprache** — Aufnahme über PipeWire/PulseAudio, Hochpass, Entrauschung,
@@ -132,8 +132,11 @@ Browser und sechs Messskripte, die einen echten Server starten.
   Durchlauf durch den Server p99 **21–29 µs**, Beitritt p95 **1,8–2,8 ms**
   (`scripts/latenz.sh`, [`docs/QUALITAET.md`](docs/QUALITAET.md) §2d).
 * **Text** — Verlauf, Löschen (Verfasser weich, Moderator hart),
-  Aufbewahrungsfrist. Ende zu Ende verschlüsselt: in Datenbank und Sicherung
-  steht nur Geheimtext.
+  Aufbewahrungsfrist, Reaktionen, Effekte (Konfetti, Herzen, Beben),
+  anklickbare Links mit Vorschau. Ende zu Ende verschlüsselt: in Datenbank und
+  Sicherung steht nur Geheimtext — auch Reaktionen und Vorschauen. Die
+  Vorschau ruft der **Absender** ab, nie die Empfänger und nie der Server
+  (abschaltbar in den Einstellungen).
 * **Rollen und Rechte** — Administrator, Moderator, Mitglied, Gast; Prüfprotokoll
   für jede Änderung, Sperrliste mit Grund.
 * **Verschlüsselung** — TLS 1.3 über QUIC mit angeheftetem Zertifikat (TOFU),
@@ -145,8 +148,8 @@ Browser und sechs Messskripte, die einen echten Server starten.
   als Programm unter Windows, macOS und Linux. Dazu eine Verwaltung im Browser
   mit Protokoll, Mitgliedern und Rollen (nur auf dem Rechner des Servers).
 
-Noch nicht gebaut (bewusst): Dateien, Status/Abwesenheit, Video,
-Bildschirmfreigabe, Emojis/Reaktionen, Suche. Was als Nächstes kommt, steht in
+Noch nicht gebaut (bewusst): Dateien und Bilder im Chat (geplant, ADR 0012
+Stufe 3), GIF-Suche, Status/Abwesenheit, Video, Bildschirmfreigabe, Suche. Was als Nächstes kommt, steht in
 [`SPEC.md`](SPEC.md) §11 und [`docs/adr/0010-quantensicherheit.md`](docs/adr/0010-quantensicherheit.md)
 (Schritt 2: Raumschlüssel hybrid und mit Forward Secrecy).
 
