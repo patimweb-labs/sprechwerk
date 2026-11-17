@@ -4398,7 +4398,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-adapters"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "aec3",
  "anyhow",
@@ -4425,7 +4425,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-audio"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -4439,7 +4439,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-desktop"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -4462,7 +4462,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-domain"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "hex",
  "serde",
@@ -4472,7 +4472,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-ipc"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4482,7 +4482,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-linkvorschau"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "base64 0.22.1",
  "image",
@@ -4495,7 +4495,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-protocol"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "hex",
  "serde",
