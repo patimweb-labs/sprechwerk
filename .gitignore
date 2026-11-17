@@ -9,6 +9,7 @@ sicherungen/
 # Oberfläche
 ui/node_modules/
 ui/dist/
+ui/dist-verwaltung/
 crates/desktop/target/
 crates/desktop/gen/
 

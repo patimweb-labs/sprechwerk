@@ -8,6 +8,7 @@
 // Räume, Menschen und Verlauf.
 import { computed, onMounted, onUnmounted } from "vue";
 import * as UI from "@weppelmann/components";
+import { istSprechtaste, istSprechtasteLos, sprechMaustaste } from "./sprechtaste";
 import {
   IconPlug,
   IconHeadphoneOff,
@@ -102,40 +103,44 @@ async function mikrofonUmschalten() {
  * links) und die Maustasten 4/5. „Maus 4" ist `button === 3`, „Maus 5" ist
  * `button === 4` — die Zählung im Browser beginnt bei 0.
  */
-const TASTEN: Record<string, (e: KeyboardEvent) => boolean> = {
-  Leertaste: (e) => e.code === "Space",
-  "Strg links": (e) => e.code === "ControlLeft",
-  "Alt links": (e) => e.code === "AltLeft",
-};
+const belegung = () => ({ aktiv: einstellungen.push_to_talk, taste: einstellungen.ptt_taste });
 
-const MAUSTASTEN: Record<string, number> = { "Maus 4": 3, "Maus 5": 4 };
+/** Sendet die Sprechtaste gerade? Damit Loslassen nur beendet, was begann. */
+let gedrueckt = false;
 
-function tastePasst(e: KeyboardEvent): boolean {
-  const pruefung = TASTEN[einstellungen.ptt_taste];
-  return pruefung ? pruefung(e) : false;
+function sprechen(an: boolean) {
+  if (gedrueckt === an) return;
+  gedrueckt = an;
+  void sprechtaste(an);
 }
 
 function beimTastendruck(e: KeyboardEvent) {
-  if (!tastePasst(e) || e.repeat) return;
+  const ziel = e.target instanceof HTMLElement ? e.target : null;
+  if (!istSprechtaste(belegung(), { code: e.code, ziel })) return;
   e.preventDefault();
-  void sprechtaste(true);
+  if (!e.repeat) sprechen(true);
 }
 
 function beimTastenloslassen(e: KeyboardEvent) {
-  if (!tastePasst(e)) return;
+  if (!gedrueckt || !istSprechtasteLos(belegung(), e.code)) return;
   e.preventDefault();
-  void sprechtaste(false);
+  sprechen(false);
 }
 
 function beimMausdruck(e: MouseEvent) {
-  if (MAUSTASTEN[einstellungen.ptt_taste] !== e.button) return;
+  if (sprechMaustaste(belegung()) !== e.button) return;
   e.preventDefault();
-  void sprechtaste(true);
+  sprechen(true);
 }
 
 function beimMausloslassen(e: MouseEvent) {
-  if (MAUSTASTEN[einstellungen.ptt_taste] !== e.button) return;
-  void sprechtaste(false);
+  if (sprechMaustaste(belegung()) !== e.button) return;
+  sprechen(false);
+}
+
+/** Fenster verliert den Fokus: das Loslassen käme nie an — also jetzt aufhören. */
+function beimVerlassen() {
+  sprechen(false);
 }
 
 // Betriebszahlen alle 10 s: sie ändern sich langsam, und ein Takt von einer
@@ -154,6 +159,7 @@ onMounted(() => {
   window.addEventListener("keyup", beimTastenloslassen);
   window.addEventListener("mousedown", beimMausdruck);
   window.addEventListener("mouseup", beimMausloslassen);
+  window.addEventListener("blur", beimVerlassen);
 });
 
 onUnmounted(() => {
@@ -162,6 +168,7 @@ onUnmounted(() => {
   window.removeEventListener("keyup", beimTastenloslassen);
   window.removeEventListener("mousedown", beimMausdruck);
   window.removeEventListener("mouseup", beimMausloslassen);
+  window.removeEventListener("blur", beimVerlassen);
 });
 
 /** Server verlassen: trennen und zur Serverliste zurück. */

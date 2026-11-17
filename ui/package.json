@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "verwaltung": "vue-tsc --noEmit && vite build --config vite.verwaltung.config.ts && node scripts/beruehren.mjs ../crates/server/build.rs",
+    "verwaltung:dev": "vite --config vite.verwaltung.config.ts",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",

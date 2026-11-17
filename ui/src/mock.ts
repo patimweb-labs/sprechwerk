@@ -22,7 +22,8 @@ function raum(
   name: string,
   anwesend = 0,
   hier = false,
-  verschluesselt = false,
+  // Jeder Raum ist Ende zu Ende verschlüsselt (ADR 0012).
+  verschluesselt = true,
 ): Raum {
   return { id, name, anwesend, hier, verschluesselt };
 }
@@ -45,7 +46,7 @@ function nachricht(id: string, verfasser: string, verfasserName: string, text: s
     id,
     verfasser,
     verfasser_name: verfasserName,
-    text,
+    inhalt: geloescht ? { zustand: "geloescht" } : { zustand: "text", text },
     zeit: jetzt - vorMinuten * minut,
     geloescht,
     loeschbar: false,
@@ -110,6 +111,7 @@ function zustandDerWahrheit(verbunden: boolean): Zustand {
     // beginnen sie leer, damit man den Weg „noch nicht gelesen" sieht.
     latenz_ms: null,
     schluessel: [],
+    textschluessel: verbunden ? "bereit" : "unbekannt",
     guete: null,
     sperren: [],
     protokoll: [],
@@ -297,7 +299,7 @@ export const mockApi = {
     const treffer = liste.find((n) => n.id === id);
     if (treffer) {
       treffer.geloescht = true;
-      treffer.text = "";
+      treffer.inhalt = { zustand: "geloescht" };
     }
     stand.nachrichten = liste.map((x) => ({ ...x, loeschbar: true }));
     melden();
@@ -412,12 +414,6 @@ export const mockApi = {
   async sprechtaste(): Promise<void> {},
   async mikrofonStumm(): Promise<void> {},
   async hoerenAus(): Promise<void> {},
-
-  async raumVerschluesseln(raum: string, an: boolean): Promise<void> {
-    const r = stand.raeume.find((x) => x.id === raum);
-    if (r) r.verschluesselt = an;
-    melden();
-  },
 
   async audioPegel(): Promise<number> {
     // Im Dummy: schwankender Pegel, damit man die Anzeige sieht.

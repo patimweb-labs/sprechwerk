@@ -14,6 +14,7 @@ export const modell = reactive<Zustand>({
   nachrichten: [],
   latenz_ms: null,
   schluessel: [],
+  textschluessel: "unbekannt",
   guete: null,
   sperren: [],
   protokoll: [],
@@ -433,10 +434,11 @@ export async function betreten(raum: string) {
   await befehl(() => api.betreten(raum));
 }
 
-export async function sende(text: string) {
+/** Sendet Text. `false`, wenn nichts ging — die Ansicht gibt den Text zurück. */
+export async function sende(text: string): Promise<boolean> {
   const bereinigt = text.trim();
-  if (!bereinigt) return;
-  await befehl(() => api.textSenden(bereinigt));
+  if (!bereinigt) return true;
+  return (await befehl(async () => (await api.textSenden(bereinigt), true))) ?? false;
 }
 
 export async function setzeRolle(mitglied: string, rolle: string) {
@@ -455,11 +457,6 @@ export async function stummschalten(mitglied: string, taub: boolean, an: boolean
 
 export async function verschieben(mitglied: string, raum: string) {
   await befehl(() => api.verschieben(mitglied, raum));
-}
-
-/** Ende-zu-Ende-Verschlüsselung eines Raums umschalten. */
-export async function verschluesseln(raum: string, an: boolean) {
-  await befehl(() => api.raumVerschluesseln(raum, an));
 }
 
 export async function ausRaumWerfen(mitglied: string) {
@@ -486,6 +483,11 @@ export async function trenneMitglied(mitglied: string, grund: string) {
 
 export async function sperreMitglied(mitglied: string, grund: string) {
   await befehl(() => api.sperreMitglied(mitglied, grund));
+}
+
+/** Raum löschen — über `befehl`, damit eine Ablehnung sichtbar wird. */
+export async function raumLoeschen(raum: string) {
+  await befehl(() => api.raumLoeschen(raum));
 }
 
 export async function raumUmbenennen(raum: string, name: string) {

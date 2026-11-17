@@ -74,3 +74,30 @@ describe("Zustand und Ansicht hängen zusammen", () => {
     expect(w.text()).toContain("Verbindung abgelehnt");
   });
 });
+
+describe("Chat", () => {
+  it("abgelehnter Text bleibt im Feld stehen, statt verloren zu gehen", async () => {
+    const { vi } = await import("vitest");
+    const { flushPromises } = await import("@vue/test-utils");
+    const { api } = await import("../api");
+    const senden = vi.spyOn(api, "textSenden").mockRejectedValue("Text zu lang");
+    modell.raeume = [{ id: "raum_1", name: "Empfang", anwesend: 1, hier: true, verschluesselt: false }];
+    modell.verbindung = { art: "verbunden" } as never;
+    const w = mount(RaeumeView);
+    const feld = w.find(".schreiben input");
+    await feld.setValue("Hallo Welt");
+    await feld.trigger("keyup", { key: "Enter" });
+    await flushPromises();
+    expect(senden).toHaveBeenCalledWith("Hallo Welt");
+    expect((feld.element as HTMLInputElement).value).toBe("Hallo Welt");
+    expect(modell.meldung).toBe("Text zu lang");
+
+    // Gelingt es, ist das Feld leer.
+    senden.mockResolvedValue(undefined);
+    await feld.trigger("keyup", { key: "Enter" });
+    await flushPromises();
+    expect((feld.element as HTMLInputElement).value).toBe("");
+    senden.mockRestore();
+    modell.verbindung = null;
+  });
+});
