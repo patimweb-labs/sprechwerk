@@ -12,6 +12,8 @@ path = "src/main.rs"
 sprechwerk-adapters.workspace = true
 bytes = "1"
 tokio.workspace = true
+# Anfragen an den Router ohne offenen Port (`ServiceExt::oneshot`).
+tower = { version = "0.5", default-features = false, features = ["util"] }
 
 [dependencies]
 sprechwerk-domain.workspace = true
@@ -35,3 +37,10 @@ getrandom = "0.2"
 hex = "0.4"
 bytes = "1"
 time = "0.3"
+# Verwaltungsoberfläche (HTTP, SPEC §2 Nachtrag 2026-11-17). Warum eine
+# Abhängigkeit statt ein paar Zeilen über `TcpListener`: HTTP selbst zu zerlegen
+# ist genau die Art Code, in der Sicherheitslücken entstehen — und diese
+# Oberfläche kann Administratoren ernennen. `axum` (mit `hyper`) läuft auf dem
+# `tokio`, das der Server schon benutzt; ohne Standardfunktionen nur HTTP/1,
+# JSON und Abfrageparameter.
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json", "query"] }

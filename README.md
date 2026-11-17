@@ -32,7 +32,7 @@ Schlüssel, und **jede Entscheidung mit Begründung und Preis** in
 | Lage | Was sprechwerk dafür tut |
 |---|---|
 | Verein mit 20–200 Leuten, ein Server beim Betreiber oder auf einem gemieteten Root-Server | ein Container, ein Volume, ein UDP-Port — kein Reverse-Proxy, kein Zertifikatsantrag |
-| Verein mit Datenschutzauflage (Mitgliederdaten, Protokolle) | Sprache je Raum Ende-zu-Ende-verschlüsselt; der Betreiber kann nicht mithören |
+| Verein mit Datenschutzauflage (Mitgliederdaten, Protokolle) | Text und Sprache Ende zu Ende verschlüsselt; der Betreiber kann weder mithören noch mitlesen |
 | Vorstand, der nachweisen muss, wer was getan hat | Prüfprotokoll im Fenster: wer, wann, was, vorher/nachher — auch abgelehnte Versuche |
 | Leute, die kein Konto anlegen wollen | Kennung ist eine Schlüsseldatei; mitnehmen = derselbe Mensch auf dem neuen Gerät |
 
@@ -64,8 +64,9 @@ Was das Fenster anders macht als TeamSpeak:
 
 * **Prüfprotokoll** mit vorher/nachher und **abgelehnten** Versuchen.
 * **Sperrliste** — wer, warum, von wem, mit Knopf zum Aufheben.
-* **Schlüsselstand je Raum** — fehlt der Ende-zu-Ende-Schlüssel, steht dort
-  „du hörst nichts" mit einem Knopf zum Nachfordern, statt Stille ohne Grund.
+* **Schlüsselstand** — fehlt im eigenen Raum der Sprachschlüssel, steht dort
+  „du hörst nichts" mit einem Knopf zum Nachfordern, statt Stille ohne Grund;
+  fehlt der Schlüssel für den Chat, sagt das Eingabefeld, worauf es wartet.
 * **Qualität in der Statuszeile** — verlorene Rahmen als Zahl, Umlaufzeit in
   Millisekunden, nicht als Symbol.
 * **Eigene Kennung** in Vierergruppen, mit Hinweis, was man weitergeben darf.
@@ -98,7 +99,7 @@ Dinge, die dieses Projekt anders macht:
 | Lizenz | proprietär; kostenlose Lizenz mit begrenzter Platzanzahl, Lizenzdatei nötig | MIT, keine Platzgrenze, keine Lizenzdatei |
 | Quellcode | geschlossen (Client und Server) | offen: Server, Client, Protokoll, Oberfläche |
 | Ports | UDP 9987 Sprache, TCP 10011 Abfrage, TCP 30033 Dateien | **ein** UDP-Port (QUIC) |
-| Verschlüsselung | eigene Krypto zwischen Client und Server; der Server kann Sprache entschlüsseln | TLS 1.3 mit angeheftetem Zertifikat; Sprache je Raum **Ende zu Ende**, hybrid quantensicher im Transport |
+| Verschlüsselung | eigene Krypto zwischen Client und Server; der Server kann Sprache entschlüsseln | TLS 1.3 mit angeheftetem Zertifikat; Text und Sprache **Ende zu Ende**, hybrid quantensicher im Transport |
 | Kennung | dauerhafte UID, kopierbar | Ed25519-Besitznachweis je Verbindung, mitnehmbare Schlüsseldatei |
 | Rechte | einige hundert Einzelrechte, Vererbung | vier Rollen, feste Tabelle |
 | Protokoll | binär, nicht dokumentiert (nachgebaut) | JSON-Rahmen, längenpräfixiert, versioniert (`SPEC.md` §7, `docs/`) |
@@ -120,8 +121,8 @@ Lizenzbedingungen (Stand 2026) und können sich ändern.
 
 ## Stand heute
 
-Lauffähig und geprüft: **215 Tests** im Arbeitsbereich, **41** in der
-Fensteranwendung, **52** in der Oberfläche, dazu die Ansichten im echten
+Lauffähig und geprüft: **238 Tests** im Arbeitsbereich, **41** in der
+Fensteranwendung, **61** in der Oberfläche, dazu die Ansichten im echten
 Browser und sechs Messskripte, die einen echten Server starten.
 
 * **Sprache** — Aufnahme über PipeWire/PulseAudio, Hochpass, Entrauschung,
@@ -131,14 +132,18 @@ Browser und sechs Messskripte, die einen echten Server starten.
   Durchlauf durch den Server p99 **21–29 µs**, Beitritt p95 **1,8–2,8 ms**
   (`scripts/latenz.sh`, [`docs/QUALITAET.md`](docs/QUALITAET.md) §2d).
 * **Text** — Verlauf, Löschen (Verfasser weich, Moderator hart),
-  Aufbewahrungsfrist, Sicherung als lesbares JSON.
+  Aufbewahrungsfrist. Ende zu Ende verschlüsselt: in Datenbank und Sicherung
+  steht nur Geheimtext.
 * **Rollen und Rechte** — Administrator, Moderator, Mitglied, Gast; Prüfprotokoll
   für jede Änderung, Sperrliste mit Grund.
 * **Verschlüsselung** — TLS 1.3 über QUIC mit angeheftetem Zertifikat (TOFU),
-  Ende-zu-Ende je Raum für Sprache (ChaCha20-Poly1305, Gruppenschlüssel mit
-  Epoche), Transport hybrid quantensicher (`X25519MLKEM768`).
+  **alles Ende zu Ende** — Text mit einem Serverschlüssel, den nur die
+  Mitglieder haben, Sprache mit einem Schlüssel je Raum und Epoche
+  (ChaCha20-Poly1305), Transport hybrid quantensicher (`X25519MLKEM768`).
 * **Betrieb** — ein Container, ein Volume, Sicherung nach Plan, Healthcheck über
-  ein Lebenszeichen, Unterbefehle für Export/Import/Sicherung.
+  ein Lebenszeichen, Unterbefehle für Export/Import/Sicherung. Oder der Server
+  als Programm unter Windows, macOS und Linux. Dazu eine Verwaltung im Browser
+  mit Protokoll, Mitgliedern und Rollen (nur auf dem Rechner des Servers).
 
 Noch nicht gebaut (bewusst): Dateien, Status/Abwesenheit, Video,
 Bildschirmfreigabe, Emojis/Reaktionen, Suche. Was als Nächstes kommt, steht in
@@ -165,14 +170,18 @@ Jedes [Release](https://github.com/patimweb-labs/sprechwerk/releases) bringt mit
 | `Sprechwerk_<version>_universal.dmg` | Fenster — macOS 11 oder neuer, Apple Silicon und Intel |
 | `sprechwerk-server-<version>-linux-x86_64.tar.gz` | Server + `sprechwerk-cli`, PC/Server |
 | `sprechwerk-server-<version>-linux-aarch64.tar.gz` | dasselbe für ARM (Raspberry Pi 4/5, 64 Bit) |
+| `sprechwerk-server-<version>-windows-x86_64.zip` | Server für Windows 10/11 — entpacken, `sprechwerk.exe` doppelklicken |
+| `sprechwerk-server-<version>-macos-universal.tar.gz` | Server für macOS 11 oder neuer, Apple Silicon und Intel |
 | `SHA256SUMS` | Prüfsummen aller Dateien (`sha256sum -c SHA256SUMS`) |
 
 Dazu das Container-Abbild für `amd64` und `arm64`:
 
 ```bash
-docker run -d --name sprechwerk -p 7443:7443/udp -v sprechwerk-daten:/data \
-  ghcr.io/patimweb-labs/sprechwerk:latest
+docker run -d --name sprechwerk -p 7443:7443/udp -p 127.0.0.1:7444:7444 \
+  -v sprechwerk-daten:/data ghcr.io/patimweb-labs/sprechwerk:latest
 ```
+
+Jeder Server bringt seine [Verwaltung im Browser](#verwaltung-im-browser) mit.
 
 `.deb` und `.rpm` ziehen Opus und `parec`/`pacat` als Abhängigkeit nach; beim
 AppImage müssen beide vorhanden sein (auf fast jedem Linux-Schreibtisch sind
@@ -197,12 +206,26 @@ deshalb beim ersten Start:
 
 Opus liegt bei Windows und macOS im Paket; nichts weiter zu installieren.
 
+**Server unter Windows und macOS:** Archiv entpacken, `sprechwerk.exe`
+(Windows) bzw. `sprechwerk` (macOS) starten. Ein Konsolenfenster zeigt das
+Protokoll, der Browser öffnet die Verwaltung. Daten, Zertifikat und Sicherungen
+landen in `daten/` neben dem Programm. Schließen des Fensters beendet den
+Server. Auch hier warnen SmartScreen bzw. Gatekeeper beim ersten Start (unter
+macOS: `xattr -d com.apple.quarantine sprechwerk sprechwerk-cli`). Die Firewall
+fragt nach UDP 7443; für Mitglieder von außen muss der Router diesen Port
+weiterleiten.
+
 ### Server im Container (der übliche Weg)
 
 ```bash
+npm --prefix ui run verwaltung  # Verwaltung bauen (wird ins Programm eingebettet)
 docker compose up -d --build
-docker compose logs -f          # zeigt den Zertifikat-Fingerabdruck
+docker compose logs -f          # Fingerabdruck und Link zur Verwaltung
 ```
+
+Ohne den ersten Schritt läuft alles, nur zeigt die Verwaltung statt der
+Oberfläche eine Seite mit der Bauanleitung; das fertige Abbild aus dem Release
+hat sie eingebaut.
 
 Ohne eigenen Bau: in `docker-compose.yml` die Zeile `build: .` streichen und
 `image: ghcr.io/patimweb-labs/sprechwerk:0.1` eintragen. Fest auf eine
@@ -210,9 +233,10 @@ Minor-Version statt `latest`: vor 1.0 kommt ein Bruch als neue Minor-Version,
 und ein Update migriert die Daten ohne Rückweg (SPEC §2) — das soll ein
 bewusster Schritt sein.
 
-Ein Volume (`/data`), ein Port (`7443/udp`), sonst nichts — Einstellungen in
-`docker-compose.yml` oder als Umgebungsvariablen (siehe [Betrieb](#betrieb)).
-In der Firewall nur **UDP** 7443 freigeben; TCP braucht QUIC nicht.
+Ein Volume (`/data`), ein Port nach außen (`7443/udp`), sonst nichts —
+Einstellungen in `docker-compose.yml` oder als Umgebungsvariablen (siehe
+[Betrieb](#betrieb)). In der Firewall nur **UDP** 7443 freigeben; TCP braucht
+QUIC nicht. Die Verwaltung (7444/tcp) ist nur auf dem Host selbst erreichbar.
 
 Mit **Podman**: `podman build --format docker -t sprechwerk .` — im
 Standardformat (OCI) verwirft Podman die `HEALTHCHECK`-Anweisung.
@@ -225,6 +249,7 @@ Platz nicht belegen.
 ### Server ohne Container
 
 ```bash
+npm --prefix ui run verwaltung  # optional: Verwaltung im Browser einbetten
 cargo build --release -p sprechwerk-server
 SPRECHWERK_DATEN=./data ./target/release/sprechwerk
 ```
@@ -308,7 +333,39 @@ und macOS kommen Geräteliste, Pegel und Prüfton über cpal, unter Linux über
    er ab, bricht die Verbindung ab, **bevor** Kennung oder Serverpasswort über
    die Leitung gehen.
 3. Der **erste** Client wird Administrator. Wer zuerst kommt, verwaltet — also
-   zuerst du, dann die anderen.
+   zuerst du, dann die anderen. War jemand schneller, oder soll noch jemand
+   Administrator werden: in der [Verwaltung](#verwaltung-im-browser) beim
+   Namen die Rolle wählen.
+
+## Verwaltung im Browser
+
+Jeder Server bringt eine Verwaltungsseite mit — dieselben Bausteine und Themes
+wie das Fenster:
+
+* **Server:** Name, Port, Laufzeit, Verbundene, letzte Sicherung und der
+  Fingerabdruck des Zertifikats zum Weitergeben an die Mitglieder.
+* **Mitglieder und Rollen:** wer da ist und war, mit Rolle. Hier wird man
+  **Administrator**, ohne einen Schlüssel aus der Hand zu geben: mit der App
+  verbinden, dann hier beim eigenen Namen „Administrator" wählen. Die Änderung
+  gilt sofort, auch für Verbundene. Der letzte Administrator bleibt es.
+* **Protokoll:** live, dieselben Zeilen wie auf der Konsole bzw. in
+  `docker compose logs`.
+
+Erreichbar unter `http://127.0.0.1:7444` — **nur auf dem Rechner des Servers**.
+Den Zugangscode schreibt der Server beim Start ins Protokoll, als fertigen Link:
+
+```
+INFO Verwaltung bereit: http://127.0.0.1:7444/anmelden?code=3f9c…
+```
+
+Als Programm unter Windows/macOS (und Linux mit Bildschirm) öffnet sich dieser
+Link von selbst. Auf einem Server ohne Bildschirm von einem anderen Rechner aus:
+`ssh -L 7444:127.0.0.1:7444 <server>`, dann den Link im eigenen Browser öffnen.
+
+Der Code ist bei jedem Start neu (128 Bit Zufall); ein fester lässt sich setzen
+(`verwaltung.code`, mindestens 16 Zeichen). Räume, Sperren und Konfiguration
+ändert die Verwaltung nicht — das bleibt bei Fenster und Datei
+(`docs/adr/0011-verwaltung-im-browser.md`).
 
 Wurde der Server neu aufgesetzt (neues Zertifikat), muss der gemerkte Wert
 einmal ausdrücklich vergessen werden: Serverliste → „Zertifikat vergessen" →
@@ -325,14 +382,31 @@ Verbindungsaufbau (`docs/QUALITAET.md` §2c).
 fordert je Verbindung einen Beweis über eine Zufallszahl an. Die Kennung liegt
 als Datei auf dem Rechner — wer sie kopiert, ist derselbe Mensch.
 
-**Sprache je Raum Ende zu Ende:** ein Gruppenschlüssel pro Raum und Epoche,
-einzeln per X25519-Umschlag verteilt, Rahmen mit ChaCha20-Poly1305. Der Server
-sieht Geheimtext und verteilt nur. Beim Verlassen dreht die Epoche — wer geht,
-hört nichts mehr.
+**Alles Ende zu Ende** ([ADR 0012](docs/adr/0012-alles-ende-zu-ende.md)):
+lesen dürfen die **Mitglieder**, nicht der Betreiber. Wer als Betreiber
+mitlesen will, verbindet sich mit dem Client — dann ist er Mitglied wie jeder
+andere und steht in der Mitgliederliste.
 
-**Was das nicht leistet:** Text ist serverseitig lesbar (er wird gespeichert —
-das ist die Bedingung für Suche, Aufräumen und Moderation). Der Betreiber sieht
-Metadaten: wer wann mit wem. Ein Mitglied, das mitschneidet, hat den Schlüssel.
+* **Text:** ein Serverschlüssel für alle Mitglieder. Der erste Client erzeugt
+  ihn, danach gibt ihn ein Mitglied dem nächsten weiter — verpackt für dessen
+  Kennung und unterschrieben; der Server vermittelt nur und kennt den Schlüssel
+  nie. In Datenbank und Sicherung steht ausschließlich Geheimtext, Klartext
+  nimmt der Server gar nicht an. Nach einer Sperre gilt ein neuer Schlüssel.
+* **Sprache:** jeder Raum, ohne Schalter. Ein Gruppenschlüssel pro Raum und
+  Epoche, einzeln per X25519-Umschlag verteilt. Beim Verlassen dreht die
+  Epoche — wer geht, hört nichts mehr.
+
+**Der Preis:** Wer neu ist (oder auf einem neuen Gerät ohne die Schlüsseldatei)
+und allein online, kann erst lesen und schreiben, wenn ein Mitglied online
+kommt, das den Schlüssel hat. Gehen alle Geräte mit Schlüssel verloren, ist der
+Verlauf für niemanden mehr lesbar — auch nicht für den Betreiber. Der Server
+kann nicht mehr nach Inhalt suchen.
+
+**Was das nicht leistet:** Der Betreiber sieht Metadaten: wer wann mit wem, wie
+lang eine Nachricht ungefähr ist. Ein Server, den der Betreiber **umbaut**,
+kann ein erfundenes Mitglied anmelden und bekäme dann den Schlüssel wie jedes
+Mitglied — es stünde aber in der Mitgliederliste. Ein Abgleich der Kennungen
+außerhalb des Servers (wie Sicherheitsnummern) ist noch nicht gebaut. Ein Mitglied, das mitschneidet, hat den Schlüssel.
 Ein kompromittiertes Gerät ist kompromittiert. Offen und dokumentiert: die
 Umlage des Raumschlüssels hat noch keine Forward Secrecy, und Anmeldung wie
 Umlage sind klassisch. Die hybride Umlage mit Wegwerfschlüsseln ist gebaut und
@@ -340,18 +414,20 @@ geprüft, aber noch nicht verdrahtet (`docs/adr/0010-quantensicherheit.md`,
 Schritt 2).
 
 **Datenschutz:** Alles liegt beim Betreiber — eine SQLite-Datei und Sicherungen
-als lesbares JSON unter `<daten>`, sonst nichts. Keine Telemetrie, keine Cloud,
+als JSON unter `<daten>`, beides nur für den Eigentümer lesbar (0600), sonst
+nichts. Keine Telemetrie, keine Cloud,
 kein Konto bei uns, keine Verbindung zu Dritten. Gespeichert werden je Mitglied
 Anzeigename, öffentlicher Schlüssel, Rolle und „zuletzt gesehen", dazu die Texte
-(gelöscht nach der Aufbewahrungsfrist, wenn eine gesetzt ist), das
+als Geheimtext (gelöscht nach der Aufbewahrungsfrist, wenn eine gesetzt ist), das
 Prüfprotokoll und die Sperrliste — bei einer Adresssperre mit IP-Adresse.
 Sprache wird **nicht** gespeichert. Das Betriebsprotokoll auf der Konsole
 (`docker compose logs`) nennt bei jeder Anmeldung die Adresse; wie lange es
 aufbewahrt wird, entscheidet der Betreiber.
 
-Im Fenster liegen nur die eigene Schlüsseldatei, die gemerkten Server mit ihren
-Fingerabdrücken und die Einstellungen — darin, wenn man es so will, das
-Serverpasswort. Schlüsseldatei und Einstellungen sind unter Linux und macOS nur
+Im Fenster liegen nur die eigene Schlüsseldatei, die Serverschlüssel für den
+Chat (`serverschluessel.json`), die gemerkten Server mit ihren Fingerabdrücken
+und die Einstellungen — darin, wenn man es so will, das
+Serverpasswort. Schlüsseldateien und Einstellungen sind unter Linux und macOS nur
 für den eigenen Benutzer lesbar (0600, schon beim Anlegen); unter Windows schützt
 sie das Benutzerprofil. Keine Secrets im Code; die Konfiguration kommt aus Datei
 und Umgebung.
@@ -368,7 +444,7 @@ als Umgebungsvariable — `sprechwerk beispiel` gibt eine vollständige Vorlage 
 | `server.bind` | `SPRECHWERK_BIND` | Adresse (Vorgabe `0.0.0.0`) |
 | `server.passwort` | `SPRECHWERK_PASSWORT` | leer = offen |
 | `server.standard_rolle` | `SPRECHWERK_STANDARD_ROLLE` | Rolle neuer Mitglieder (`mitglied`, oder `gast` für zu) |
-| `server.daten` | `SPRECHWERK_DATEN` | Datenverzeichnis (Vorgabe `/data`) |
+| `server.daten` | `SPRECHWERK_DATEN` | Datenverzeichnis (Vorgabe `/data`, wenn vorhanden, sonst `daten/` neben dem Programm) |
 | `server.aufbewahrung_tage` | `SPRECHWERK_AUFBEWAHRUNG_TAGE` | Texte nach so vielen Tagen löschen; 0 = unbegrenzt |
 | `server.rahmen_je_sekunde` | `SPRECHWERK_RAHMEN_JE_SEKUNDE` | Steuerrahmen je Verbindung und Sekunde, darüber wird getrennt (Vorgabe 100; Sprache zählt nicht) |
 | `server.staukontrolle` | `SPRECHWERK_STAUKONTROLLE` | `bbr` (Vorgabe, gleichmäßiger für Sprache) oder `cubic` |
@@ -378,6 +454,11 @@ als Umgebungsvariable — `sprechwerk beispiel` gibt eine vollständige Vorlage 
 | `sicherung.intervall_minuten` | `SPRECHWERK_SICHERUNG_INTERVALL_MINUTEN` | Abstand (Vorgabe 1440 = täglich) |
 | `sicherung.behalten` | `SPRECHWERK_SICHERUNG_BEHALTEN` | Anzahl der Sicherungen (Vorgabe 14) |
 | `sicherung.verzeichnis` | `SPRECHWERK_SICHERUNG_VERZEICHNIS` | Ziel der Sicherungen (Vorgabe `<daten>/sicherungen`) |
+| `verwaltung.aktiv` | `SPRECHWERK_VERWALTUNG_AKTIV` | Verwaltung im Browser anbieten (Vorgabe ja) |
+| `verwaltung.bind` | `SPRECHWERK_VERWALTUNG_BIND` | Adresse (Vorgabe `127.0.0.1`; im Container `0.0.0.0`, auf dem Host nur `127.0.0.1`) |
+| `verwaltung.port` | `SPRECHWERK_VERWALTUNG_PORT` | TCP-Port (Vorgabe 7444) |
+| `verwaltung.code` | `SPRECHWERK_VERWALTUNG_CODE` | fester Zugangscode, mind. 16 Zeichen; leer = bei jedem Start neu |
+| `verwaltung.browser` | `SPRECHWERK_VERWALTUNG_BROWSER` | beim Start den Browser öffnen, wenn es einen Bildschirm gibt (Vorgabe ja) |
 | — | `SPRECHWERK_LOG` | Protokollstufe, z. B. `sprechwerk=debug` (Vorgabe `sprechwerk=info`) |
 
 Betriebswerkzeuge:

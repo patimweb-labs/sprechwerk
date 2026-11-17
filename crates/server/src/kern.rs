@@ -7,8 +7,8 @@
 
 use sprechwerk_domain::{MemberId, Role, RoomId, State};
 use sprechwerk_protocol::{
-    ClientFrame, Fehlercode, Mitgliedsansicht, Raumansicht, ServerFrame, Sprachkopf, CODEC_OPUS,
-    CODEC_VERSCHLUESSELT, SPRACHKOPF_LEN, SPRACHKOPF_VERSION,
+    geheimtext, ClientFrame, Fehlercode, Mitgliedsansicht, Raumansicht, Schluesselstand,
+    ServerFrame, Sprachkopf, CODEC_OPUS, CODEC_VERSCHLUESSELT, SPRACHKOPF_LEN, SPRACHKOPF_VERSION,
 };
 use sprechwerk_store::Store;
 use std::collections::HashMap;
@@ -16,6 +16,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::konfig::Konfig;
+
+/// Abstand zwischen zwei Bitten um denselben Serverschlüssel.
+pub const ANFRAGE_ABSTAND: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Jetzt in Millisekunden seit der Epoche. Einzige Zeitquelle des Servers.
 pub fn jetzt_ms() -> i64 {
@@ -41,6 +44,12 @@ pub struct Kern {
     pub store: Store,
     pub konfig: Konfig,
     pub teilnehmer: HashMap<MemberId, Teilnehmer>,
+    /// Welche Serverschlüssel die **Verbundenen** halten (nur Kennungen,
+    /// ADR 0012). Gilt für die Sitzung; beim Abmelden fällt der Eintrag weg.
+    pub schluesselhalter: HashMap<MemberId, Vec<String>>,
+    /// Wann zuletzt um einen Schlüssel für (Mitglied, Kennung) gebeten wurde —
+    /// damit nicht jede Meldung eine neue Bitte auslöst.
+    angefragt: HashMap<(MemberId, String), std::time::Instant>,
     /// Zähler für Sprachrahmen (Betrieb und Messung).
     sprachrahmen: u64,
     sprachrahmen_verteilt: u64,
@@ -75,6 +84,8 @@ impl Kern {
             store: Store::oeffnen(konfig.datenbank())?,
             konfig,
             teilnehmer: HashMap::new(),
+            schluesselhalter: HashMap::new(),
+            angefragt: HashMap::new(),
             sprachrahmen: 0,
             sprachrahmen_verteilt: 0,
             sprachrahmen_verworfen: 0,
@@ -85,8 +96,42 @@ impl Kern {
             kern.state = State::neu(name, standard_rolle, jetzt_ms());
         }
         let _ = &mut store;
+        kern.ende_zu_ende_umstellen()?;
         kern.speichern()?;
         Ok(kern)
+    }
+
+    /// Bringt einen Bestand auf ADR 0012: Klartext weg, alle Räume
+    /// verschlüsselt. Läuft bei jedem Start und tut danach nichts mehr.
+    fn ende_zu_ende_umstellen(&mut self) -> anyhow::Result<()> {
+        let jetzt = jetzt_ms();
+        let entfernt = self
+            .state
+            .klartext_entfernen(|t| geheimtext::zerlegen(t).is_some(), jetzt);
+        let raeume = self.state.alle_raeume_verschluesseln(jetzt);
+        if raeume > 0 {
+            tracing::info!(raeume, "Räume auf Ende-zu-Ende-Sprache umgestellt");
+        }
+        if entfernt > 0 {
+            self.speichern()?;
+            // Was SQLite nur als frei markiert hat, soll nicht in der Datei
+            // liegen bleiben.
+            self.store.verdichten()?;
+            tracing::warn!(
+                entfernt,
+                "unverschlüsselte Nachrichten entfernt (Umstellung auf Ende-zu-Ende, ADR 0012); \
+                 ältere Sicherungen enthalten sie noch"
+            );
+        }
+        Ok(())
+    }
+
+    /// Stand der Serverschlüssel für die Clients.
+    pub fn schluesselstand(&self) -> Schluesselstand {
+        Schluesselstand {
+            aktuell: self.state.serverschluessel.aktuell.clone(),
+            alle: self.state.serverschluessel.alle.clone(),
+        }
     }
 
     /// Schreibt den Zustand in die Datenbank.
@@ -235,6 +280,7 @@ impl Kern {
             mitglieder: self.mitglieder(),
             raum,
             verlauf,
+            serverschluessel: self.schluesselstand(),
         };
         let _ = self.speichern();
         Ok((id, antwort))
@@ -333,24 +379,113 @@ impl Kern {
                 }
             }
 
-            ClientFrame::Text { text } => match self.state.text_senden(ich, &text, jetzt) {
-                Ok(nachricht) => {
-                    self.rundruf(
-                        None,
-                        Some(nachricht.raum),
-                        ServerFrame::Text {
-                            nachricht: nachricht.clone(),
-                        },
-                    );
-                    let _ = self.speichern();
-                    Vec::new() // der Absender bekommt sie über den Rundruf
+            ClientFrame::Text { text } => {
+                // **Nur Geheimtext** mit dem aktuellen Serverschlüssel (ADR
+                // 0012). Klartext — ein alter oder kaputter Client — kommt
+                // nicht in die Datenbank.
+                let passt = geheimtext::zerlegen(&text)
+                    .is_some_and(|h| self.state.serverschluessel.aktuell.as_deref() == Some(h.id));
+                if !passt {
+                    return vec![ServerFrame::Fehler {
+                        code: Fehlercode::UngueltigeEingabe,
+                        text: "Nachricht ist nicht mit dem aktuellen Serverschlüssel verschlüsselt"
+                            .into(),
+                    }];
                 }
-                Err(e) => vec![Kern::fehler(match e {
-                    sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
-                    sprechwerk_domain::Error::NachrichtZuLang => Fehlercode::UngueltigeEingabe,
-                    _ => Fehlercode::UngueltigeAnfrage,
-                })],
-            },
+                match self.state.text_senden(ich, &text, jetzt) {
+                    Ok(nachricht) => {
+                        self.rundruf(
+                            None,
+                            Some(nachricht.raum),
+                            ServerFrame::Text {
+                                nachricht: nachricht.clone(),
+                            },
+                        );
+                        let _ = self.speichern();
+                        Vec::new() // der Absender bekommt sie über den Rundruf
+                    }
+                    Err(e) => vec![Kern::fehler(match e {
+                        sprechwerk_domain::Error::RechtFehlt(_) => Fehlercode::KeinRecht,
+                        sprechwerk_domain::Error::NachrichtZuLang => Fehlercode::UngueltigeEingabe,
+                        _ => Fehlercode::UngueltigeAnfrage,
+                    })],
+                }
+            }
+
+            // Serverschlüssel festlegen: der erste gewinnt. Der Server sieht
+            // nur die Kennung (eine Prüfsumme), nie den Schlüssel.
+            ClientFrame::ServerschluesselAnlegen { id } => {
+                match self.state.serverschluessel_anlegen(ich, &id, jetzt) {
+                    Ok(true) => {
+                        let mut ids = self.schluesselhalter.remove(&ich).unwrap_or_default();
+                        ids.push(id.clone());
+                        ids.sort();
+                        ids.dedup();
+                        self.schluesselhalter.insert(ich, ids);
+                        let _ = self.speichern();
+                        tracing::info!(mitglied = %ich, "Serverschlüssel angelegt");
+                        self.rundruf(
+                            None,
+                            None,
+                            ServerFrame::Serverschluessel {
+                                stand: self.schluesselstand(),
+                            },
+                        );
+                        self.vermitteln();
+                        vec![ServerFrame::Ok]
+                    }
+                    // Zu spät: der Client nimmt den Stand und verwirft seinen.
+                    Ok(false) => vec![ServerFrame::Serverschluessel {
+                        stand: self.schluesselstand(),
+                    }],
+                    Err(_) => vec![Kern::fehler(Fehlercode::UngueltigeEingabe)],
+                }
+            }
+
+            ClientFrame::ServerschluesselVorhanden { ids } => {
+                // Nur Kennungen, die es gibt — sonst könnte ein Client eine
+                // erfundene Kennung in die Mitgliederliste aller schreiben.
+                let mut bekannt: Vec<String> = ids
+                    .into_iter()
+                    .filter(|id| self.state.serverschluessel.alle.contains(id))
+                    .collect();
+                bekannt.sort();
+                bekannt.dedup();
+                self.schluesselhalter.insert(ich, bekannt);
+                self.vermitteln();
+                vec![ServerFrame::Ok]
+            }
+
+            // Weiterleiten, nicht öffnen: der Umschlag ist für `fuer`
+            // verschlüsselt und vom Absender unterschrieben.
+            ClientFrame::ServerschluesselPaket {
+                fuer,
+                id,
+                daten,
+                unterschrift,
+            } => {
+                let von_kennung = self
+                    .state
+                    .mitglied(ich)
+                    .map(|m| m.schluessel.clone())
+                    .unwrap_or_default();
+                if !self.state.serverschluessel.alle.contains(&id)
+                    || !self.schluesselhalter.contains_key(&fuer)
+                {
+                    return vec![Kern::fehler(Fehlercode::Unbekannt)];
+                }
+                self.senden(
+                    fuer,
+                    ServerFrame::ServerschluesselPaket {
+                        von: ich,
+                        von_kennung,
+                        id,
+                        daten,
+                        unterschrift,
+                    },
+                );
+                vec![ServerFrame::Ok]
+            }
 
             ClientFrame::NachrichtLoeschen { nachricht } => {
                 let raum = self
@@ -691,6 +826,7 @@ impl Kern {
                 if let Some(t) = self.teilnehmer.remove(&mitglied) {
                     t.conn.close(2u32.into(), b"getrennt");
                 }
+                self.schluesselhalter.remove(&mitglied);
                 self.rundruf(
                     None,
                     None,
@@ -739,10 +875,12 @@ impl Kern {
                 }
                 match self.state.sperren(ich, schluessel, None, &grund, jetzt) {
                     Ok(()) => {
-                        let _ = self.speichern();
                         if let Some(t) = self.teilnehmer.remove(&mitglied) {
                             t.conn.close(3u32.into(), b"gesperrt");
                         }
+                        self.schluesselhalter.remove(&mitglied);
+                        self.serverschluessel_erneuern(&mein_name, &ziel_name);
+                        let _ = self.speichern();
                         vec![ServerFrame::Ok]
                     }
                     Err(e) => vec![Kern::fehler(match e {
@@ -794,6 +932,18 @@ impl Kern {
                             if let Some(t) = self.teilnehmer.remove(&id) {
                                 t.conn.close(1u32.into(), b"gesperrt");
                             }
+                            self.schluesselhalter.remove(&id);
+                            let mein_name = self
+                                .state
+                                .mitglied(ich)
+                                .map(|m| m.name.clone())
+                                .unwrap_or_default();
+                            let ziel_name = self
+                                .state
+                                .mitglied(id)
+                                .map(|m| m.name.clone())
+                                .unwrap_or_default();
+                            self.serverschluessel_erneuern(&mein_name, &ziel_name);
                             self.rundruf(
                                 None,
                                 None,
@@ -1009,10 +1159,92 @@ impl Kern {
         }
     }
 
+    /// Vermittelt fehlende Serverschlüssel: wem eine Kennung fehlt, für den
+    /// bittet der Server **einen** Halter (den mit der kleinsten Kennung) um
+    /// ein Paket. Höchstens alle [`ANFRAGE_ABSTAND`] je Mitglied und Schlüssel;
+    /// der Client meldet sich in diesem Abstand neu, solange ihm etwas fehlt.
+    ///
+    /// Liefert die Bitten (Halter, Rahmen) — verschickt werden sie hier auch.
+    pub fn vermitteln(&mut self) -> Vec<(MemberId, ServerFrame)> {
+        let jetzt = std::time::Instant::now();
+        let mut bitten = Vec::new();
+        for (mitglied, hat) in &self.schluesselhalter {
+            for id in &self.state.serverschluessel.alle {
+                if hat.contains(id) {
+                    continue;
+                }
+                let Some(halter) = self
+                    .schluesselhalter
+                    .iter()
+                    .filter(|(h, ids)| *h != mitglied && ids.contains(id))
+                    .map(|(h, _)| *h)
+                    .min()
+                else {
+                    continue;
+                };
+                let schluessel = (*mitglied, id.clone());
+                if self
+                    .angefragt
+                    .get(&schluessel)
+                    .is_some_and(|wann| jetzt.duration_since(*wann) < ANFRAGE_ABSTAND)
+                {
+                    continue;
+                }
+                let Some(kennung) = self.state.mitglied(*mitglied).map(|m| m.schluessel.clone())
+                else {
+                    continue;
+                };
+                bitten.push((
+                    halter,
+                    schluessel,
+                    ServerFrame::ServerschluesselAnfrage {
+                        fuer: *mitglied,
+                        kennung,
+                        id: id.clone(),
+                    },
+                ));
+            }
+        }
+        let mut aus = Vec::new();
+        for (halter, schluessel, rahmen) in bitten {
+            self.angefragt.insert(schluessel, jetzt);
+            self.senden(halter, rahmen.clone());
+            aus.push((halter, rahmen));
+        }
+        aus
+    }
+
+    /// Nach einer Sperre: neuer Serverschlüssel für alles Weitere.
+    ///
+    /// Die gesperrte Person hält den alten; mit dem neuen schreibt man, ohne
+    /// dass sie ihn je bekommt. Erzeugen und verteilen machen die Clients.
+    fn serverschluessel_erneuern(&mut self, handelnder_name: &str, ziel_name: &str) {
+        if self.state.serverschluessel.aktuell.is_none() {
+            return;
+        }
+        self.state.serverschluessel_verwerfen(
+            handelnder_name,
+            &format!("Sperre: {ziel_name}"),
+            jetzt_ms(),
+        );
+        tracing::info!(
+            "Serverschlüssel nach Sperre verworfen; der nächste Client legt einen neuen an"
+        );
+        self.rundruf(
+            None,
+            None,
+            ServerFrame::Serverschluessel {
+                stand: self.schluesselstand(),
+            },
+        );
+    }
+
     /// Meldet eine Verbindung ab.
     pub fn abmelden(&mut self, ich: MemberId) {
         let raum = self.state.mitglied(ich).and_then(|m| m.raum);
         self.teilnehmer.remove(&ich);
+        self.schluesselhalter.remove(&ich);
+        self.angefragt.retain(|(m, _), _| *m != ich);
         let _ = self.state.verlassen(ich, jetzt_ms());
         if let (Some(raum), Some(a)) = (raum, self.ansicht(ich)) {
             self.rundruf(
@@ -1036,6 +1268,29 @@ impl Kern {
             },
         );
         let _ = self.speichern();
+    }
+
+    // ---- Betreiber (Verwaltungsoberfläche) -----------------------------
+
+    /// Setzt eine Rolle **als Betreiber** — aus der Verwaltung im Browser,
+    /// nicht über eine Verbindung (SPEC §2, Nachtrag 2026-11-17).
+    ///
+    /// Danach erfahren alle Verbundenen davon wie bei `RolleSetzen` aus dem
+    /// Client: wer gerade Administrator geworden ist, hat das Recht sofort,
+    /// ohne neu zu verbinden.
+    pub fn betreiber_rolle_setzen(
+        &mut self,
+        ziel: MemberId,
+        rolle: Role,
+    ) -> Result<(), sprechwerk_domain::Error> {
+        self.state
+            .rolle_setzen_als_betreiber(ziel, rolle, jetzt_ms())?;
+        if let Some(a) = self.ansicht(ziel) {
+            self.rundruf(None, None, ServerFrame::MitgliedGeaendert { mitglied: a });
+        }
+        let _ = self.speichern();
+        tracing::info!(mitglied = %ziel.text(), rolle = rolle.text(), "Rolle durch Betreiber gesetzt");
+        Ok(())
     }
 }
 
@@ -1099,6 +1354,20 @@ pub(crate) mod rollenmatrix {
         })
     }
 
+    /// Kennung des Serverschlüssels in den Prüfwelten.
+    pub(crate) const SCHLUESSEL_ID: &str = "abababababababababababababababab";
+
+    /// Ein Text in der Form, die der Server annimmt (ADR 0012). Echte Krypto
+    /// braucht der Server-Test nicht — er sieht sie ja auch nie; die Hülle
+    /// trägt den Text als Hex, damit Tests ihn wiederfinden.
+    pub(crate) fn geheim(text: &str) -> String {
+        let mut daten = "00".repeat(28);
+        for b in text.bytes() {
+            daten.push_str(&format!("{b:02x}"));
+        }
+        sprechwerk_protocol::geheimtext::zusammensetzen(SCHLUESSEL_ID, &daten)
+    }
+
     pub(crate) fn welt(name: &str) -> Welt {
         let pfad = verzeichnis(name);
         let konfig = Konfig {
@@ -1113,6 +1382,7 @@ pub(crate) mod rollenmatrix {
                 aktiv: false,
                 ..Default::default()
             },
+            verwaltung: Default::default(),
         };
         let mut kern = Kern::neu(konfig).expect("Kern");
 
@@ -1164,10 +1434,17 @@ pub(crate) mod rollenmatrix {
             .mitglied(ada)
             .and_then(|m| m.raum)
             .expect("Ada ist in einem Raum");
+        // Seit ADR 0012 gibt es Text nur mit Serverschlüssel: Ada legt ihn an.
+        let _ = kern.befehle(
+            ada,
+            ClientFrame::ServerschluesselAnlegen {
+                id: SCHLUESSEL_ID.to_string(),
+            },
+        );
         let _ = kern.befehle(
             ada,
             ClientFrame::Text {
-                text: "von Ada".to_string(),
+                text: geheim("von Ada"),
             },
         );
         let fremde_nachricht = kern
@@ -1282,7 +1559,7 @@ pub(crate) mod rollenmatrix {
 
             // --- Text --------------------------------------------------
             zelle("Text", rolle, TextSchreiben, |_| ClientFrame::Text {
-                text: "Matrix".to_string(),
+                text: geheim("Matrix"),
             });
             zelle("NachrichtLoeschen (fremd)", rolle, PersonEingreifen, |w| {
                 ClientFrame::NachrichtLoeschen {
@@ -1353,6 +1630,230 @@ pub(crate) mod rollenmatrix {
     }
 
     /// Befehle ohne Rechtprüfung: sie dürfen **nie** `KeinRecht` melden.
+    /// Der Betreiber macht Bosse (Mitglied) zum Administrator: die Rolle steht
+    /// danach im Zustand, ist gespeichert, und der neue Administrator darf
+    /// sofort, was nur Administratoren dürfen.
+    /// Der erste Serverschlüssel gilt; wer zu spät kommt, bekommt den Stand.
+    /// Gemeldete Halter stehen in der Mitgliederliste — nur mit Kennungen,
+    /// die es gibt, und nur, solange die Sitzung läuft.
+    #[test]
+    fn serverschluessel_erster_gewinnt_und_halter_stehen_in_der_liste() {
+        let mut w = welt("e2e-erster");
+        let antwort = w.kern.befehle(
+            w.bosse,
+            ClientFrame::ServerschluesselAnlegen {
+                id: "cd".repeat(16),
+            },
+        );
+        match antwort.as_slice() {
+            [ServerFrame::Serverschluessel { stand }] => {
+                assert_eq!(stand.aktuell.as_deref(), Some(SCHLUESSEL_ID));
+            }
+            anderes => panic!("erwartet den Stand, kam {anderes:?}"),
+        }
+        assert_eq!(w.kern.state.serverschluessel.alle, vec![SCHLUESSEL_ID]);
+
+        // Erfundene Kennungen werden nicht gemerkt.
+        let _ = w.kern.befehle(
+            w.bosse,
+            ClientFrame::ServerschluesselVorhanden {
+                ids: vec![SCHLUESSEL_ID.into(), "ee".repeat(16)],
+            },
+        );
+        assert_eq!(
+            w.kern.schluesselhalter[&w.bosse],
+            vec![SCHLUESSEL_ID.to_string()]
+        );
+        w.kern.abmelden(w.bosse);
+        assert!(!w.kern.schluesselhalter.contains_key(&w.bosse));
+    }
+
+    /// Wem ein Schlüssel fehlt, für den bittet der Server **einen** Halter —
+    /// mit der Kennung des Empfängers, damit der Halter für ihn verpacken kann.
+    /// Dieselbe Bitte kommt nicht bei jeder Meldung neu.
+    #[test]
+    fn fehlender_schluessel_wird_vermittelt() {
+        let mut w = welt("e2e-vermitteln");
+        let _ = w.kern.befehle(
+            w.ada,
+            ClientFrame::ServerschluesselVorhanden {
+                ids: vec![SCHLUESSEL_ID.into()],
+            },
+        );
+        let _ = w.kern.befehle(
+            w.clemens,
+            ClientFrame::ServerschluesselVorhanden {
+                ids: vec![SCHLUESSEL_ID.into()],
+            },
+        );
+        // Bosse meldet sich ohne Schlüssel.
+        w.kern.angefragt.clear();
+        let _ = w.kern.befehle(
+            w.bosse,
+            ClientFrame::ServerschluesselVorhanden { ids: vec![] },
+        );
+        // Noch einmal — darf keine zweite Bitte auslösen.
+        let bitten = w.kern.vermitteln();
+        assert!(bitten.is_empty(), "doppelte Bitte: {bitten:?}");
+
+        w.kern.angefragt.clear();
+        let bitten = w.kern.vermitteln();
+        assert_eq!(bitten.len(), 1, "{bitten:?}");
+        let (halter, rahmen) = &bitten[0];
+        assert_eq!(
+            *halter,
+            w.ada.min(w.clemens),
+            "der Halter mit der kleinsten Kennung"
+        );
+        let bosse_kennung = w.kern.state.mitglied(w.bosse).unwrap().schluessel.clone();
+        assert_eq!(
+            rahmen,
+            &ServerFrame::ServerschluesselAnfrage {
+                fuer: w.bosse,
+                kennung: bosse_kennung,
+                id: SCHLUESSEL_ID.into(),
+            }
+        );
+
+        // Ein Paket an jemanden, der nicht verbunden ist, wird abgewiesen.
+        let antwort = w.kern.befehle(
+            w.ada,
+            ClientFrame::ServerschluesselPaket {
+                fuer: w.dora,
+                id: SCHLUESSEL_ID.into(),
+                daten: "00".into(),
+                unterschrift: "00".into(),
+            },
+        );
+        assert!(matches!(antwort.as_slice(), [ServerFrame::Fehler { .. }]));
+        // An Bosse geht es durch.
+        let antwort = w.kern.befehle(
+            w.ada,
+            ClientFrame::ServerschluesselPaket {
+                fuer: w.bosse,
+                id: SCHLUESSEL_ID.into(),
+                daten: "00".into(),
+                unterschrift: "00".into(),
+            },
+        );
+        assert_eq!(antwort, vec![ServerFrame::Ok]);
+    }
+
+    /// Nach einer Sperre wird mit einem neuen Schlüssel geschrieben, den die
+    /// gesperrte Person nie bekommt. Bis einer da ist, nimmt der Server keinen
+    /// Text mit dem alten an.
+    #[test]
+    fn sperre_verwirft_den_serverschluessel() {
+        let mut w = welt("e2e-sperre");
+        let antwort = w.kern.befehle(
+            w.ada,
+            ClientFrame::MitgliedSperren {
+                mitglied: w.bosse,
+                grund: "Spam".into(),
+            },
+        );
+        assert_eq!(antwort, vec![ServerFrame::Ok]);
+        assert_eq!(w.kern.state.serverschluessel.aktuell, None);
+        assert!(w
+            .kern
+            .state
+            .protokoll
+            .iter()
+            .any(|e| e.aktion == "serverschluessel_verworfen"));
+
+        let alt = w
+            .kern
+            .befehle(w.ada, ClientFrame::Text { text: geheim("x") });
+        assert!(
+            matches!(alt.as_slice(), [ServerFrame::Fehler { .. }]),
+            "{alt:?}"
+        );
+
+        let neu = "cd".repeat(16);
+        let antwort = w.kern.befehle(
+            w.clemens,
+            ClientFrame::ServerschluesselAnlegen { id: neu.clone() },
+        );
+        assert_eq!(antwort, vec![ServerFrame::Ok]);
+        assert_eq!(
+            w.kern.state.serverschluessel.alle,
+            vec![SCHLUESSEL_ID.to_string(), neu.clone()]
+        );
+        let text = sprechwerk_protocol::geheimtext::zusammensetzen(&neu, &"00".repeat(28));
+        assert!(w.kern.befehle(w.ada, ClientFrame::Text { text }).is_empty());
+    }
+
+    /// Altbestand: unverschlüsselte Nachrichten sind nach dem Start weg,
+    /// Räume sind verschlüsselt (ADR 0012 §4, §5).
+    #[test]
+    fn umstellung_beim_start() {
+        let mut w = welt("e2e-start");
+        let raum = w.kern.state.mitglied(w.ada).and_then(|m| m.raum).unwrap();
+        w.kern.state.nachrichten.push(sprechwerk_domain::Message {
+            id: sprechwerk_domain::MessageId::neu(),
+            raum,
+            verfasser: w.ada,
+            verfasser_name: "Ada".into(),
+            text: "Kassenstand im Klartext".into(),
+            zeit: 1,
+            geloescht: false,
+        });
+        for r in w.kern.state.raeume.values_mut() {
+            r.verschluesselt = false;
+        }
+        w.kern.speichern().unwrap();
+
+        let neu = Kern::neu(w.kern.konfig.clone()).expect("Neustart");
+        assert!(neu
+            .state
+            .nachrichten
+            .iter()
+            .all(|n| n.text != "Kassenstand im Klartext"));
+        assert!(
+            neu.state
+                .nachrichten
+                .iter()
+                .any(|n| n.text == geheim("von Ada")),
+            "Geheimtext bleibt"
+        );
+        assert!(neu.state.raeume.values().all(|r| r.verschluesselt));
+        assert!(neu
+            .state
+            .protokoll
+            .iter()
+            .any(|e| e.aktion == "klartext_entfernt"));
+    }
+
+    #[test]
+    fn betreiber_befoerdert_ohne_verbindung() {
+        let mut w = welt("betreiber");
+        assert_eq!(
+            w.kern.state.mitglied(w.bosse).unwrap().rolle,
+            Role::Mitglied
+        );
+        w.kern
+            .betreiber_rolle_setzen(w.bosse, Role::Administrator)
+            .unwrap();
+        assert_eq!(
+            w.kern.state.mitglied(w.bosse).unwrap().rolle,
+            Role::Administrator
+        );
+        let antworten = w.kern.befehle(
+            w.bosse,
+            ClientFrame::RolleSetzen {
+                mitglied: w.dora,
+                rolle: Role::Moderator,
+            },
+        );
+        assert!(!meldet_kein_recht(&antworten), "{antworten:?}");
+        // Gespeichert: ein frischer Kern auf derselben Datenbank sieht es.
+        let neu = Kern::neu(w.kern.konfig.clone()).unwrap();
+        assert_eq!(
+            neu.state.mitglied(w.bosse).unwrap().rolle,
+            Role::Administrator
+        );
+    }
+
     #[test]
     fn befehle_ohne_rechtpruefung_melden_kein_recht() {
         for rolle in [Role::Administrator, Role::Gast] {
@@ -1429,7 +1930,7 @@ pub(crate) mod rollenmatrix {
 /// Nachrichtenart dazu, schlägt der Test fehl, bis sie hier auftaucht.
 #[cfg(test)]
 mod protokollsweep {
-    use super::rollenmatrix::welt;
+    use super::rollenmatrix::{geheim, welt, SCHLUESSEL_ID};
     use super::*;
     use sprechwerk_domain::{MemberId, MessageId, Role, RoomId};
 
@@ -1484,7 +1985,28 @@ mod protokollsweep {
             (
                 "Text",
                 Box::new(|_| ClientFrame::Text {
-                    text: "hallo".into(),
+                    text: geheim("hallo"),
+                }),
+            ),
+            (
+                "ServerschluesselAnlegen",
+                Box::new(|_| ClientFrame::ServerschluesselAnlegen {
+                    id: "cd".repeat(16),
+                }),
+            ),
+            (
+                "ServerschluesselVorhanden",
+                Box::new(|_| ClientFrame::ServerschluesselVorhanden {
+                    ids: vec![SCHLUESSEL_ID.to_string()],
+                }),
+            ),
+            (
+                "ServerschluesselPaket",
+                Box::new(|w| ClientFrame::ServerschluesselPaket {
+                    fuer: w.bosse,
+                    id: SCHLUESSEL_ID.to_string(),
+                    daten: "00".into(),
+                    unterschrift: "00".into(),
                 }),
             ),
             (
@@ -1605,7 +2127,7 @@ mod protokollsweep {
         // ergänzt, schlägt der Test fehl.
         assert_eq!(
             faelle.len(),
-            23,
+            26,
             "neue ClientFrame-Variante? Dann hier einen Fall ergänzen \
              (und die Zahl mitziehen)"
         );
@@ -1623,7 +2145,7 @@ mod protokollsweep {
                 let raum = w.kern.state.mitglied(w.ada).and_then(|m| m.raum);
                 let angekommen = raum
                     .and_then(|r| w.kern.state.verlauf(w.ada, r, jetzt_ms()).ok())
-                    .map(|e| e.iter().any(|n| n.text == "hallo"))
+                    .map(|e| e.iter().any(|n| n.text == geheim("hallo")))
                     .unwrap_or(false);
                 assert!(
                     angekommen,
@@ -1746,7 +2268,9 @@ mod protokollsweep {
     #[test]
     fn grenzwerte_werden_abgewiesen() {
         // Ein Zeichen zu viel.
-        let zu_lang = "x".repeat(sprechwerk_domain::state::MAX_MESSAGE_LEN + 1);
+        // Die Grenze gilt dem **Geheimtext** (der Server sieht nur ihn).
+        let rand = sprechwerk_protocol::geheimtext::MAX_GEHEIMTEXT_LEN - geheim("").len();
+        let zu_lang = geheim(&"x".repeat(rand / 2 + 1));
         let antworten = frage("sweep-text-lang", |_| ClientFrame::Text { text: zu_lang });
         assert!(
             meldet_fehler(&antworten),
@@ -1755,7 +2279,7 @@ mod protokollsweep {
 
         // Genau an der Grenze: angenommen (kein Fehler, kein Rahmen — die
         // Nachricht geht über den Rundruf).
-        let genau = "x".repeat(sprechwerk_domain::state::MAX_MESSAGE_LEN);
+        let genau = geheim(&"x".repeat(rand / 2));
         let antworten = frage("sweep-text-grenze", |_| ClientFrame::Text { text: genau });
         assert!(
             !meldet_fehler(&antworten),
@@ -1766,6 +2290,23 @@ mod protokollsweep {
         let antworten = frage("sweep-text-leer", |_| ClientFrame::Text {
             text: "   ".into(),
         });
+        assert!(
+            meldet_fehler(&antworten),
+            "leerer Text muss abgewiesen werden: {antworten:?}"
+        );
+
+        // Klartext kommt nicht in die Datenbank (ADR 0012).
+        let antworten = frage("sweep-text-klar", |_| ClientFrame::Text {
+            text: "Guten Abend".into(),
+        });
+        assert!(
+            meldet_fehler(&antworten),
+            "Klartext angenommen: {antworten:?}"
+        );
+        // Und Geheimtext mit einem anderen als dem aktuellen Schlüssel auch nicht.
+        let fremd =
+            sprechwerk_protocol::geheimtext::zusammensetzen(&"cd".repeat(16), &"00".repeat(28));
+        let antworten = frage("sweep-text-fremd", |_| ClientFrame::Text { text: fremd });
         assert!(
             meldet_fehler(&antworten),
             "Leerer Text muss abgewiesen werden: {antworten:?}"

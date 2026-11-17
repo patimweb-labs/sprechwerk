@@ -11,9 +11,112 @@
 //! steuern den Client.
 
 use anyhow::{Context, Result};
+use sprechwerk_adapters::serverschluessel::{Bund, Lesbar};
 use sprechwerk_adapters::{Schluessel, Verbindung};
+use sprechwerk_protocol::inhalt::Inhalt;
 use sprechwerk_protocol::{ClientFrame, Fehlercode, ServerFrame};
 use std::net::SocketAddr;
+
+/// Wie lange `--einmal` auf den Serverschlüssel wartet (er kommt von einem
+/// anderen Mitglied, das online sein muss — ADR 0012).
+const SCHLUESSEL_FRIST: std::time::Duration = std::time::Duration::from_secs(8);
+
+/// Verbindung, Anmeldeschlüssel und Serverschlüssel zusammen: die
+/// Schlüsselrahmen werden hier beantwortet, bevor etwas angezeigt wird.
+struct Sitzung {
+    verbindung: Verbindung,
+    schluessel: Schluessel,
+    bund: Bund,
+}
+
+impl Sitzung {
+    /// Nimmt einen Rahmen des Servers an: Schlüsselarbeit erledigen, zeigen.
+    async fn nimm(&mut self, frame: &ServerFrame) -> Result<()> {
+        let antworten = match frame {
+            ServerFrame::Serverschluessel { stand } => self.bund.stand(stand.clone()),
+            ServerFrame::ServerschluesselAnfrage { fuer, kennung, id } => {
+                match self.bund.anfrage(*fuer, kennung, id, &self.schluessel) {
+                    Ok(paket) => vec![paket],
+                    Err(fehler) => {
+                        eprintln!("Schlüssel nicht weitergegeben: {fehler}");
+                        Vec::new()
+                    }
+                }
+            }
+            ServerFrame::ServerschluesselPaket {
+                von_kennung,
+                id,
+                daten,
+                unterschrift,
+                ..
+            } => match self
+                .bund
+                .paket(von_kennung, id, daten, unterschrift, &self.schluessel)
+            {
+                Ok(meldung) => {
+                    println!("[Serverschlüssel erhalten]");
+                    vec![meldung]
+                }
+                Err(fehler) => {
+                    eprintln!("Schlüsselpaket abgelehnt: {fehler}");
+                    Vec::new()
+                }
+            },
+            _ => Vec::new(),
+        };
+        for a in antworten {
+            self.verbindung.sende(a).await?;
+        }
+        if let Some(meldung) = self.bund.nachmelden() {
+            self.verbindung.sende(meldung).await?;
+        }
+        zeige(frame, &self.bund);
+        Ok(())
+    }
+
+    /// Verschlüsselt und sendet einen Text in den aktuellen Raum.
+    async fn schreibe(&mut self, text: String) -> Result<()> {
+        let raum = self
+            .verbindung
+            .raum
+            .ok_or_else(|| anyhow::anyhow!("in keinem Raum"))?;
+        let geheim = self
+            .bund
+            .verschluesseln(raum, self.verbindung.ich, &Inhalt::Text { text })?;
+        self.verbindung
+            .sende(ClientFrame::Text { text: geheim })
+            .await
+    }
+
+    /// Wartet, bis geschrieben werden kann (oder die Frist um ist).
+    async fn warte_auf_schluessel(&mut self, frist: std::time::Duration) -> Result<()> {
+        let ende = tokio::time::Instant::now() + frist;
+        while !self.bund.kann_schreiben() {
+            let rest = ende.saturating_duration_since(tokio::time::Instant::now());
+            if rest.is_zero() {
+                anyhow::bail!(
+                    "kein Serverschlüssel: es ist kein Mitglied online, das ihn weitergeben kann"
+                );
+            }
+            match tokio::time::timeout(
+                rest.min(sprechwerk_adapters::serverschluessel::NACHMELDEN),
+                self.verbindung.empfang(),
+            )
+            .await
+            {
+                Ok(Ok(Some(frame))) => self.nimm(&frame).await?,
+                Ok(Ok(None)) => anyhow::bail!("Server hat die Verbindung beendet"),
+                Ok(Err(fehler)) => return Err(fehler),
+                Err(_) => {
+                    if let Some(meldung) = self.bund.nachmelden() {
+                        self.verbindung.sende(meldung).await?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
 
 fn hilfe() {
     println!(
@@ -105,25 +208,44 @@ async fn main() -> Result<()> {
     );
     println!("Kennung: {}", schluessel.kennung());
 
+    // Serverschlüssel: neben der Schlüsseldatei, je Server nach Fingerabdruck.
+    let mut bund = Bund::laden(
+        Some(schluessel_pfad.with_extension("serverschluessel.json")),
+        &verbindung.zertifikat,
+    );
+    for rahmen in bund.stand(verbindung.serverschluessel.clone()) {
+        verbindung.sende(rahmen).await?;
+    }
+    let raeume = verbindung.raeume.clone();
+    let mut sitzung = Sitzung {
+        verbindung,
+        schluessel,
+        bund,
+    };
+
     // Raumliste aus der Begrüßung zeigen.
-    for (i, r) in verbindung.raeume.iter().enumerate() {
+    for (i, r) in raeume.iter().enumerate() {
         println!("  {:>2}. {}", i + 1, r.name);
     }
     if let Some(nummer) = raum {
-        let ziel = verbindung
+        let ziel = sitzung
+            .verbindung
             .raum_nach_nummer(nummer)
             .ok_or_else(|| anyhow::anyhow!("Raum {nummer} gibt es nicht"))?;
-        verbindung
+        sitzung
+            .verbindung
             .sende(ClientFrame::Betreten { raum: ziel })
             .await?;
         // Auf die Bestätigung warten, damit der Text im richtigen Raum landet.
         let frist = std::time::Duration::from_secs(3);
-        while let Ok(Ok(Some(frame))) = tokio::time::timeout(frist, verbindung.empfang()).await {
+        while let Ok(Ok(Some(frame))) =
+            tokio::time::timeout(frist, sitzung.verbindung.empfang()).await
+        {
             let fertig = matches!(
                 frame,
                 ServerFrame::Betreten { .. } | ServerFrame::Fehler { .. }
             );
-            zeige(&frame);
+            sitzung.nimm(&frame).await?;
             if fertig {
                 break;
             }
@@ -131,22 +253,24 @@ async fn main() -> Result<()> {
     }
 
     if let Some(text) = einmal {
-        verbindung.sende(ClientFrame::Text { text }).await?;
-        // Kurz zuhören, damit die eigene Nachricht zurückkommt.
+        sitzung.warte_auf_schluessel(SCHLUESSEL_FRIST).await?;
+        sitzung.schreibe(text).await?;
+        // Kurz zuhören, damit die eigene Nachricht zurückkommt — und Bitten um
+        // den Schlüssel noch beantwortet werden.
         let frist = tokio::time::Instant::now() + std::time::Duration::from_millis(600);
         loop {
             let rest = frist.saturating_duration_since(tokio::time::Instant::now());
             if rest.is_zero() {
                 break;
             }
-            match tokio::time::timeout(rest, verbindung.empfang()).await {
-                Ok(Ok(Some(frame))) => zeige(&frame),
+            match tokio::time::timeout(rest, sitzung.verbindung.empfang()).await {
+                Ok(Ok(Some(frame))) => sitzung.nimm(&frame).await?,
                 Ok(Ok(None)) => break,
                 Ok(Err(fehler)) => return Err(fehler),
                 Err(_) => break,
             }
         }
-        verbindung.schliessen();
+        sitzung.verbindung.schliessen();
         return Ok(());
     }
 
@@ -164,40 +288,42 @@ async fn main() -> Result<()> {
                 if zeile == "/ende" { break; }
                 if zeile == "/hilfe" { hilfe(); continue; }
                 if zeile == "/raeume" {
-                    verbindung.sende(ClientFrame::Ping).await?;
+                    sitzung.verbindung.sende(ClientFrame::Ping).await?;
                     println!("(Raumliste wird bei Änderungen geschickt)");
                     continue;
                 }
                 if let Some(rest) = zeile.strip_prefix("/betreten ") {
                     let nummer: usize = rest.trim().parse()?;
-                    let raum = verbindung
+                    let raum = sitzung.verbindung
                         .raum_nach_nummer(nummer)
                         .ok_or_else(|| anyhow::anyhow!("Raum {nummer} gibt es nicht"))?;
-                    verbindung.sende(ClientFrame::Betreten { raum }).await?;
+                    sitzung.verbindung.sende(ClientFrame::Betreten { raum }).await?;
                     continue;
                 }
                 if zeile == "/verlassen" {
-                    verbindung.sende(ClientFrame::Verlassen).await?;
+                    sitzung.verbindung.sende(ClientFrame::Verlassen).await?;
                     continue;
                 }
                 if let Some(rest) = zeile.strip_prefix("/anlegen ") {
-                    verbindung.sende(ClientFrame::RaumAnlegen { name: rest.trim().to_string() }).await?;
+                    sitzung.verbindung.sende(ClientFrame::RaumAnlegen { name: rest.trim().to_string() }).await?;
                     continue;
                 }
                 if zeile == "/protokoll" {
-                    verbindung.sende(ClientFrame::Protokoll {
+                    sitzung.verbindung.sende(ClientFrame::Protokoll {
                         ab: 0,
                         anzahl: 20,
                         von_hinten: false,
                     }).await?;
                     continue;
                 }
-                if zeile == "/wer" { verbindung.sende(ClientFrame::Ping).await?; continue; }
-                verbindung.sende(ClientFrame::Text { text: zeile }).await?;
+                if zeile == "/wer" { sitzung.verbindung.sende(ClientFrame::Ping).await?; continue; }
+                if let Err(fehler) = sitzung.schreibe(zeile).await {
+                    eprintln!("nicht gesendet: {fehler}");
+                }
             }
-            rahmen = verbindung.empfang() => {
+            rahmen = sitzung.verbindung.empfang() => {
                 match rahmen {
-                    Ok(Some(frame)) => zeige(&frame),
+                    Ok(Some(frame)) => sitzung.nimm(&frame).await?,
                     Ok(None) => { println!("Server hat die Verbindung beendet"); break; }
                     Err(fehler) => { eprintln!("Fehler: {fehler}"); break; }
                 }
@@ -205,11 +331,11 @@ async fn main() -> Result<()> {
         }
     }
 
-    verbindung.schliessen();
+    sitzung.verbindung.schliessen();
     Ok(())
 }
 
-fn zeige(frame: &ServerFrame) {
+fn zeige(frame: &ServerFrame, bund: &Bund) {
     match frame {
         ServerFrame::Schluesselpaket { von, raum, .. } => {
             println!("[Schlüsselpaket] von {von} für Raum {raum}");
@@ -244,7 +370,7 @@ fn zeige(frame: &ServerFrame) {
             let text = if nachricht.geloescht {
                 "(gelöscht)".to_string()
             } else {
-                nachricht.text.clone()
+                lesbar(bund.lesen(nachricht))
             };
             println!(
                 "[{}] {}: {}",
@@ -309,6 +435,24 @@ fn zeige(frame: &ServerFrame) {
             );
         }
         ServerFrame::Willkommen { .. } | ServerFrame::Anforderung { .. } => {}
+        ServerFrame::Serverschluessel { stand } => {
+            if stand.aktuell.is_none() {
+                println!("[Serverschlüssel wird erneuert]");
+            }
+        }
+        ServerFrame::ServerschluesselAnfrage { .. } | ServerFrame::ServerschluesselPaket { .. } => {
+        }
+    }
+}
+
+/// Was von einer Nachricht angezeigt wird.
+fn lesbar(l: Lesbar) -> String {
+    match l {
+        Lesbar::Inhalt(Inhalt::Text { text }) => text,
+        Lesbar::Unbekannt { art } => format!("(„{art}“ — neuere Version nötig)"),
+        Lesbar::SchluesselFehlt => "(verschlüsselt — Schlüssel fehlt noch)".into(),
+        Lesbar::Unlesbar => "(unlesbar — verändert oder beschädigt)".into(),
+        Lesbar::Leer => "(gelöscht)".into(),
     }
 }
 

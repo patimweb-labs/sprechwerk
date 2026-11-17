@@ -11,6 +11,7 @@ import { IconMic, IconRefresh, IconSpeaker } from "@weppelmann/icons";
 import { api, type Geraet } from "../api";
 import { SPRACHEN } from "../i18n";
 import { kennungGruppiert } from "../format";
+import { tasteName } from "../sprechtaste";
 import {
   einstellungen,
   modell,
@@ -129,29 +130,6 @@ function tasteBelegt(text: string) {
   tasteAufnahme.value = false;
 }
 
-function tasteName(ereignis: KeyboardEvent): string {
-  const namen: Record<string, string> = {
-    Space: "Leertaste",
-    ControlLeft: "Strg links",
-    ControlRight: "Strg rechts",
-    AltLeft: "Alt links",
-    AltRight: "Alt rechts",
-    ShiftLeft: "Umschalt links",
-    ShiftRight: "Umschalt rechts",
-    MetaLeft: "Meta links",
-    MetaRight: "Meta rechts",
-    CapsLock: "Feststelltaste",
-    Tab: "Tab",
-    Enter: "Eingabe",
-    Backspace: "Rücktaste",
-  };
-  if (namen[ereignis.code]) return namen[ereignis.code];
-  if (ereignis.code.startsWith("Key")) return ereignis.code.slice(3);
-  if (ereignis.code.startsWith("Digit")) return ereignis.code.slice(5);
-  if (ereignis.code.startsWith("F") && ereignis.code.length <= 3) return ereignis.code;
-  return ereignis.key.length === 1 ? ereignis.key.toUpperCase() : ereignis.key;
-}
-
 function beiTaste(ereignis: KeyboardEvent) {
   if (!tasteAufnahme.value) return;
   ereignis.preventDefault();
@@ -159,7 +137,7 @@ function beiTaste(ereignis: KeyboardEvent) {
     tasteAufnahme.value = false;
     return;
   }
-  tasteBelegt(tasteName(ereignis));
+  tasteBelegt(tasteName(ereignis.code));
 }
 
 function beiMaus(ereignis: MouseEvent) {

@@ -1,0 +1,173 @@
+# Server zum Herunterladen: Linux (x86_64, aarch64), Windows, macOS.
+#
+# Ein Baustein, zwei Aufrufer (wie `pakete.yml`):
+#   * `pruefen.yml` bei jedem PR — damit der Bau unter Windows und macOS im PR
+#     auffällt. Die Archive liegen danach als Artefakte am Lauf.
+#   * `release.yml` mit dem Tag — dort hängen dieselben Archive am Release.
+#
+# **Verwaltungsoberfläche** (SPEC §2, Nachtrag 2026-11-17; ADR 0011): wird
+# einmal gebaut (`verwaltung`, Node) und in jedes Programm eingebettet
+# (`crates/server/build.rs`). Das Artefakt `verwaltung` braucht auch der
+# Container-Bau in `release.yml`.
+#
+# Der Server unter Windows und macOS ist ein Programm mit Konsolenfenster: ein
+# Doppelklick startet ihn, das Fenster zeigt das Protokoll, der Browser öffnet
+# die Verwaltung. Daten liegen in `daten/` neben dem Programm.
+#
+# **Unsigniert** wie die Fensterpakete (siehe `pakete.yml`).
+
+name: server
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Was gebaut wird (Tag); leer = der auslösende Stand"
+        type: string
+        default: ""
+      version:
+        description: "Steht im Dateinamen; leer = Version aus Cargo.toml"
+        type: string
+        default: ""
+      pruefen:
+        description: "Zusätzlich Clippy auf Windows und macOS (im PR ja)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verwaltung:
+    name: Verwaltungsoberfläche
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      # Dieselben Komponenten wie das Fenster — die Verwaltung sieht aus wie
+      # ein Teil der App.
+      - name: Komponentenbibliothek holen
+        env:
+          TOKEN: ${{ secrets.WEPPELMANN_UI_TOKEN }}
+        run: |
+          ziel="$(pwd)/../weppelmann-ui"
+          url="https://github.com/Smotherer007/weppelmann-ui.git"
+          if [ -n "$TOKEN" ]; then
+            url="https://x-access-token:${TOKEN}@github.com/Smotherer007/weppelmann-ui.git"
+          fi
+          git clone --depth 1 "$url" "$ziel"
+          cd "$ziel" && npm ci --no-audit --no-fund && npm run -s tokens
+
+      - name: Bauen
+        run: |
+          cd ui
+          npm ci --no-audit --no-fund
+          npm run --silent verwaltung
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: verwaltung
+          if-no-files-found: error
+          path: ui/dist-verwaltung/
+
+  programm:
+    name: Server ${{ matrix.name }}
+    needs: verwaltung
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64, os: ubuntu-24.04 }
+          - { name: linux-aarch64, os: ubuntu-24.04-arm }
+          - { name: windows-x86_64, os: windows-2025 }
+          - { name: macos-universal, os: macos-15 }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      # `aws-lc-sys` (TLS) bräuchte unter Windows sonst NASM (wie `pakete.yml`).
+      AWS_LC_SYS_PREBUILT_NASM: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: verwaltung
+          path: ui/dist-verwaltung
+
+      - name: Version
+        id: v
+        env:
+          VORGABE: ${{ inputs.version }}
+        run: |
+          version="$VORGABE"
+          if [ -z "$version" ]; then
+            version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "name=sprechwerk-server-${version}-${{ matrix.name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Werkzeuge (Clippy)
+        if: inputs.pruefen && runner.os != 'Linux'
+        run: cargo clippy -p sprechwerk-server -p sprechwerk-cli --all-targets -- -D warnings
+
+      - name: Bauen (Linux, Windows)
+        if: runner.os != 'macOS'
+        run: cargo build --release --locked -p sprechwerk-server -p sprechwerk-cli
+
+      # Ein Programm für Apple Silicon und Intel: beide bauen, `lipo` fügt
+      # zusammen. Rust erzeugt ab macOS 11, wie das Fenster.
+      - name: Bauen (macOS, arm64 + x86_64)
+        if: runner.os == 'macOS'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          for ziel in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo build --release --locked --target "$ziel" -p sprechwerk-server -p sprechwerk-cli
+          done
+          mkdir -p target/release
+          for p in sprechwerk sprechwerk-cli; do
+            lipo -create "target/aarch64-apple-darwin/release/$p" "target/x86_64-apple-darwin/release/$p" \
+              -output "target/release/$p"
+          done
+          lipo -info target/release/sprechwerk
+
+      - name: Packen
+        id: pack
+        env:
+          NAME: ${{ steps.v.outputs.name }}
+        run: |
+          mkdir -p "aus/$NAME"
+          endung=""
+          [ "$RUNNER_OS" = "Windows" ] && endung=".exe"
+          cp "target/release/sprechwerk$endung" "target/release/sprechwerk-cli$endung" \
+             README.md LICENSE "aus/$NAME/"
+          ./"target/release/sprechwerk$endung" beispiel > "aus/$NAME/sprechwerk.beispiel.toml"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            (cd aus && 7z a -tzip "../$NAME.zip" "$NAME" >/dev/null)
+            echo "datei=$NAME.zip" >> "$GITHUB_OUTPUT"
+          else
+            tar -C aus -czf "$NAME.tar.gz" "$NAME"
+            echo "datei=$NAME.tar.gz" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: server-${{ matrix.name }}
+          if-no-files-found: error
+          path: ${{ steps.pack.outputs.datei }}

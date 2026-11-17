@@ -227,3 +227,13 @@ jobs:
     with:
       pruefen: true
     secrets: inherit
+
+  # Den Server mit eingebauter Verwaltungsoberfläche auf allen Systemen bauen
+  # (`server.yml`) — Windows und macOS gibt es dort sonst erst im Release. Die
+  # Archive hängen als Artefakte am Lauf, zum Ausprobieren vor dem Release.
+  server:
+    name: Server
+    uses: ./.github/workflows/server.yml
+    with:
+      pruefen: true
+    secrets: inherit

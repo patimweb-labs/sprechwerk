@@ -7,7 +7,9 @@
 #      allen Manifesten angehoben, `CHANGELOG.md` fortgeschrieben.
 #   2. Wird **dieser** PR gemergt, legt release-please Tag und GitHub-Release an.
 #   3. Im selben Lauf entstehen danach die Dateien und hängen sich ans Release:
-#        * Server + Referenzclient, Linux x86_64 und aarch64 (`.tar.gz`)
+#        * Server + Referenzclient (`server.yml`), mit eingebauter
+#          Verwaltungsoberfläche: Linux x86_64 und aarch64 (`.tar.gz`),
+#          Windows (`.zip`), macOS Apple Silicon + Intel (`.tar.gz`)
 #        * Fenster (`pakete.yml`): Linux `.deb`/`.rpm`/AppImage, Flatpak,
 #          Windows `.exe`/`.msi`, macOS `.dmg` (Apple Silicon + Intel)
 #        * Container-Abbild `ghcr.io/<repo>`, amd64 + arm64
@@ -103,46 +105,41 @@ jobs:
             echo "Kein neues Release — nur der Release-PR wurde fortgeschrieben."
           fi
 
+  # Server für alle Systeme, mit eingebauter Verwaltungsoberfläche: derselbe
+  # Baustein, den `pruefen.yml` bei jedem PR aufruft.
   server:
-    name: Server ${{ matrix.arch }}
+    name: Server
     needs: ziel
     if: ${{ !cancelled() && needs.ziel.outputs.tag != '' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: ubuntu-24.04, arch: x86_64 }
-          - { os: ubuntu-24.04-arm, arch: aarch64 }
-    runs-on: ${{ matrix.os }}
+    uses: ./.github/workflows/server.yml
+    with:
+      ref: ${{ needs.ziel.outputs.tag }}
+      version: ${{ needs.ziel.outputs.version }}
+    secrets: inherit
+    permissions:
+      contents: read
+
+  server-hochladen:
+    name: Server ans Release
+    needs: [ziel, server]
+    if: ${{ !cancelled() && needs.ziel.outputs.tag != '' }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
-          ref: ${{ needs.ziel.outputs.tag }}
+          pattern: server-*
+          merge-multiple: true
+          path: aus
 
-      # Die Version selbst steht in `rust-toolchain.toml`; rustup nimmt sie dort.
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Bauen
-        run: cargo build --release --locked -p sprechwerk-server -p sprechwerk-cli
-
-      - name: Packen
-        id: pack
-        env:
-          VERSION: ${{ needs.ziel.outputs.version }}
-        run: |
-          name="sprechwerk-server-${VERSION}-linux-${{ matrix.arch }}"
-          mkdir -p "aus/$name"
-          cp target/release/sprechwerk target/release/sprechwerk-cli \
-             README.md LICENSE "aus/$name/"
-          tar -C aus -czf "$name.tar.gz" "$name"
-          echo "datei=$name.tar.gz" >> "$GITHUB_OUTPUT"
-
-      - name: Ans Release hängen
+      - name: Hochladen
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ needs.ziel.outputs.tag }}" "${{ steps.pack.outputs.datei }}" --clobber
+        run: |
+          find aus -type f | sort
+          find aus -type f -print0 | xargs -0 -r \
+            gh release upload "${{ needs.ziel.outputs.tag }}" -R "${{ github.repository }}" --clobber
 
   # Fenster für alle Systeme: derselbe Baustein, den `pruefen.yml` bei jedem PR
   # aufruft — was hier gebaut wird, ist dort schon einmal durchgelaufen.
@@ -186,7 +183,7 @@ jobs:
   # Emulation braucht eine Stunde statt Minuten.
   abbild:
     name: Container ${{ matrix.plattform }}
-    needs: ziel
+    needs: [ziel, server]
     if: ${{ !cancelled() && needs.ziel.outputs.tag != '' }}
     strategy:
       fail-fast: false
@@ -202,6 +199,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.ziel.outputs.tag }}
+
+      # Die gebaute Verwaltungsoberfläche aus `server.yml`: der Container baut
+      # ohne Node, `build.rs` bettet sie aus dem Baukontext ein.
+      - uses: actions/download-artifact@v8
+        with:
+          name: verwaltung
+          path: ui/dist-verwaltung
 
       - uses: docker/setup-buildx-action@v4
 
@@ -280,7 +284,7 @@ jobs:
 
   pruefsummen:
     name: Prüfsummen
-    needs: [ziel, server, pakete-hochladen]
+    needs: [ziel, server-hochladen, pakete-hochladen]
     if: ${{ !cancelled() && needs.ziel.outputs.tag != '' }}
     runs-on: ubuntu-24.04
     permissions:
@@ -293,7 +297,7 @@ jobs:
         run: |
           mkdir aus && cd aus
           gh release download "$TAG" -R "${{ github.repository }}" \
-            -p '*.tar.gz' -p '*.deb' -p '*.rpm' -p '*.AppImage' \
+            -p '*.tar.gz' -p '*.zip' -p '*.deb' -p '*.rpm' -p '*.AppImage' \
             -p '*.flatpak' -p '*.exe' -p '*.msi' -p '*.dmg'
           sha256sum * | tee SHA256SUMS
           gh release upload "$TAG" SHA256SUMS -R "${{ github.repository }}" --clobber

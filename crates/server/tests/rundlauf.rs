@@ -4,7 +4,9 @@
 //! Programm so, wie Docker es startet (Konfiguration über Umgebung), verbindet
 //! zwei Clients und prüft, was sie voneinander sehen.
 
+use sprechwerk_adapters::serverschluessel::{Bund, Lesbar};
 use sprechwerk_adapters::{Schluessel, Verbindung};
+use sprechwerk_protocol::inhalt::Inhalt;
 use sprechwerk_protocol::{ClientFrame, ServerFrame};
 use std::net::SocketAddr;
 use std::process::{Child, Command, Stdio};
@@ -54,6 +56,8 @@ impl Testserver {
             .env("SPRECHWERK_BIND", "127.0.0.1")
             .env("SPRECHWERK_NAME", "Rundlauftest")
             .env("SPRECHWERK_SICHERUNG_AKTIV", "0")
+            // Keine Verwaltung (Port 7444, Browser) für Testserver.
+            .env("SPRECHWERK_VERWALTUNG_AKTIV", "0")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         for (schluessel, wert) in extra {
@@ -102,10 +106,11 @@ async fn zwei_clients_sehen_sich_und_texten() {
     let server = Testserver::starten("zwei", &[]);
     server.bereit().await;
 
-    let mut ada = Verbindung::oeffnen(server.adresse, &Schluessel::neu(), "Ada", None)
+    let (ada_k, bosse_k) = (Schluessel::neu(), Schluessel::neu());
+    let mut ada = Verbindung::oeffnen(server.adresse, &ada_k, "Ada", None)
         .await
         .expect("Ada meldet sich an");
-    let mut bosse = Verbindung::oeffnen(server.adresse, &Schluessel::neu(), "Bosse", None)
+    let mut bosse = Verbindung::oeffnen(server.adresse, &bosse_k, "Bosse", None)
         .await
         .expect("Bosse meldet sich an");
 
@@ -128,19 +133,127 @@ async fn zwei_clients_sehen_sich_und_texten() {
         .collect::<Vec<_>>();
     assert!(anwesend.contains(&"Ada".to_string()), "{anwesend:?}");
 
-    // Ada schreibt, Bosse bekommt es.
-    ada.sende(ClientFrame::Text {
-        text: "Guten Abend".into(),
-    })
-    .await
-    .unwrap();
-    let nachricht = warte_auf(&mut bosse, |f| matches!(f, ServerFrame::Text { .. })).await;
+    // Ende zu Ende (ADR 0012): Ada legt den Serverschlüssel an, Bosse bekommt
+    // ihn von Ada — der Server vermittelt nur.
+    let mut ada = Teil::neu(ada, ada_k);
+    let mut bosse = Teil::neu(bosse, bosse_k);
+    ada.anfangen().await;
+    bediene_beide(&mut ada, &mut bosse, |a, _| a.bund.kann_schreiben()).await;
+    bosse.anfangen().await;
+    bediene_beide(&mut ada, &mut bosse, |_, b| b.bund.kann_schreiben()).await;
+
+    // Ada schreibt, Bosse liest — der Server sieht nur Geheimtext.
+    let geheim = ada
+        .bund
+        .verschluesseln(
+            raum,
+            ada.v.ich,
+            &Inhalt::Text {
+                text: "Guten Abend".into(),
+            },
+        )
+        .unwrap();
+    ada.v
+        .sende(ClientFrame::Text { text: geheim })
+        .await
+        .unwrap();
+    let nachricht = warte_auf(&mut bosse.v, |f| matches!(f, ServerFrame::Text { .. })).await;
     match nachricht {
         ServerFrame::Text { nachricht } => {
-            assert_eq!(nachricht.text, "Guten Abend");
+            assert!(
+                !nachricht.text.contains("Guten Abend"),
+                "Klartext beim Server"
+            );
             assert_eq!(nachricht.verfasser_name, "Ada");
+            assert_eq!(
+                bosse.bund.lesen(&nachricht),
+                Lesbar::Inhalt(Inhalt::Text {
+                    text: "Guten Abend".into()
+                })
+            );
         }
         anderes => panic!("unerwartet: {anderes:?}"),
+    }
+
+    // Klartext nimmt der Server nicht an.
+    ada.v
+        .sende(ClientFrame::Text {
+            text: "Klartext".into(),
+        })
+        .await
+        .unwrap();
+    warte_auf(&mut ada.v, |f| matches!(f, ServerFrame::Fehler { .. })).await;
+
+    // Und in der Datenbank steht er nicht.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    for datei in std::fs::read_dir(&server.verzeichnis).unwrap().flatten() {
+        if let Ok(bytes) = std::fs::read(datei.path()) {
+            assert!(
+                !bytes.windows(11).any(|w| w == b"Guten Abend"),
+                "Klartext in {}",
+                datei.path().display()
+            );
+        }
+    }
+}
+
+/// Ein Client mit Serverschlüsselbund — beantwortet Schlüsselrahmen wie der
+/// echte Client (`sprechwerk-cli`, Fenster).
+struct Teil {
+    v: Verbindung,
+    k: Schluessel,
+    bund: Bund,
+}
+
+impl Teil {
+    fn neu(v: Verbindung, k: Schluessel) -> Self {
+        let bund = Bund::laden(None, &v.zertifikat);
+        Self { v, k, bund }
+    }
+
+    async fn anfangen(&mut self) {
+        for f in self.bund.stand(self.v.serverschluessel.clone()) {
+            self.v.sende(f).await.unwrap();
+        }
+    }
+
+    async fn bediene(&mut self, f: &ServerFrame) {
+        let antworten = match f {
+            ServerFrame::Serverschluessel { stand } => self.bund.stand(stand.clone()),
+            ServerFrame::ServerschluesselAnfrage { fuer, kennung, id } => {
+                vec![self.bund.anfrage(*fuer, kennung, id, &self.k).unwrap()]
+            }
+            ServerFrame::ServerschluesselPaket {
+                von_kennung,
+                id,
+                daten,
+                unterschrift,
+                ..
+            } => vec![self
+                .bund
+                .paket(von_kennung, id, daten, unterschrift, &self.k)
+                .unwrap()],
+            _ => Vec::new(),
+        };
+        for a in antworten {
+            self.v.sende(a).await.unwrap();
+        }
+    }
+}
+
+/// Bedient beide Clients, bis `fertig` gilt (höchstens 5 s).
+async fn bediene_beide(a: &mut Teil, b: &mut Teil, fertig: impl Fn(&Teil, &Teil) -> bool) {
+    let frist = tokio::time::Instant::now() + Duration::from_secs(5);
+    while !fertig(a, b) {
+        assert!(
+            tokio::time::Instant::now() < frist,
+            "Serverschlüssel kam nicht an"
+        );
+        tokio::select! {
+            f = a.v.empfang() => { let f = f.unwrap().unwrap(); a.bediene(&f).await; }
+            f = b.v.empfang() => { let f = f.unwrap().unwrap(); b.bediene(&f).await; }
+            _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+        }
     }
 }
 
@@ -663,4 +776,97 @@ async fn gleichzeitiges_betreten_laesst_niemanden_verschwinden() {
         "verschwundene Mitglieder:\n{}",
         fehler.join("\n")
     );
+}
+
+/// Die Verwaltung im Browser läuft im echten Prozess: Anmeldelink setzt den
+/// Keks, mit dem Keks kommt der Stand (ADR 0011). Roh über TCP, ohne
+/// HTTP-Client als Abhängigkeit.
+#[test]
+fn verwaltung_antwortet_im_echten_prozess() {
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+        .to_string();
+    let code = "rundlauf-verwaltung-code";
+    let _server = Testserver::starten(
+        "verwaltung",
+        &[
+            ("SPRECHWERK_VERWALTUNG_AKTIV", "1"),
+            ("SPRECHWERK_VERWALTUNG_BROWSER", "0"),
+            ("SPRECHWERK_VERWALTUNG_PORT", &port),
+            ("SPRECHWERK_VERWALTUNG_CODE", code),
+        ],
+    );
+
+    let frage = |anfrage: String| -> Option<String> {
+        use std::io::{Read, Write};
+        let mut tcp = std::net::TcpStream::connect(format!("127.0.0.1:{port}")).ok()?;
+        tcp.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
+        tcp.write_all(anfrage.as_bytes()).ok()?;
+        let mut antwort = String::new();
+        tcp.read_to_string(&mut antwort).ok()?;
+        Some(antwort)
+    };
+
+    // Die Verwaltung startet kurz nach „lauscht" — ein paar Versuche.
+    let mut link = None;
+    for _ in 0..50 {
+        link = frage(format!(
+            "GET /anmelden?code={code} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+        ));
+        if link.is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let link = link.expect("Verwaltung antwortet");
+    assert!(link.starts_with("HTTP/1.1 303"), "{link}");
+    let keks = link
+        .lines()
+        .find_map(|z| z.strip_prefix("set-cookie: "))
+        .and_then(|w| w.split(';').next())
+        .expect("Keks gesetzt")
+        .to_string();
+
+    let ohne = frage(
+        "GET /api/stand HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n".to_string(),
+    )
+    .unwrap();
+    assert!(ohne.starts_with("HTTP/1.1 401"), "{ohne}");
+
+    let stand = frage(format!(
+        "GET /api/stand HTTP/1.1\r\nHost: 127.0.0.1\r\nCookie: {keks}\r\nConnection: close\r\n\r\n"
+    ))
+    .unwrap();
+    assert!(stand.starts_with("HTTP/1.1 200"), "{stand}");
+    assert!(stand.contains("\"name\":\"Rundlauftest\""), "{stand}");
+    assert!(
+        stand.contains("\"erster_wird_administrator\":true"),
+        "{stand}"
+    );
+}
+
+/// `docker stop` schickt SIGTERM: der Server beendet sich sofort und sauber,
+/// statt nach 10 s per SIGKILL ohne letztes Speichern zu sterben.
+#[cfg(unix)]
+#[test]
+fn sigterm_beendet_sauber() {
+    let mut server = Testserver::starten("sigterm", &[]);
+    let pid = server.kind.id().to_string();
+    let status = Command::new("kill").args(["-TERM", &pid]).status().unwrap();
+    assert!(status.success());
+    let start = std::time::Instant::now();
+    loop {
+        if let Some(ende) = server.kind.try_wait().unwrap() {
+            assert!(ende.success(), "Rückgabe {ende:?}");
+            break;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "Server reagiert nicht auf SIGTERM"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }

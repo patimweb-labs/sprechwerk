@@ -1,9 +1,9 @@
 //! Konfiguration: Datei plus Umgebung.
 //!
 //! **Festlegung (SPEC §2):** Konfiguration ist eine Datei im Volume, einzelne
-//! Werte lassen sich über Umgebungsvariablen überschreiben (für Docker). Es
-//! gibt keine Betriebsweboberfläche — was der Server beim Start können muss,
-//! steht hier.
+//! Werte lassen sich über Umgebungsvariablen überschreiben (für Docker). Die
+//! Verwaltungsoberfläche (`[verwaltung]`, SPEC §2 Nachtrag 2026-11-17) zeigt
+//! Protokoll und Rollen, ändert aber keine Konfiguration — die bleibt hier.
 
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -19,12 +19,16 @@ pub enum Fehler {
     Wert(String),
 }
 
+/// Mindestlänge eines selbst gewählten Zugangscodes der Verwaltung.
+pub const MINDESTLAENGE_CODE: usize = 16;
+
 /// Die vollständige Konfiguration.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Konfig {
     pub server: Server,
     pub sicherung: Sicherung,
+    pub verwaltung: Verwaltung,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -76,6 +80,54 @@ pub struct Sicherung {
     pub verzeichnis: PathBuf,
 }
 
+/// Die Verwaltungsoberfläche im Browser (`crates/server/src/verwaltung.rs`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Verwaltung {
+    /// Oberfläche anbieten.
+    pub aktiv: bool,
+    /// Adresse für HTTP. Vorgabe `127.0.0.1`: nur auf diesem Rechner. Im
+    /// Container `0.0.0.0`, der Port wird dort nur an `127.0.0.1` des Hosts
+    /// gebunden (`docker-compose.yml`).
+    pub bind: String,
+    /// TCP-Port.
+    pub port: u16,
+    /// Zugangscode; leer = bei jedem Start ein neuer (steht im Protokoll).
+    pub code: String,
+    /// Beim Start den Browser öffnen — nur, wenn es einen Bildschirm gibt.
+    pub browser: bool,
+}
+
+impl Default for Verwaltung {
+    fn default() -> Self {
+        Self {
+            aktiv: true,
+            bind: "127.0.0.1".to_string(),
+            port: 7444,
+            code: String::new(),
+            browser: true,
+        }
+    }
+}
+
+/// Vorgabe für das Datenverzeichnis: `/data`, wenn es das gibt (Container,
+/// bisherige Installationen), sonst `daten` **neben dem Programm**.
+///
+/// Warum nicht immer `/data`: wer das Programm unter Windows oder macOS per
+/// Doppelklick startet, hat kein `/data` — unter Windows hieße das `C:\data`.
+/// Neben dem Programm liegt es dort, wo man es sucht, und wandert mit, wenn man
+/// den Ordner verschiebt.
+fn daten_vorgabe() -> PathBuf {
+    let container = PathBuf::from("/data");
+    if container.is_dir() {
+        return container;
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|ordner| ordner.join("daten")))
+        .unwrap_or_else(|| PathBuf::from("daten"))
+}
+
 impl Default for Server {
     fn default() -> Self {
         Self {
@@ -84,7 +136,7 @@ impl Default for Server {
             port: 7443,
             passwort: String::new(),
             standard_rolle: "mitglied".to_string(),
-            daten: PathBuf::from("/data"),
+            daten: daten_vorgabe(),
             verbindungen_je_adresse: 8,
             rahmen_je_sekunde: 100,
             aufbewahrung_tage: 0,
@@ -179,6 +231,21 @@ impl Konfig {
         if let Some(w) = text("SPRECHWERK_SICHERUNG_VERZEICHNIS") {
             self.sicherung.verzeichnis = PathBuf::from(w);
         }
+        if let Some(w) = ja("SPRECHWERK_VERWALTUNG_AKTIV") {
+            self.verwaltung.aktiv = w;
+        }
+        if let Some(w) = text("SPRECHWERK_VERWALTUNG_BIND") {
+            self.verwaltung.bind = w;
+        }
+        if let Some(w) = zahl("SPRECHWERK_VERWALTUNG_PORT")? {
+            self.verwaltung.port = w;
+        }
+        if let Some(w) = text("SPRECHWERK_VERWALTUNG_CODE") {
+            self.verwaltung.code = w;
+        }
+        if let Some(w) = ja("SPRECHWERK_VERWALTUNG_BROWSER") {
+            self.verwaltung.browser = w;
+        }
         Ok(())
     }
 
@@ -219,6 +286,19 @@ impl Konfig {
         if self.sicherung.verzeichnis.as_os_str().is_empty() {
             self.sicherung.verzeichnis = self.server.daten.join("sicherungen");
         }
+        if self.verwaltung.port == 0 {
+            return Err(Fehler::Wert("verwaltung.port darf nicht 0 sein".into()));
+        }
+        // Ein selbst gewählter Code ersetzt den zufälligen (128 Bit). Kurze
+        // Codes lassen sich durchprobieren — die Oberfläche kann Rollen
+        // vergeben, also auch den Administrator.
+        let code = self.verwaltung.code.trim();
+        if !code.is_empty() && code.chars().count() < MINDESTLAENGE_CODE {
+            return Err(Fehler::Wert(format!(
+                "verwaltung.code muss mindestens {MINDESTLAENGE_CODE} Zeichen haben (leer = zufällig)"
+            )));
+        }
+        self.verwaltung.code = code.to_string();
         Ok(())
     }
 
@@ -231,6 +311,11 @@ impl Konfig {
     /// Adresse zum Lauschen.
     pub fn adresse(&self) -> String {
         format!("{}:{}", self.server.bind, self.server.port)
+    }
+
+    /// Adresse der Verwaltungsoberfläche.
+    pub fn verwaltung_adresse(&self) -> String {
+        format!("{}:{}", self.verwaltung.bind, self.verwaltung.port)
     }
 
     /// Pfad der Datenbankdatei.
@@ -250,7 +335,7 @@ bind = "0.0.0.0"
 port = 7443
 passwort = ""            # leer = offen, wie TeamSpeak ohne Serverpasswort
 standard_rolle = "mitglied"   # administrator | moderator | mitglied | gast
-daten = "/data"
+# daten = "/data"         # ohne Angabe: /data, wenn vorhanden, sonst daten/ neben dem Programm
 verbindungen_je_adresse = 8
 rahmen_je_sekunde = 100  # Steuerrahmen je Verbindung (Sprache zählt nicht); 0 = aus
 aufbewahrung_tage = 0    # 0 = unbegrenzt
@@ -262,6 +347,14 @@ aktiv = true
 intervall_minuten = 1440  # täglich
 behalten = 14
 # verzeichnis = "/data/sicherungen"
+
+[verwaltung]
+# Verwaltung im Browser: Protokoll, Mitglieder, Rollen (http://127.0.0.1:7444).
+aktiv = true
+bind = "127.0.0.1"        # nur dieser Rechner; im Container 0.0.0.0 (siehe docker-compose.yml)
+port = 7444               # TCP
+code = ""                 # leer = bei jedem Start neu, steht im Protokoll; sonst mind. 16 Zeichen
+browser = true            # beim Start öffnen, wenn ein Bildschirm da ist
 "#
         .to_string()
     }
@@ -320,6 +413,34 @@ mod tests {
     fn tippfehler_in_der_datei_werden_gemeldet() {
         let pfad = datei("[server]\nprot = 9000\n");
         assert!(matches!(Konfig::laden(&pfad), Err(Fehler::Toml(_))));
+        let _ = std::fs::remove_file(&pfad);
+    }
+
+    #[test]
+    fn verwaltung_ist_vorgabe_nur_lokal() {
+        let k = Konfig::laden("/gibt/es/nicht.toml").unwrap();
+        assert!(k.verwaltung.aktiv);
+        assert_eq!(k.verwaltung_adresse(), "127.0.0.1:7444");
+        assert!(k.verwaltung.code.is_empty());
+    }
+
+    #[test]
+    fn kurzer_verwaltungscode_wird_abgelehnt() {
+        let pfad = datei("[verwaltung]\ncode = \"kurz\"\n");
+        assert!(matches!(Konfig::laden(&pfad), Err(Fehler::Wert(_))));
+        let _ = std::fs::remove_file(&pfad);
+        let pfad = datei("[verwaltung]\ncode = \"  ein-langer-code-1234  \"\nport = 9001\n");
+        let k = Konfig::laden(&pfad).unwrap();
+        assert_eq!(k.verwaltung.code, "ein-langer-code-1234");
+        assert_eq!(k.verwaltung.port, 9001);
+        let _ = std::fs::remove_file(&pfad);
+    }
+
+    #[test]
+    fn beispiel_ist_gueltig() {
+        let pfad = datei(&Konfig::beispiel());
+        let k = Konfig::laden(&pfad).unwrap();
+        assert_eq!(k.verwaltung.port, 7444);
         let _ = std::fs::remove_file(&pfad);
     }
 

@@ -39,6 +39,10 @@ RUN for k in domain protocol store adapters ipc audio; do \
  && echo "fn main() {}" > crates/cli/src/main.rs \
  && cargo build --release --locked -p sprechwerk-server -p sprechwerk-cli || true
 
+# Mit `COPY . .` kommt auch `ui/dist-verwaltung/` herein, falls gebaut
+# (`npm --prefix ui run verwaltung`; im Release liefert es `server.yml`).
+# `crates/server/build.rs` bettet sie ein — der Container braucht kein Node.
+# Fehlt sie, zeigt die Verwaltung eine Seite, die sagt, wie man sie baut.
 COPY . .
 # `touch` auf die Quellen: sonst hält Cargo die Platzhalter für aktuell.
 RUN touch crates/*/src/*.rs \
@@ -53,11 +57,16 @@ COPY --from=bauen /src/target/release/sprechwerk-cli /usr/local/bin/sprechwerk-c
 
 USER sprechwerk
 VOLUME ["/data"]
-# QUIC spricht UDP. TCP wird nicht gebraucht — das ist der ganze Punkt.
-EXPOSE 7443/udp
+# QUIC spricht UDP — das ist der einzige Port nach außen.
+# 7444/tcp ist die Verwaltung (ADR 0011): im Container auf allen Adressen,
+# damit Docker sie weiterreichen kann; `docker-compose.yml` bindet sie auf dem
+# Host nur an 127.0.0.1. Einen Browser gibt es im Container nicht.
+EXPOSE 7443/udp 7444/tcp
 ENV SPRECHWERK_DATEN=/data \
     SPRECHWERK_BIND=0.0.0.0 \
-    SPRECHWERK_PORT=7443
+    SPRECHWERK_PORT=7443 \
+    SPRECHWERK_VERWALTUNG_BIND=0.0.0.0 \
+    SPRECHWERK_VERWALTUNG_BROWSER=0
 # Prüft das Lebenszeichen des Dienstes — **keine** Testverbindung: die würde
 # den Administratorplatz belegen (SPEC §7).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

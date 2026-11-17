@@ -232,7 +232,11 @@ impl Store {
         if let Some(eltern) = pfad.parent() {
             std::fs::create_dir_all(eltern)?;
         }
+        nur_eigentuemer(&pfad)?;
         let conn = Connection::open(&pfad)?;
+        // Gelöschtes überschreiben, nicht nur als frei markieren: sonst läge
+        // entfernter Inhalt weiter in der Datei (ADR 0012 §5).
+        conn.pragma_update(None, "secure_delete", "ON")?;
         // WAL: Leser blockieren Schreiber nicht — und eine Sicherung im
         // laufenden Betrieb ist dadurch konsistent.
         conn.pragma_update(None, "journal_mode", "WAL")?;
@@ -251,6 +255,14 @@ impl Store {
             params![SCHEMA_VERSION.to_string()],
         )?;
         Ok(Self { conn, pfad })
+    }
+
+    /// Schreibt die Datei neu, ohne freie Seiten (nach dem Entfernen von
+    /// Klartext: was nur als frei markiert war, ist danach weg).
+    pub fn verdichten(&self) -> Ergebnis<()> {
+        self.conn
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); VACUUM;")?;
+        Ok(())
     }
 
     /// Pfad der Datenbankdatei.
@@ -296,6 +308,10 @@ impl Store {
                 }
                 "naechste_laufnummer" => {
                     state.setze_naechste_laufnummer(wert.parse().unwrap_or(1));
+                }
+                "serverschluessel" => {
+                    state.serverschluessel = serde_json::from_str(&wert)
+                        .map_err(|e| Error::Wert(format!("serverschluessel: {e}")))?;
                 }
                 _ => {}
             }
@@ -454,6 +470,12 @@ impl Store {
              ON CONFLICT(schluessel) DO UPDATE SET wert = excluded.wert",
             params![state.naechste_laufnummer().to_string()],
         )?;
+        tx.execute(
+            "INSERT INTO meta (schluessel, wert) VALUES ('serverschluessel', ?1) \
+             ON CONFLICT(schluessel) DO UPDATE SET wert = excluded.wert",
+            params![serde_json::to_string(&state.serverschluessel)
+                .map_err(|e| Error::Wert(format!("serverschluessel: {e}")))?],
+        )?;
 
         // Räume: vorhandene Zeilen aktualisieren, fehlende löschen.
         {
@@ -603,6 +625,9 @@ impl Store {
         // Erst in eine Nebendatei, dann umbenennen: eine halb geschriebene
         // Sicherung darf nie als vollständig erscheinen.
         let zwischen = ziel.with_extension("tmp");
+        // Nur für den Eigentümer, wie die Datenbank: Mitglieder, Kennungen,
+        // Prüfprotokoll gehen niemanden sonst auf dem Rechner etwas an.
+        nur_eigentuemer(&zwischen)?;
         std::fs::write(&zwischen, text)?;
         std::fs::rename(&zwischen, ziel)?;
         Ok(())
@@ -663,9 +688,38 @@ impl Store {
         let zwischen = ziel.with_extension("tmp");
         self.conn
             .execute("VACUUM INTO ?1", params![zwischen.to_string_lossy()])?;
+        nur_eigentuemer(&zwischen)?;
         std::fs::rename(&zwischen, ziel)?;
         Ok(())
     }
+}
+
+/// Legt die Datenbankdatei mit 0600 an bzw. bringt eine vorhandene darauf.
+///
+/// Vorher war sie 0644 — für jeden Benutzer des Rechners lesbar. `-wal` und
+/// `-shm` legt SQLite mit denselben Rechten an wie die Datei selbst.
+fn nur_eigentuemer(pfad: &Path) -> Ergebnis<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let datei = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .open(pfad)?;
+        datei.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        for endung in ["-wal", "-shm"] {
+            let neben = PathBuf::from(format!("{}{endung}", pfad.display()));
+            if neben.exists() {
+                std::fs::set_permissions(&neben, std::fs::Permissions::from_mode(0o600))?;
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = pfad;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -716,6 +770,77 @@ mod tests {
         assert_eq!(geladen.protokoll, s.protokoll);
         assert_eq!(geladen.sperren, s.sperren);
         assert_eq!(geladen.naechste_laufnummer(), s.naechste_laufnummer());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Serverschlüssel-Kennungen überleben den Neustart, entfernter Klartext
+    /// steht danach nicht mehr in der Datei (ADR 0012).
+    #[test]
+    fn serverschluessel_und_klartext_entfernen() {
+        let dir = std::env::temp_dir().join(format!("sprechwerk-e2e-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let datei = dir.join("e2e.sqlitedb");
+        let mut s = zustand();
+        let ada = *s.mitglieder.keys().next().unwrap();
+        s.serverschluessel_anlegen(ada, &"ab".repeat(16), 1_100)
+            .unwrap();
+        let geheimnis = "Kassenstand-streng-geheim";
+        s.text_senden(ada, geheimnis, 1_101).unwrap();
+        {
+            let mut st = Store::oeffnen(&datei).unwrap();
+            st.speichern(&s).unwrap();
+            s.klartext_entfernen(|t| t.starts_with("e1."), 1_102);
+            st.speichern(&s).unwrap();
+            st.verdichten().unwrap();
+        }
+        let st = Store::oeffnen(&datei).unwrap();
+        let geladen = st.laden(|| State::neu("x", Role::Gast, 0)).unwrap();
+        assert_eq!(geladen.serverschluessel, s.serverschluessel);
+        assert!(geladen.nachrichten.is_empty());
+        drop(st);
+        // Auch nicht in freien Seiten oder im WAL.
+        for endung in ["", "-wal"] {
+            let pfad = PathBuf::from(format!("{}{endung}", datei.display()));
+            if let Ok(bytes) = std::fs::read(&pfad) {
+                assert!(
+                    !bytes
+                        .windows(geheimnis.len())
+                        .any(|w| w == geheimnis.as_bytes()),
+                    "Klartext steht noch in {}",
+                    pfad.display()
+                );
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn datenbank_ist_nur_fuer_den_eigentuemer() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("sprechwerk-rechte-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let datei = dir.join("r.sqlitedb");
+        // Eine alte Datei mit 0644 wird beim Öffnen zugemacht.
+        std::fs::write(&datei, b"").unwrap();
+        std::fs::set_permissions(&datei, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let mut st = Store::oeffnen(&datei).unwrap();
+        st.speichern(&zustand()).unwrap();
+        let sicherung = Store::sichern(&zustand(), dir.join("sicherungen"), 3, 1).unwrap();
+        let kopie = dir.join("kopie.sqlitedb");
+        st.datenbank_sichern(&kopie).unwrap();
+        for pfad in [&sicherung, &kopie] {
+            let rechte = std::fs::metadata(pfad).unwrap().permissions().mode() & 0o777;
+            assert_eq!(rechte, 0o600, "{}", pfad.display());
+        }
+        for endung in ["", "-wal", "-shm"] {
+            let pfad = PathBuf::from(format!("{}{endung}", datei.display()));
+            if pfad.exists() {
+                let rechte = std::fs::metadata(&pfad).unwrap().permissions().mode() & 0o777;
+                assert_eq!(rechte, 0o600, "{}", pfad.display());
+            }
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -11,6 +11,7 @@
 
 pub mod echo;
 pub mod klang;
+pub mod serverschluessel;
 pub mod sprechpfad;
 pub mod verschluesselt;
 
@@ -279,6 +280,8 @@ pub struct Verbindung {
     pub mitglieder: Vec<sprechwerk_protocol::Mitgliedsansicht>,
     /// Verlauf des zuletzt besuchten Raums.
     pub verlauf: Vec<sprechwerk_domain::Message>,
+    /// Welche Serverschlüssel es gibt (ADR 0012) — aktuell gehalten.
+    pub serverschluessel: sprechwerk_protocol::Schluesselstand,
 }
 
 impl Verbindung {
@@ -390,6 +393,7 @@ impl Verbindung {
                 mitglieder,
                 raum,
                 verlauf,
+                serverschluessel,
                 ..
             } => Ok(Self {
                 conn,
@@ -404,6 +408,7 @@ impl Verbindung {
                 raum,
                 mitglieder,
                 verlauf,
+                serverschluessel,
             }),
             ServerFrame::Fehler { code, text } => {
                 anyhow::bail!("Anmeldung abgelehnt: {text} ({code:?})")
@@ -422,6 +427,7 @@ impl Verbindung {
         let frame = lese(&mut self.recv, &mut self.puffer).await?;
         match &frame {
             Some(ServerFrame::Raeume { raeume }) => self.raeume = raeume.clone(),
+            Some(ServerFrame::Serverschluessel { stand }) => self.serverschluessel = stand.clone(),
             Some(ServerFrame::Betreten {
                 raum,
                 verlauf,
@@ -429,7 +435,9 @@ impl Verbindung {
             }) => {
                 self.verlauf = verlauf.clone();
                 self.mitglieder = anwesend.clone();
-                let _ = raum;
+                // Der Raum, in dem man jetzt sitzt — Schlüssel und Text gehören
+                // zu ihm, nicht zu dem aus der Begrüßung.
+                self.raum = Some(*raum);
             }
             Some(ServerFrame::MitgliedGeaendert { mitglied }) => {
                 if let Some(vorhanden) = self.mitglieder.iter_mut().find(|m| m.id == mitglied.id) {

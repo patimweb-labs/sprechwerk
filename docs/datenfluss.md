@@ -13,18 +13,26 @@ sequenceDiagram
 
     N->>UI: tippt, Enter
     UI->>D: invoke("text_senden", { text })
-    D->>I: Befehl::Text
-    I->>A: ClientFrame::Text
+    D->>D: Bund::verschluesseln (Serverschlüssel, Raum, Verfasser)
+    D->>A: ClientFrame::Text { e1.<id>.<Geheimtext> }
     A->>S: Rahmen (JSON, Strom)
+    S->>S: geheimtext::zerlegen (nur Geheimtext, aktueller Schlüssel)
     S->>S: domain::text_senden (Recht, Länge, Protokoll)
-    S-->>A: ServerFrame::Text an alle im Raum
+    S-->>A: ServerFrame::Text an alle im Raum (Geheimtext)
     A-->>I: Rahmen
-    I->>I: abbilden::verarbeite → Zustand
+    I->>I: abbilden::verarbeite → Nachricht „wartet"
+    D->>D: chat_lesen: Bund::lesen → Text
     I-->>D: melde(Zustand)
     D-->>UI: event "zustand"
     UI->>UI: render(modell)
     N->>UI: sieht die Nachricht
 ```
+
+Ver- und entschlüsselt wird **im Rust-Teil des Fensters**, nicht im Server und
+nicht in der Oberfläche (ADR 0012). Der Server sieht nur die Hülle; die
+Oberfläche bekommt nur das Ergebnis (`inhalt`: Text, wartet, unlesbar, …).
+Fehlt der Schlüssel, bleibt eine Nachricht „wartet" und wird lesbar, sobald
+ein Mitglied ihn weitergegeben hat — ohne den Verlauf neu zu laden.
 
 Der Rückweg über das Ereignis ist **kein** Umweg: der Absender bekommt seine
 Nachricht vom Server zurück, damit die Zeit und die Reihenfolge stimmen, die der

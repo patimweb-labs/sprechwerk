@@ -737,24 +737,6 @@
   "es": "Por debajo del umbral no se envía nada — ahorra ancho de banda y mantiene la sala en calma.",
   "fr": "Sous le seuil, rien n'est envoyé — économise la bande passante et garde le salon calme."
  },
- "room.encrypt": {
-  "de": "Sprache verschlüsseln",
-  "en": "Encrypt voice",
-  "es": "Cifrar la voz",
-  "fr": "Chiffrer la voix"
- },
- "room.unencrypt": {
-  "de": "Verschlüsselung aus",
-  "en": "Turn encryption off",
-  "es": "Desactivar el cifrado",
-  "fr": "Désactiver le chiffrement"
- },
- "room.encrypt.hint": {
-  "de": "Nur Sprache, je Raum. Text bleibt lesbar, weil er gespeichert wird.",
-  "en": "Voice only, per room. Text stays readable because it is stored.",
-  "es": "Solo voz, por sala. El texto sigue legible porque se guarda.",
-  "fr": "Voix seulement, par salon. Le texte reste lisible car il est stocké."
- },
  "room.encrypted": {
   "de": "Sprache Ende zu Ende verschlüsselt",
   "en": "Voice end-to-end encrypted",
@@ -1145,12 +1127,6 @@
   "es": "Motivo (aparece en el registro)",
   "fr": "Motif (apparaît dans le journal)"
  },
- "room.key_ok": {
-  "de": "verschlüsselt · Schlüssel liegt vor",
-  "en": "encrypted · key present",
-  "es": "cifrado · clave disponible",
-  "fr": "chiffré · clé présente"
- },
  "room.key_missing": {
   "de": "verschlüsselt · Schlüssel fehlt — du hörst nichts.",
   "en": "encrypted · key missing — you hear nothing.",
@@ -1210,5 +1186,305 @@
   "en": "Encryption off — voice travels readable through the server again.",
   "es": "Cifrado desactivado: la voz vuelve a pasar legible por el servidor.",
   "fr": "Chiffrement désactivé — la voix repasse en clair par le serveur."
+ },
+ "admin.title": {
+  "de": "Verwaltung",
+  "en": "Administration",
+  "es": "Administración",
+  "fr": "Administration"
+ },
+ "admin.title_server": {
+  "de": "Verwaltung · {}",
+  "en": "Administration · {}",
+  "es": "Administración · {}",
+  "fr": "Administration · {}"
+ },
+ "admin.loading": {
+  "de": "Lädt …",
+  "en": "Loading …",
+  "es": "Cargando …",
+  "fr": "Chargement …"
+ },
+ "admin.logout": {
+  "de": "Abmelden",
+  "en": "Sign out",
+  "es": "Cerrar sesión",
+  "fr": "Se déconnecter"
+ },
+ "admin.close": {
+  "de": "Schließen",
+  "en": "Close",
+  "es": "Cerrar",
+  "fr": "Fermer"
+ },
+ "admin.theme": {
+  "de": "Darstellung",
+  "en": "Appearance",
+  "es": "Apariencia",
+  "fr": "Apparence"
+ },
+ "admin.theme.dark": {
+  "de": "Dunkel",
+  "en": "Dark",
+  "es": "Oscuro",
+  "fr": "Sombre"
+ },
+ "admin.theme.light": {
+  "de": "Hell",
+  "en": "Light",
+  "es": "Claro",
+  "fr": "Clair"
+ },
+ "admin.theme.mono": {
+  "de": "Mono",
+  "en": "Mono",
+  "es": "Mono",
+  "fr": "Mono"
+ },
+ "admin.login.title": {
+  "de": "Zugang zur Verwaltung",
+  "en": "Access the administration",
+  "es": "Acceso a la administración",
+  "fr": "Accès à l'administration"
+ },
+ "admin.login.desc": {
+  "de": "Den Zugangscode schreibt der Server beim Start ins Protokoll (Zeile „Verwaltung bereit“). Im Container: docker logs.",
+  "en": "The server writes the access code to its log at startup (line “Verwaltung bereit”). In a container: docker logs.",
+  "es": "El servidor escribe el código de acceso en su registro al arrancar (línea «Verwaltung bereit»). En un contenedor: docker logs.",
+  "fr": "Le serveur écrit le code d'accès dans son journal au démarrage (ligne « Verwaltung bereit »). Dans un conteneur : docker logs."
+ },
+ "admin.login.code": {
+  "de": "Zugangscode",
+  "en": "Access code",
+  "es": "Código de acceso",
+  "fr": "Code d'accès"
+ },
+ "admin.login.submit": {
+  "de": "Anmelden",
+  "en": "Sign in",
+  "es": "Entrar",
+  "fr": "Se connecter"
+ },
+ "admin.login.wrong": {
+  "de": "Der Code stimmt nicht.",
+  "en": "The code is wrong.",
+  "es": "El código no es correcto.",
+  "fr": "Le code est incorrect."
+ },
+ "admin.error.server": {
+  "de": "Server nicht erreichbar",
+  "en": "Server unreachable",
+  "es": "Servidor inaccesible",
+  "fr": "Serveur injoignable"
+ },
+ "admin.error.server_desc": {
+  "de": "Die Seite versucht es weiter, sobald der Server wieder läuft.",
+  "en": "The page keeps trying until the server is back.",
+  "es": "La página seguirá intentándolo hasta que el servidor vuelva.",
+  "fr": "La page réessaie jusqu'au retour du serveur."
+ },
+ "admin.first.title": {
+  "de": "Noch niemand da",
+  "en": "Nobody here yet",
+  "es": "Todavía no hay nadie",
+  "fr": "Personne pour l'instant"
+ },
+ "admin.first.desc": {
+  "de": "Wer sich als Erster mit der App verbindet, wird Administrator. Verbinde dich am besten jetzt selbst.",
+  "en": "Whoever connects first with the app becomes administrator. Best connect yourself now.",
+  "es": "Quien se conecte primero con la aplicación será administrador. Lo mejor es conectarte tú ahora.",
+  "fr": "La première personne qui se connecte avec l'application devient administrateur. Connecte-toi de préférence maintenant."
+ },
+ "admin.server.title": {
+  "de": "Server",
+  "en": "Server",
+  "es": "Servidor",
+  "fr": "Serveur"
+ },
+ "admin.server.name": {
+  "de": "Name",
+  "en": "Name",
+  "es": "Nombre",
+  "fr": "Nom"
+ },
+ "admin.server.address": {
+  "de": "Adresse",
+  "en": "Address",
+  "es": "Dirección",
+  "fr": "Adresse"
+ },
+ "admin.server.port_udp": {
+  "de": "Port {} (UDP)",
+  "en": "Port {} (UDP)",
+  "es": "Puerto {} (UDP)",
+  "fr": "Port {} (UDP)"
+ },
+ "admin.server.version": {
+  "de": "Version",
+  "en": "Version",
+  "es": "Versión",
+  "fr": "Version"
+ },
+ "admin.server.uptime": {
+  "de": "Läuft seit",
+  "en": "Uptime",
+  "es": "En marcha desde",
+  "fr": "En service depuis"
+ },
+ "admin.server.connected": {
+  "de": "Verbunden",
+  "en": "Connected",
+  "es": "Conectados",
+  "fr": "Connectés"
+ },
+ "admin.server.rooms": {
+  "de": "Räume",
+  "en": "Rooms",
+  "es": "Salas",
+  "fr": "Salons"
+ },
+ "admin.server.backup": {
+  "de": "Letzte Sicherung",
+  "en": "Last backup",
+  "es": "Última copia",
+  "fr": "Dernière sauvegarde"
+ },
+ "admin.server.backup_none": {
+  "de": "noch keine",
+  "en": "none yet",
+  "es": "ninguna todavía",
+  "fr": "aucune pour l'instant"
+ },
+ "admin.server.backup_off": {
+  "de": "aus",
+  "en": "off",
+  "es": "desactivada",
+  "fr": "désactivée"
+ },
+ "admin.server.fingerprint": {
+  "de": "Fingerabdruck des Zertifikats",
+  "en": "Certificate fingerprint",
+  "es": "Huella del certificado",
+  "fr": "Empreinte du certificat"
+ },
+ "admin.server.fingerprint_hint": {
+  "de": "Diesen Wert an die Mitglieder weitergeben: die App zeigt ihn beim ersten Verbinden zum Vergleich.",
+  "en": "Pass this value on to members: the app shows it for comparison on first connect.",
+  "es": "Comparte este valor con los miembros: la aplicación lo muestra para compararlo al conectarse por primera vez.",
+  "fr": "Transmets cette valeur aux membres : l'application l'affiche pour comparaison à la première connexion."
+ },
+ "admin.members.title": {
+  "de": "Mitglieder und Rollen",
+  "en": "Members and roles",
+  "es": "Miembros y roles",
+  "fr": "Membres et rôles"
+ },
+ "admin.members.hint": {
+  "de": "Administrator wirst du so: mit der App verbinden, dann hier bei deinem Namen die Rolle wählen.",
+  "en": "To become administrator: connect with the app, then pick the role next to your name here.",
+  "es": "Para ser administrador: conéctate con la aplicación y elige aquí el rol junto a tu nombre.",
+  "fr": "Pour devenir administrateur : connecte-toi avec l'application, puis choisis le rôle à côté de ton nom ici."
+ },
+ "admin.members.empty": {
+  "de": "Noch keine Mitglieder",
+  "en": "No members yet",
+  "es": "Todavía no hay miembros",
+  "fr": "Pas encore de membres"
+ },
+ "admin.members.empty_desc": {
+  "de": "Sobald sich jemand mit der App verbindet, steht er hier.",
+  "en": "As soon as someone connects with the app, they appear here.",
+  "es": "En cuanto alguien se conecte con la aplicación, aparecerá aquí.",
+  "fr": "Dès qu'une personne se connecte avec l'application, elle apparaît ici."
+ },
+ "admin.members.online": {
+  "de": "verbunden",
+  "en": "connected",
+  "es": "conectado",
+  "fr": "connecté"
+ },
+ "admin.members.in_room": {
+  "de": "in {}",
+  "en": "in {}",
+  "es": "en {}",
+  "fr": "dans {}"
+ },
+ "admin.members.role_for": {
+  "de": "Rolle von {}",
+  "en": "Role of {}",
+  "es": "Rol de {}",
+  "fr": "Rôle de {}"
+ },
+ "admin.role.set": {
+  "de": "Rolle von {} geändert.",
+  "en": "Role of {} changed.",
+  "es": "Rol de {} cambiado.",
+  "fr": "Rôle de {} modifié."
+ },
+ "admin.role.last": {
+  "de": "{} ist der letzte Administrator und bleibt es. Ernenne zuerst einen zweiten.",
+  "en": "{} is the last administrator and stays one. Appoint a second one first.",
+  "es": "{} es el último administrador y lo seguirá siendo. Nombra primero a otro.",
+  "fr": "{} est le dernier administrateur et le reste. Nomme d'abord un second."
+ },
+ "admin.role.failed": {
+  "de": "Rolle von {} nicht geändert.",
+  "en": "Role of {} not changed.",
+  "es": "No se cambió el rol de {}.",
+  "fr": "Rôle de {} non modifié."
+ },
+ "admin.log.title": {
+  "de": "Protokoll",
+  "en": "Log",
+  "es": "Registro",
+  "fr": "Journal"
+ },
+ "admin.log.hint": {
+  "de": "Dieselben Zeilen wie auf der Konsole bzw. in docker logs.",
+  "en": "The same lines as on the console or in docker logs.",
+  "es": "Las mismas líneas que en la consola o en docker logs.",
+  "fr": "Les mêmes lignes que dans la console ou dans docker logs."
+ },
+ "admin.log.empty": {
+  "de": "Noch keine Zeilen.",
+  "en": "No lines yet.",
+  "es": "Todavía no hay líneas.",
+  "fr": "Pas encore de lignes."
+ },
+ "admin.status.counts": {
+  "de": "{} verbunden · {} Mitglieder",
+  "en": "{} connected · {} members",
+  "es": "{} conectados · {} miembros",
+  "fr": "{} connectés · {} membres"
+ },
+ "chat.e2e": {
+  "de": "Ende zu Ende verschlüsselt — Text und Sprache. Der Server liest nicht mit.",
+  "en": "End-to-end encrypted — text and voice. The server cannot read along.",
+  "es": "Cifrado de extremo a extremo: texto y voz. El servidor no puede leerlos.",
+  "fr": "Chiffré de bout en bout — texte et voix. Le serveur ne peut pas lire."
+ },
+ "chat.waiting": {
+  "de": "Verschlüsselt — der Schlüssel fehlt noch.",
+  "en": "Encrypted — the key has not arrived yet.",
+  "es": "Cifrado: la clave aún no ha llegado.",
+  "fr": "Chiffré — la clé n’est pas encore arrivée."
+ },
+ "chat.unreadable": {
+  "de": "Nicht lesbar — verändert oder beschädigt.",
+  "en": "Unreadable — altered or damaged.",
+  "es": "Ilegible: alterado o dañado.",
+  "fr": "Illisible — modifié ou endommagé."
+ },
+ "chat.newer": {
+  "de": "„{}“ — dafür braucht es eine neuere Version.",
+  "en": "“{}” — this needs a newer version.",
+  "es": "«{}»: se necesita una versión más reciente.",
+  "fr": "« {} » — une version plus récente est nécessaire."
+ },
+ "chat.key_wait": {
+  "de": "Der Schlüssel für den Chat kommt von einem anderen Mitglied, sobald eines online ist, das ihn hat. Bis dahin kannst du nicht schreiben.",
+  "en": "The chat key comes from another member as soon as one who has it is online. Until then you cannot write.",
+  "es": "La clave del chat llega de otro miembro en cuanto uno que la tenga esté conectado. Hasta entonces no puedes escribir.",
+  "fr": "La clé du chat vient d’un autre membre dès qu’un membre qui la possède est en ligne. D’ici là, tu ne peux pas écrire."
  }
 }

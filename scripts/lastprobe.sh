@@ -22,6 +22,8 @@ WURZEL="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${1:-17444}"
 DATEN="$(mktemp -d)"
 SERVER="$WURZEL/target/debug/sprechwerk"
+# Prüfserver ohne Verwaltung im Browser (kein Port 7444, kein Browserfenster).
+export SPRECHWERK_VERWALTUNG_AKTIV=0
 PROBE="$WURZEL/target/debug/sprechprobe"
 
 # Vier Sprecher mit verschiedenen Tönen: so lässt sich im Mitschnitt

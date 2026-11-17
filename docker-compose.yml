@@ -5,8 +5,12 @@ services:
     image: sprechwerk:dev
     restart: unless-stopped
     ports:
-      # Nur UDP: QUIC braucht kein TCP.
+      # Sprache und Text: QUIC über UDP — der einzige Port nach außen.
       - "7443:7443/udp"
+      # Verwaltung im Browser: **nur** auf diesem Rechner (127.0.0.1).
+      # Von einem anderen Rechner: ssh -L 7444:127.0.0.1:7444 <server>,
+      # dann http://127.0.0.1:7444. Den Zugangscode zeigt `docker compose logs`.
+      - "127.0.0.1:7444:7444/tcp"
     volumes:
       - sprechwerk-daten:/data
     environment:
@@ -16,6 +20,9 @@ services:
       SPRECHWERK_SICHERUNG_AKTIV: "1"
       SPRECHWERK_SICHERUNG_INTERVALL_MINUTEN: "1440"
       SPRECHWERK_SICHERUNG_BEHALTEN: "14"
+      # Fester Zugangscode für die Verwaltung (mind. 16 Zeichen); ohne
+      # Angabe gilt bei jedem Start ein neuer, er steht im Protokoll.
+      # SPRECHWERK_VERWALTUNG_CODE: "ein-langer-geheimer-code"
     # Der Server braucht keine besonderen Rechte.
     security_opt:
       - no-new-privileges:true

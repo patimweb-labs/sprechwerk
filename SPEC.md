@@ -36,6 +36,15 @@ Rollen werden im Client verwaltet. Dazu kommt eine schlanke Diagnose (wer ist
 verbunden, letztes Protokoll, letzte Sicherung) — **[A]** als Unterbefehl des
 Servers, nicht als Weboberfläche.
 
+**[P] Nachtrag 2026-11-17: Verwaltung im Browser.** Die Festlegung oben ist
+damit teilweise aufgehoben — auf deinen Wunsch: den Server auch ohne Docker als
+Programm betreiben (Windows, macOS) und Administrator werden, ohne auf „wer
+zuerst kommt" angewiesen zu sein. Der Server liefert eine Seite aus
+(`127.0.0.1:7444`, Zugangscode aus dem Protokoll): Diagnose, Protokoll live,
+Mitglieder mit Rolle. **[A]** Ändern kann sie nur Rollen; Räume und Sperren
+bleiben beim Client, Konfiguration bei der Datei. Preis, Schutz und
+Alternativen: `docs/adr/0011-verwaltung-im-browser.md`.
+
 **Nachtrag 2026-11-14:** Der Container hat einen `HEALTHCHECK`, und er prüft
 **kein** Netz: der Server schreibt alle 10 s ein Lebenszeichen nach
 `<daten>/lebt`, `sprechwerk --gesundheit` liest es und antwortet mit dem
@@ -85,6 +94,17 @@ Hintergrundeffekte, Emojis/Reaktionen, Suche.
 **[A] Ende-zu-Ende je Raum:** Sprache kann je Raum Ende zu Ende verschlüsselt
 werden (ADR 0006, umgesetzt). Text bleibt serverseitig lesbar — die Zusage gilt
 nur für Sprache. Kosten: 16 Byte je Rahmen.
+
+**[P] Nachtrag 2026-11-17: alles Ende zu Ende** (ADR 0012). Ersetzt den Absatz
+oben. *Begründung (Nutzer):* „Das muss in sich geschlossen sein — wenig Sinn,
+die Sprache zu verschlüsseln, aber den Text nicht." Lesen dürfen die
+Mitglieder, nicht der Betreiber; wer als Betreiber lesen will, verbindet sich
+mit dem Client. Text, Reaktionen, Link-Vorschauen und Anhänge werden mit einem
+Serverschlüssel verschlüsselt, den nur Mitglieder haben; Sprache ist in
+**jedem** Raum verschlüsselt (kein Schalter mehr). Klartext nimmt der Server
+nicht an; vorhandener wurde beim Update gelöscht. *Preis:* ein neues Mitglied
+liest und schreibt erst, wenn ein Mitglied mit Schlüssel online ist; der
+Server kann nicht mehr nach Inhalt suchen; Protokollversion 2.
 
 **[P] Aufnahme-Schutz:** Rauschunterdrückung und Noisegate sind eigene Schalter
 (Vorgabe an). Monitore (`.monitor`-Quellen) sind **keine** Mikrofone und werden
@@ -216,8 +236,9 @@ mit eigenem, kleinem Kopf (6 Byte: Version, Codec, Folge, Sprecher).
     Modell (`zertifikat`) und damit im Fenster; „vergessen" ist eine
     ausdrückliche Handlung, kein stiller Knopf.
  2. **Sprache je Raum Ende zu Ende** (ADR 0006): X25519 + HKDF-SHA256 +
-    ChaCha20-Poly1305, Gruppenschlüssel mit Epoche. Text bleibt serverseitig
-    lesbar, weil er gespeichert wird.
+    ChaCha20-Poly1305, Gruppenschlüssel mit Epoche — seit 2026-11-17 in jedem
+    Raum. **Text Ende zu Ende** (ADR 0012): Serverschlüssel der Mitglieder,
+    der Server speichert nur Geheimtext.
 
  **Quantensicher ist der Transport seit 2026-11-14** (ADR 0010, Schritt 1):
  `rustls` läuft mit dem Anbieter `aws-lc-rs`, die Schlüsselvereinbarung ist
@@ -257,8 +278,8 @@ Handelndem und Objekt. Aufbewahrung wie Text (unbegrenzt, einstellbar).
   für „Sperren wie TS3".
 * Kein Rückwärtsmigration beim Update.
 * Keine Formatierung, keine Anhänge, kein Video in Version 1.
-* Keine Betriebs-Weboberfläche: wer einen Raum umbenennen will, braucht den
-  Client.
+* Die Verwaltung im Browser vergibt nur Rollen: wer einen Raum umbenennen
+  will, braucht den Client (SPEC §2, Nachtrag 2026-11-17).
 
 ## 10. Nachtrag: Entscheidungen aus der Umsetzung
 

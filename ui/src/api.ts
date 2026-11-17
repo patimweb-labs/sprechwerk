@@ -44,11 +44,25 @@ export interface Mitglied {
   ich: boolean;
 }
 
+/**
+ * Was eine Nachricht zeigt (ADR 0012). Entschlüsselt wird im Rust-Teil; hier
+ * kommt nur das Ergebnis an — als Summentyp, nicht als Text mit Sonderwerten.
+ */
+export type NachrichtInhalt =
+  | { zustand: "text"; text: string }
+  /** Verschlüsselt, der Schlüssel fehlt noch. */
+  | { zustand: "wartet" }
+  /** Verändert, umgehängt oder beschädigt. */
+  | { zustand: "unlesbar" }
+  /** Eine Art, die diese Version nicht kennt. */
+  | { zustand: "neuer"; art: string }
+  | { zustand: "geloescht" };
+
 export interface Nachricht {
   id: string;
   verfasser: string;
   verfasser_name: string;
-  text: string;
+  inhalt: NachrichtInhalt;
   zeit: number;
   geloescht: boolean;
   loeschbar: boolean;
@@ -117,6 +131,11 @@ export interface Zustand {
   sperren: Sperre[];
   /** Räume, deren Schlüssel vorliegt (nur verschlüsselte Räume). */
   schluessel: Schluesselstand[];
+  /**
+   * Liegt der Serverschlüssel für den Chat vor? `wartet`: er kommt von einem
+   * anderen Mitglied, sobald eines online ist, das ihn hat (ADR 0012).
+   */
+  textschluessel: "unbekannt" | "bereit" | "wartet";
   /** Umlaufzeit zum Server in Millisekunden (aus Ping/Pong). */
   latenz_ms: number | null;
   /** Betriebszahlen, bis sie einmal abgefragt wurden: null. */
@@ -215,8 +234,6 @@ const echtApi = {
   sperrliste: () => invoke<void>("sperrliste"),
   ping: () => invoke<void>("ping"),
   schluesselAnfordern: (raum: string) => invoke<void>("schluessel_anfordern", { raum }),
-  raumVerschluesseln: (raum: string, an: boolean) =>
-    invoke<void>("raum_verschluesseln", { raum, an }),
   audioGeraete: () => invoke<Geraeteliste>("audio_geraete"),
   audioPegel: (geraet: string, millisekunden: number) =>
     invoke<number>("audio_pegel", { geraet, millisekunden }),

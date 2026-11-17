@@ -15,7 +15,6 @@ import {
   betreten,
   darfEingreifen,
   darfRaeumeVerwalten,
-  verschluesseln,
   speichere,
   setzeRolle,
   darfRollenVergeben,
@@ -24,6 +23,7 @@ import {
   loesche,
   meinRaum,
   modell,
+  raumLoeschen,
   raumUmbenennen,
   sende,
   schluesselAnfordern,
@@ -37,7 +37,6 @@ import {
   verbunden,
   verschieben,
 } from "../store";
-import { api } from "../api";
 
 const eingabe = ref("");
 const verlauf = ref<HTMLElement | null>(null);
@@ -212,15 +211,7 @@ function raumMenuePunkte(): UI.MenuItem[] {
   if (darfRaeumeVerwalten.value) {
     punkte.push({ id: "new", label: t("room.add"), separatorBefore: true });
     punkte.push({ id: "rename", label: t("room.rename") });
-    // Ende-zu-Ende-Verschlüsselung: je Raum, nur mit Recht.
-    const verschluesselt =
-      modell.raeume.find((r) => r.id === zielRaum.value)?.verschluesselt ?? false;
-    punkte.push({
-      id: verschluesselt ? "klar" : "verschluesseln",
-      label: verschluesselt ? t("room.unencrypt") : t("room.encrypt"),
-      hint: t("room.encrypt.hint"),
-      separatorBefore: true,
-    });
+    // Kein Schalter „verschlüsseln": jeder Raum ist es (ADR 0012).
     punkte.push({ id: "delete", label: t("room.delete"), separatorBefore: true, danger: true });
   }
   return punkte;
@@ -244,12 +235,6 @@ function raumMenueGewaehlt(id: string, wahl: string) {
     case "delete":
       dialog.value = "loeschen";
       break;
-    case "verschluesseln":
-      void verschluesseln(id, true);
-      break;
-    case "klar":
-      void verschluesseln(id, false);
-      break;
   }
 }
 
@@ -261,7 +246,7 @@ async function bestaetigen() {
   } else if (art === "umbenennen" && zielRaum.value) {
     await raumUmbenennen(zielRaum.value, eingabeName.value);
   } else if (art === "loeschen" && zielRaum.value) {
-    await api.raumLoeschen(zielRaum.value);
+    await raumLoeschen(zielRaum.value);
   } else if (art === "verschieben" && zielMitglied.value && zielRaumWahl.value) {
     await verschieben(zielMitglied.value, zielRaumWahl.value);
   } else if (art === "kicken" && zielMitglied.value) {
@@ -284,7 +269,9 @@ watch(
 async function absenden() {
   const text = eingabe.value;
   eingabe.value = "";
-  await sende(text);
+  // Abgelehnt (Server weg, zu lang): der Text kommt zurück ins Feld, statt
+  // verloren zu sein — es sei denn, inzwischen wurde Neues getippt.
+  if (!(await sende(text)) && eingabe.value === "") eingabe.value = text;
 }
 </script>
 
@@ -315,14 +302,7 @@ async function absenden() {
               @contextmenu="oeffneRaumMenue(raum.id, $event)"
             >
               <span class="raum__marke" aria-hidden="true" />
-              <span class="raum__name">
-                {{ raum.name }}
-                <IconLock
-                  v-if="raum.verschluesselt"
-                  class="raum__schloss"
-                  :title="t('room.encrypted')"
-                />
-              </span>
+              <span class="raum__name">{{ raum.name }}</span>
               <span class="raum__zahl">{{ anwesendeVon(raum.id).length || "" }}</span>
             </button>
             <UI.WpMenu
@@ -338,21 +318,17 @@ async function absenden() {
             </UI.WpMenu>
           </div>
 
-          <!-- Verschlüsselt: der Schlüssel ist die halbe Miete. Wer ihn nicht
-               hat, hört nichts — und weiß ohne diese Zeile nicht, warum. -->
-          <p v-if="raum.verschluesselt" class="schluessel" :class="{ fehlt: schluesselVorhanden(raum.id) === false }">
-            <template v-if="schluesselVorhanden(raum.id)">
-              {{ t("room.key_ok") }}
-            </template>
-            <template v-else>
-              {{ t("room.key_missing") }}
-              <UI.WpButton
-                :label="t('room.key_request')"
-                size="sm"
-                variant="ghost"
-                @press="schluesselAnfordern(raum.id)"
-              />
-            </template>
+          <!-- Jeder Raum ist verschlüsselt. Wer den Sprachschlüssel des
+               eigenen Raums nicht hat, hört nichts — und weiß ohne diese
+               Zeile nicht, warum. Für andere Räume ist die Frage sinnlos. -->
+          <p v-if="raum.hier && schluesselVorhanden(raum.id) === false" class="schluessel fehlt">
+            {{ t("room.key_missing") }}
+            <UI.WpButton
+              :label="t('room.key_request')"
+              size="sm"
+              variant="ghost"
+              @press="schluesselAnfordern(raum.id)"
+            />
           </p>
 
           <ul v-if="anwesendeVon(raum.id).length" class="leute">
@@ -383,7 +359,7 @@ async function absenden() {
                 v-if="!m.ich && darfEingreifen"
                 class="zeilenmenue"
                 :items="mitgliedMenue(m.id)"
-                :label="`Menü für ${m.name}`"
+                :label="t('server.menu_for', m.name)"
                 align="right"
                 :open="offenesMitglied === m.id"
                 @update:open="(offen: boolean) => (offenesMitglied = offen ? m.id : null)"
@@ -402,6 +378,9 @@ async function absenden() {
       <header class="kopf">
         <div class="kopf__text">
           <h1>{{ meinRaum ? meinRaum.name : t("room.none") }}</h1>
+          <p v-if="meinRaum" class="kopf__e2e">
+            <IconLock class="kopf__schloss" aria-hidden="true" />{{ t("chat.e2e") }}
+          </p>
         </div>
         <!-- Chat nach rechts einklappen: der Verlauf verschwindet, die
              Raumliste bekommt die Breite. Kein Schalter in den Einstellungen —
@@ -443,13 +422,21 @@ async function absenden() {
                 {{ t("chat.delete") }}
               </button>
             </header>
-            <p v-if="n.geloescht" class="beitrag__weg">{{ t("chat.deleted") }}</p>
-            <p v-else class="beitrag__inhalt">{{ n.text }}</p>
+            <p v-if="n.inhalt.zustand === 'text'" class="beitrag__inhalt">{{ n.inhalt.text }}</p>
+            <p v-else-if="n.inhalt.zustand === 'geloescht'" class="beitrag__weg">{{ t("chat.deleted") }}</p>
+            <p v-else-if="n.inhalt.zustand === 'wartet'" class="beitrag__weg">{{ t("chat.waiting") }}</p>
+            <p v-else-if="n.inhalt.zustand === 'neuer'" class="beitrag__weg">{{ t("chat.newer", n.inhalt.art) }}</p>
+            <p v-else class="beitrag__weg beitrag__weg--fehler">{{ t("chat.unreadable") }}</p>
           </div>
         </article>
       </div>
 
-      <div v-if="meinRaum && verbunden" class="schreiben">
+      <!-- Ohne Serverschlüssel kein Schreiben: was hinausginge, wäre
+           unverschlüsselt — der Server nähme es auch nicht an (ADR 0012). -->
+      <p v-if="meinRaum && verbunden && modell.textschluessel === 'wartet'" class="schreiben schreiben--wartet" role="status">
+        {{ t("chat.key_wait") }}
+      </p>
+      <div v-else-if="meinRaum && verbunden" class="schreiben">
         <UI.WpInput v-model="eingabe" :placeholder="t('chat.placeholder')" @keyup.enter="absenden" />
         <UI.WpButton
           :label="t('chat.send')"
@@ -650,14 +637,18 @@ async function absenden() {
   background: var(--wp-color-accent-default);
 }
 
-/* Schloss an verschlüsselten Räumen: klein, in der Textfarbe — ein Zustand,
-   kein Schmuck. */
-.raum__schloss {
-  width: var(--wp-font-size-sm);
-  height: var(--wp-font-size-sm);
-  margin-left: var(--wp-space-1);
-  vertical-align: calc(var(--wp-size-border) * -1);
-  color: var(--wp-color-text-muted);
+/* Ende zu Ende: einmal im Kopf des Chats, nicht an jedem Raum — es gilt für
+   alle. Klein und ruhig: ein Zustand, kein Schmuck. */
+.kopf__e2e {
+  display: flex;
+  align-items: center;
+  gap: var(--wp-space-1);
+}
+
+.kopf__schloss {
+  width: var(--wp-font-size-xs);
+  height: var(--wp-font-size-xs);
+  flex: none;
 }
 
 .raum__name {
@@ -909,6 +900,16 @@ async function absenden() {
   margin: var(--wp-space-1) 0 0;
   color: var(--wp-color-text-faint);
   font-style: italic;
+}
+
+.beitrag__weg--fehler {
+  color: var(--wp-color-status-warn);
+}
+
+.schreiben--wartet {
+  margin: 0;
+  font-size: var(--wp-font-size-sm);
+  color: var(--wp-color-text-muted);
 }
 
 .schreiben {

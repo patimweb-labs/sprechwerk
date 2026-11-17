@@ -3918,9 +3918,11 @@ dependencies = [
  "quinn",
  "rand_core 0.6.4",
  "rustls",
+ "serde_json",
  "sha2",
  "sprechwerk-domain",
  "sprechwerk-protocol",
+ "thiserror 2.0.21",
  "tokio",
  "x25519-dalek",
 ]

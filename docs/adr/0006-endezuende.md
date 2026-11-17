@@ -1,6 +1,10 @@
 # ADR 0006 — Ende-zu-Ende-Verschlüsselung für Sprache
 
-**Status:** umgesetzt (2026-11-04) — je Raum einschaltbar
+**Status:** umgesetzt (2026-11-04) — je Raum einschaltbar.
+**Nachtrag 2026-11-17:** abgelöst in zwei Punkten durch
+[ADR 0012](0012-alles-ende-zu-ende.md): jeder Raum ist verschlüsselt (kein
+Schalter), und Text ist es ebenfalls. Die Schlüsselrunde für Sprache bleibt
+wie hier beschrieben.
 **Entscheidung (Nutzer):** pro Raum optional, abschaltbar; Text bleibt lesbar.
 **Betrifft:** `crates/adapters`, `crates/protocol`, `crates/server`
 
