@@ -288,6 +288,13 @@ async function thema(wert: string) {
         </div>
       </UI.WpCard>
 
+      <UI.WpCard :title="t('set.chat')">
+        <div class="felder">
+          <UI.WpSwitch v-model="einstellungen.link_vorschau" :label="t('set.link_preview')" />
+          <p class="hinweis">{{ t("set.link_preview.hint") }}</p>
+        </div>
+      </UI.WpCard>
+
       <UI.WpCard :title="t('set.appearance')">
         <div class="felder">
           <UI.WpToggleGroup

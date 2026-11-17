@@ -1,0 +1,28 @@
+[package]
+name = "sprechwerk-linkvorschau"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "sprechwerk: Link-Vorschau, abgerufen vom Absender (ADR 0012 §2)"
+
+# Eigenes Crate, damit der Server weder HTTP-Client noch Bilddecoder mitbaut —
+# nur die Clients rufen Seiten ab (ADR 0012 §2: der Absender, nie der Server).
+[dependencies]
+sprechwerk-protocol.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+# HTTP(S)-Abruf der Seite und ihres Bilds. `rustls` nimmt denselben Anbieter
+# `aws-lc-rs` wie quinn (ein Anbieter je Prozess) und prüft gegen die
+# Zertifikate des Systems; ohne Vorgabefunktionen kein HTTP/2, keine Proxys.
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+# Vorschaubild verkleinern und als JPEG neu schreiben — der Empfänger soll
+# nicht das Originalbild einer fremden Seite bekommen, sondern ein kleines,
+# gleichmäßig großes. Nur die Formate, die Seiten als og:image nutzen.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
+# Relative Bildadressen gegen die Seite auflösen.
+url = "2"
+# Das Bild steht als Base64 im Umschlag (JSON).
+base64 = "0.22"
+
+[dev-dependencies]
+tokio = { workspace = true }

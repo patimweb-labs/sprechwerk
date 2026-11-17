@@ -68,7 +68,7 @@ describe("Chat Ende zu Ende (ADR 0012)", () => {
   });
 
   function n(id: string, inhalt: (typeof modell.nachrichten)[number]["inhalt"]) {
-    return { id, verfasser: "mitglied_2", verfasser_name: "Bosse", inhalt, zeit: 0, geloescht: false, loeschbar: false };
+    return { id, verfasser: "mitglied_2", verfasser_name: "Bosse", inhalt, zeit: 0, geloescht: false, loeschbar: false, reaktionen: [] };
   }
 
   it("zeigt jeden Zustand einer Nachricht — nie den Geheimtext", () => {

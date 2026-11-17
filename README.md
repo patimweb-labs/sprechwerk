@@ -1,31 +1,94 @@
 # sprechwerk
 
 **Sprach- und Texträume für Vereine.** Selbst gehostet, ein Container, ein
-UDP-Port. Für Leute, die heute TeamSpeak oder Discord benutzen, und einen
+UDP-Port. Für Leute, die heute TeamSpeak oder Discord benutzen — und für einen
 Betreiber, der die Daten selbst in der Hand haben will.
 
-![Raumansicht: links die Räume mit den Anwesenden, rechts der Verlauf des Trainingsraums](docs/bilder/raeume-dark.png)
+![Raumansicht, dunkel: links die Räume mit den Anwesenden, rechts der Chat mit Vorschaukarte](docs/bilder/raeume-dark.png)
 
 > Arbeitstitel. Der Name ist austauschbar; Verzeichnis und Crates heißen so,
 > bis ein besserer gefunden ist.
 
-**Inhalt:** [Was es ist](#was-es-ist) · [Für wen](#für-wen) ·
-[So sieht es aus](#so-sieht-es-aus) · [Im Vergleich](#warum-nicht-einfach-teamspeak-weiter) ·
-[Stand](#stand-heute) · [Installation](#installation) ·
-[Erstes Verbinden](#das-erste-mal-verbinden) · [Sicherheit und Daten](#sicherheit-und-daten) ·
-[Betrieb](#betrieb) · [Selbst prüfen](#selbst-prüfen) · [Mitentwickeln](#mitentwickeln)
+**Inhalt** ·
+[Was es ist](#was-es-ist) ·
+[Was es kann](#was-es-kann) ·
+[Für wen](#für-wen) ·
+[So sieht es aus](#so-sieht-es-aus) ·
+[Im Vergleich](#im-vergleich) ·
+[Stand heute](#stand-heute) ·
+[Installation](#installation) ·
+[Das erste Mal verbinden](#das-erste-mal-verbinden) ·
+[Verwaltung im Browser](#verwaltung-im-browser) ·
+[Sicherheit und Daten](#sicherheit-und-daten) ·
+[Betrieb](#betrieb) ·
+[Selbst prüfen](#selbst-prüfen) ·
+[Mitentwickeln](#mitentwickeln) ·
+[Aufbau](#aufbau) ·
+[Protokoll in einem Blick](#protokoll-in-einem-blick)
 
 ## Was es ist
 
 Ein Ort zum Reden und Schreiben für eine geschlossene Gruppe: Vorstandssitzung,
 Trainingsabend, Spieleabend, Elternabend. Man tritt einem Server bei, betritt
-einen Raum, spricht — und kann daneben Text schreiben, der bleibt.
+einen Raum, spricht — und schreibt daneben Text, der bleibt.
 
 Der Unterschied zu den üblichen Werkzeugen ist nicht der Funktionsumfang,
-sondern die Bauweise: **ein Datenmodell, aus dem alles folgt** (Räume, Rollen,
-Rechte, Anzeige), **ein Port** statt dreier, **keine Konten**, sondern ein
-Schlüssel, und **jede Entscheidung mit Begründung und Preis** in
-[`SPEC.md`](SPEC.md) und [`docs/adr/`](docs/adr/).
+sondern die Bauweise:
+
+* **Ein Datenmodell, aus dem alles folgt.** Räume, Rollen, Rechte und Anzeige
+  kommen aus einem Zustand; die Oberfläche ist `render(modell)`. Was im Modell
+  sichtbar ist, ist auch zu sehen — „ausblenden" gibt es nicht als Anweisung.
+* **Zustände sind Summentypen**, keine Fächer aus Booleans:
+  `enum Zustand { Leer, Laedt, Fertig(Daten), Fehler(Text) }`.
+* **Ein Port** statt dreier: Steuerung und Text als Strom, Sprache als
+  Datagramm, alles auf einem UDP-Port über QUIC.
+* **Keine Konten**, sondern ein Schlüsselpaar: die Kennung ist eine Datei, die
+  man mitnimmt.
+* **Alles Ende zu Ende** — Text, Sprache, Reaktionen, Vorschauen. Der Betreiber
+  sieht keinen Inhalt, nur den Betrieb.
+* **Jede Festlegung mit Begründung und Preis** in [`SPEC.md`](SPEC.md) und
+  [`docs/adr/`](docs/adr/).
+
+## Was es kann
+
+**Sprache.** Räume betreten, reden, hören. Aufnahme über PipeWire/PulseAudio
+(Linux), CoreAudio (macOS), WASAPI (Windows). Hochpass, Entrauschung,
+Noisegate und Echounterdrückung (AEC3, reines Rust) laufen vor der Kodierung;
+Opus mit 32 kbit/s, 60 ms Vorlauf gegen abgeschnittene erste Wörter — die
+Sprechtaste schneidet also nichts ab. Je Sprecher ein eigener Jitter-Puffer,
+gemischt wird im Client. Der Server verteilt nur, mischt nichts und prüft das
+Rederecht. Wer stumm oder taub schaltet, sieht das an sich selbst und an anderen.
+
+**Text.** Ein Chat je Raum, Verlauf dauerhaft. Löschen kann der Verfasser weich
+(„Nachricht gelöscht" bleibt stehen), ein Moderator hart; eine Aufbewahrungsfrist
+räumt nach Plan auf. Dazu:
+
+* **Reaktionen** — sechs Zeichen (👍 ❤️ 😂 😮 😢 🎉), zusammengefasst angezeigt;
+  wer dabei ist, sieht man am Zeichen.
+* **Effekte** — Konfetti, Herzen, Beben; spielen einmal beim Empfang und lassen
+  sich noch einmal abspielen.
+* **Links** — anklickbar und mit **Vorschau**: Titel, Beschreibung und ein
+  kleines Bild. Die Seite ruft der **Absender** ab, nie der Empfänger und nie
+  der Server; abschaltbar in den Einstellungen. Anklicken öffnet den Browser
+  des Systems, nicht das Fenster.
+
+**Rollen und Rechte.** Administrator, Moderator, Mitglied, Gast — vier Rollen
+und eine Tabelle statt hunderter Einzelrechte. Kontextmenüs für Eingriffe:
+stumm schalten, taub schalten, in einen anderen Raum verschieben, aus dem Raum
+werfen, vom Server werfen, sperren. Jede Änderung steht mit vorher/nachher im
+**Prüfprotokoll**, auch abgelehnte Versuche; die **Sperrliste** nennt Grund und
+Urheber und lässt sich aufheben.
+
+**Verwaltung im Browser.** Jeder Server bringt eine Verwaltungsseite mit, die er
+selbst ausliefert: Serverzustand, Mitglieder samt Rollen, Live-Protokoll. Hier
+wird man Administrator, ohne einen Schlüssel aus der Hand zu geben — siehe
+[Verwaltung im Browser](#verwaltung-im-browser).
+
+**Betrieb.** Ein Container mit einem Volume und einem UDP-Port — kein
+Reverse-Proxy, kein Zertifikatsantrag. Alternativ der Server als Programm unter
+Linux, Windows und macOS. Sicherung nach Plan, Export/Import als lesbares JSON,
+Healthcheck über ein Lebenszeichen, Unterbefehle für alles, was man in einem
+Wartungsfenster braucht.
 
 ## Für wen
 
@@ -33,30 +96,31 @@ Schlüssel, und **jede Entscheidung mit Begründung und Preis** in
 |---|---|
 | Verein mit 20–200 Leuten, ein Server beim Betreiber oder auf einem gemieteten Root-Server | ein Container, ein Volume, ein UDP-Port — kein Reverse-Proxy, kein Zertifikatsantrag |
 | Verein mit Datenschutzauflage (Mitgliederdaten, Protokolle) | Text und Sprache Ende zu Ende verschlüsselt; der Betreiber kann weder mithören noch mitlesen |
-| Vorstand, der nachweisen muss, wer was getan hat | Prüfprotokoll im Fenster: wer, wann, was, vorher/nachher — auch abgelehnte Versuche |
+| Vorstand, der nachweisen muss, wer was getan hat | Prüfprotokoll: wer, wann, was, vorher/nachher — auch abgelehnte Versuche |
 | Leute, die kein Konto anlegen wollen | Kennung ist eine Schlüsseldatei; mitnehmen = derselbe Mensch auf dem neuen Gerät |
 
 Nicht gedacht für: Firmen mit zehntausenden Gleichzeitigen, offene Communitys
-mit Fremden, Browser-Sofortnutzung ohne Installation.
+mit Fremden, Sofortnutzung im Browser ohne Installation.
 
 ## So sieht es aus
 
-Drei Farbschemata — **dark**, **light**, **mono** —, vier Sprachen (de, en,
-es, fr), vollständig per Tastatur bedienbar.
+Drei Farbschemata — **dark**, **light**, **mono** —, vier Sprachen (de, en, es,
+fr), vollständig per Tastatur bedienbar, Fokus sichtbar, Rollen und Namen
+gesetzt.
 
 | dark | light |
 |---|---|
-| ![Räume, dunkel](docs/bilder/raeume-dark.png) | ![Räume, hell](docs/bilder/raeume-light.png) |
+| ![Räume mit Chat, dunkel](docs/bilder/raeume-dark.png) | ![Räume mit Chat, hell](docs/bilder/raeume-light.png) |
 | ![Prüfprotokoll, dunkel](docs/bilder/protokoll-dark.png) | ![Prüfprotokoll, hell](docs/bilder/protokoll-light.png) |
 | ![Serverliste mit Zertifikat, dunkel](docs/bilder/server-dark.png) | ![Serverliste mit Zertifikat, hell](docs/bilder/server-light.png) |
 
-Weitere Ansichten (Sperrliste, Einstellungen) und alle Bilder in **mono** liegen
-in [`docs/bilder/`](docs/bilder/).
+Sperrliste, Einstellungen und alle Bilder in **mono** liegen in
+[`docs/bilder/`](docs/bilder/).
 
 Die Bilder sind **erzeugt**, nicht abgelegt: `npm --prefix ui run bilder` startet
 die Oberfläche mit dem eingebauten Klickdummy (kein Server, keine Soundkarte),
-klickt sich durch alle Ansichten und nimmt jede in allen drei Schemata auf —
-mit fester Uhrzeit, deshalb liefert jeder Lauf auf derselben Maschine dieselben
+klickt sich durch alle Ansichten und nimmt jede in allen drei Schemata auf — mit
+fester Uhrzeit, deshalb liefert jeder Lauf auf derselben Maschine dieselben
 Bytes. Dabei prüft es im echten Browser, was ein Test ohne Browser nicht sieht
 (etwa, dass jeder Name in der Raumliste sichtbar ist).
 
@@ -73,81 +137,59 @@ Was das Fenster anders macht als TeamSpeak:
 * **Zertifikat des Servers** sichtbar, Zeichen für Zeichen vergleichbar mit dem,
   was der Server beim Start anzeigt.
 
-## Warum nicht einfach TeamSpeak weiter
+## Im Vergleich
 
 TeamSpeak 3 tut seit 2006, was es soll. Es wird aber nicht dadurch unordentlich,
-dass Funktionen fehlen, sondern durch das, was drumherum gewachsen ist. Vier
-Dinge, die dieses Projekt anders macht:
-
-1. **Ein Modell statt verstreuter Zustände.** Zustände sind Summentypen
-   (`Zustand { Leer, Laedt, Fertig(Daten), Fehler(Text) }`), die Oberfläche ist
-   `render(modell)`. Eine Ansicht, die etwas versteckt, das im Modell sichtbar
-   ist, wäre ein Fehler — nicht eine Einstellung.
-2. **Rechte, die man lesen kann.** Vier Rollen und eine Tabelle im Programm
-   statt ein paar hundert Einzelrechte mit Vererbung über den Raumbaum.
-3. **Ein Port und keine eigene Krypto.** QUIC bringt TLS 1.3 mit; wir schreiben
-   keine Verschlüsselung, wir benutzen eine. Steuerung und Text laufen als
-   Strom, Sprache als Datagramm — alles auf demselben UDP-Port.
-4. **Nachvollziehbarkeit statt Gefühl.** Jede Zusage hat eine Messung
-   (`scripts/latenz.sh`, `scripts/sprechprobe.sh`, [`docs/QUALITAET.md`](docs/QUALITAET.md))
-   und jede Festlegung einen Preis in `SPEC.md`.
-
-### Im Vergleich
+dass Funktionen fehlen, sondern durch das, was drumherum gewachsen ist.
 
 | | TeamSpeak 3 | sprechwerk |
 |---|---|---|
 | Lizenz | proprietär; kostenlose Lizenz mit begrenzter Platzanzahl, Lizenzdatei nötig | MIT, keine Platzgrenze, keine Lizenzdatei |
 | Quellcode | geschlossen (Client und Server) | offen: Server, Client, Protokoll, Oberfläche |
-| Ports | UDP 9987 Sprache, TCP 10011 Abfrage, TCP 30033 Dateien | **ein** UDP-Port (QUIC) |
-| Verschlüsselung | eigene Krypto zwischen Client und Server; der Server kann Sprache entschlüsseln | TLS 1.3 mit angeheftetem Zertifikat; Text und Sprache **Ende zu Ende**, hybrid quantensicher im Transport |
+| Ports | UDP 9987 Sprache, TCP 10011 Abfrage, TCP 30033 Dateien | **ein** UDP-Port (QUIC) plus TCP 7444 für die Verwaltung auf dem Server selbst |
+| Verschlüsselung | eigene Krypto zwischen Client und Server; der Server kann Sprache entschlüsseln | TLS 1.3 mit angeheftetem Zertifikat, hybrid quantensicher im Transport; Text und Sprache **Ende zu Ende** |
 | Kennung | dauerhafte UID, kopierbar | Ed25519-Besitznachweis je Verbindung, mitnehmbare Schlüsseldatei |
 | Rechte | einige hundert Einzelrechte, Vererbung | vier Rollen, feste Tabelle |
-| Protokoll | binär, nicht dokumentiert (nachgebaut) | JSON-Rahmen, längenpräfixiert, versioniert (`SPEC.md` §7, `docs/`) |
+| Protokoll | binär, nicht dokumentiert (nachgebaut) | JSON-Rahmen, längenpräfixiert, versioniert ([`SPEC.md`](SPEC.md) §7, [`docs/datenfluss.md`](docs/datenfluss.md)) |
 | Oberfläche | Windows/macOS/Linux; Mobil-App kostenpflichtig | Fenster (Tauri 2, Linux/Windows/macOS), drei Farbschemata, vier Sprachen; Browser später über WebTransport |
-| Text | dauerhaft, serverseitig gespeichert | dauerhaft, serverseitig — bewusst, damit Suche und Moderation möglich bleiben |
-| Dateien, Status, Video, Plugins | vorhanden (teils seit Jahren) | **nicht vorhanden** — bewusst „später", nicht „gestrichen" |
-| Betriebswerkzeug | Abfrage-Schnittstelle, Hoster-Panels | Datei + Umgebungsvariablen + Unterbefehle (`beispiel`, `export`, `import`, `sicherung`, `--gesundheit`) |
+| Text | dauerhaft, serverseitig gespeichert und lesbar | dauerhaft, aber der Server speichert nur Geheimtext — lesen können die Mitglieder |
+| Reaktionen, Effekte, Link-Vorschau | nicht vorhanden (nur Text) | Reaktionen, Effekte, Vorschau; die Seite ruft der Absender ab |
+| Betriebswerkzeug | Abfrage-Schnittstelle, Hoster-Panels | Datei + Umgebungsvariablen + Unterbefehle (`beispiel`, `export`, `import`, `sicherung`, `--gesundheit`), dazu eine Verwaltung im Browser |
 | Prüfprotokoll im Client | nein | ja, für Administrator und Moderator |
-| Reife | 20 Jahre, großes Ökosystem | 0.1, ein Projekt, ein Maintainer |
+| Dateien, Status, Video, Plugins | vorhanden (teils seit Jahren) | **nicht vorhanden** — bewusst „später", nicht „gestrichen" |
+| Reife | 20 Jahre, großes Ökosystem | 1.2, ein Projekt, ein Maintainer |
 
 **Was TeamSpeak besser kann** — und was wir nicht kleinreden: Mobile Apps für
 iOS und Android, Dateitransfer im Client, eine Plugin-Schnittstelle, etabliertes
 Hosting bei vielen Anbietern, und zwei Jahrzehnte Fehler, die schon gefunden
-sind. Wer das braucht, ist mit TeamSpeak heute besser dran. Ein
-Latenzvergleich mit demselben Ton steht noch aus (`docs/QUALITAET.md` §1).
+sind. Wer das braucht, ist mit TeamSpeak heute besser dran. Ein Latenzvergleich
+mit demselben Ton steht noch aus ([`docs/QUALITAET.md`](docs/QUALITAET.md) §1).
 
 Angaben zu TeamSpeak stammen aus dessen öffentlicher Dokumentation und
 Lizenzbedingungen (Stand 2026) und können sich ändern.
 
 ## Stand heute
 
-Lauffähig und geprüft: **238 Tests** im Arbeitsbereich, **41** in der
-Fensteranwendung, **61** in der Oberfläche, dazu die Ansichten im echten
-Browser und sechs Messskripte, die einen echten Server starten.
+Lauffähig und geprüft: **284 Tests** im Arbeitsbereich, **43** in der
+Fensteranwendung, **84** in der Oberfläche, dazu die Ansichten im echten Browser
+und Messskripte, die einen echten Server starten.
 
-* **Sprache** — Aufnahme über PipeWire/PulseAudio, Hochpass, Entrauschung,
-  Noisegate, Echounterdrückung (AEC3, reines Rust), Opus 32 kbit/s, 60 ms
-  Vorlauf gegen abgeschnittene erste Wörter, Jitter-Puffer je Sprecher, Mischen
-  im Client. Der Server verteilt nur und prüft das Rederecht — er mischt nichts.
-  Durchlauf durch den Server p99 **21–29 µs**, Beitritt p95 **1,8–2,8 ms**
-  (`scripts/latenz.sh`, [`docs/QUALITAET.md`](docs/QUALITAET.md) §2d).
-* **Text** — Verlauf, Löschen (Verfasser weich, Moderator hart),
-  Aufbewahrungsfrist. Ende zu Ende verschlüsselt: in Datenbank und Sicherung
-  steht nur Geheimtext.
-* **Rollen und Rechte** — Administrator, Moderator, Mitglied, Gast; Prüfprotokoll
-  für jede Änderung, Sperrliste mit Grund.
-* **Verschlüsselung** — TLS 1.3 über QUIC mit angeheftetem Zertifikat (TOFU),
-  **alles Ende zu Ende** — Text mit einem Serverschlüssel, den nur die
-  Mitglieder haben, Sprache mit einem Schlüssel je Raum und Epoche
-  (ChaCha20-Poly1305), Transport hybrid quantensicher (`X25519MLKEM768`).
-* **Betrieb** — ein Container, ein Volume, Sicherung nach Plan, Healthcheck über
-  ein Lebenszeichen, Unterbefehle für Export/Import/Sicherung. Oder der Server
-  als Programm unter Windows, macOS und Linux. Dazu eine Verwaltung im Browser
-  mit Protokoll, Mitgliedern und Rollen (nur auf dem Rechner des Servers).
+* **Durchsatz und Antwortzeit** — Durchlauf einer Nachricht durch den Server
+  p99 **21–29 µs**, Beitritt p95 **1,8–2,8 ms**, Aufpreis der Quantensicherheit
+  **+50 µs** je Verbindungsaufbau (`scripts/latenz.sh`, `scripts/lastprobe.sh`,
+  [`docs/QUALITAET.md`](docs/QUALITAET.md) §2).
+* **Ende zu Ende** — Sprache mit einem Schlüssel je Raum und Epoche
+  (ChaCha20-Poly1305), Text mit einem Serverschlüssel, den nur die Mitglieder
+  haben. In Datenbank und Sicherung steht ausschließlich Geheimtext, Klartext
+  nimmt der Server nicht an — auch Reaktionen und Vorschauen nicht.
+* **Verwaltung** — im Browser, mitgeliefert, nur auf dem Rechner des Servers
+  erreichbar.
 
-Noch nicht gebaut (bewusst): Dateien, Status/Abwesenheit, Video,
-Bildschirmfreigabe, Emojis/Reaktionen, Suche. Was als Nächstes kommt, steht in
-[`SPEC.md`](SPEC.md) §11 und [`docs/adr/0010-quantensicherheit.md`](docs/adr/0010-quantensicherheit.md)
+Noch nicht gebaut (bewusst): Dateien und Bilder im Chat (geplant,
+[ADR 0012](docs/adr/0012-alles-ende-zu-ende.md) Stufe 3), GIF-Suche,
+Status/Abwesenheit, Video, Bildschirmfreigabe, Suche. Was als Nächstes kommt,
+steht in [`SPEC.md`](SPEC.md) §11 und
+[`docs/adr/0010-quantensicherheit.md`](docs/adr/0010-quantensicherheit.md)
 (Schritt 2: Raumschlüssel hybrid und mit Forward Secrecy).
 
 ## Installation
@@ -170,16 +212,9 @@ Jedes [Release](https://github.com/patimweb-labs/sprechwerk/releases) bringt mit
 | `Sprechwerk_<version>_universal.dmg` | Fenster — macOS 11 oder neuer, Apple Silicon und Intel |
 | `sprechwerk-server-<version>-linux-x86_64.tar.gz` | Server + `sprechwerk-cli`, PC/Server |
 | `sprechwerk-server-<version>-linux-aarch64.tar.gz` | dasselbe für ARM (Raspberry Pi 4/5, 64 Bit) |
-| `sprechwerk-server-<version>-windows-x86_64.zip` | Server für Windows 10/11 — entpacken, `sprechwerk.exe` doppelklicken |
+| `sprechwerk-server-<version>-windows-x86_64.zip` | Server für Windows 10/11 — entpacken, `sprechwerk.exe` starten |
 | `sprechwerk-server-<version>-macos-universal.tar.gz` | Server für macOS 11 oder neuer, Apple Silicon und Intel |
 | `SHA256SUMS` | Prüfsummen aller Dateien (`sha256sum -c SHA256SUMS`) |
-
-Dazu das Container-Abbild für `amd64` und `arm64`:
-
-```bash
-docker run -d --name sprechwerk -p 7443:7443/udp -p 127.0.0.1:7444:7444 \
-  -v sprechwerk-daten:/data ghcr.io/patimweb-labs/sprechwerk:latest
-```
 
 Jeder Server bringt seine [Verwaltung im Browser](#verwaltung-im-browser) mit.
 
@@ -206,15 +241,6 @@ deshalb beim ersten Start:
 
 Opus liegt bei Windows und macOS im Paket; nichts weiter zu installieren.
 
-**Server unter Windows und macOS:** Archiv entpacken, `sprechwerk.exe`
-(Windows) bzw. `sprechwerk` (macOS) starten. Ein Konsolenfenster zeigt das
-Protokoll, der Browser öffnet die Verwaltung. Daten, Zertifikat und Sicherungen
-landen in `daten/` neben dem Programm. Schließen des Fensters beendet den
-Server. Auch hier warnen SmartScreen bzw. Gatekeeper beim ersten Start (unter
-macOS: `xattr -d com.apple.quarantine sprechwerk sprechwerk-cli`). Die Firewall
-fragt nach UDP 7443; für Mitglieder von außen muss der Router diesen Port
-weiterleiten.
-
 ### Server im Container (der übliche Weg)
 
 ```bash
@@ -227,13 +253,18 @@ Ohne den ersten Schritt läuft alles, nur zeigt die Verwaltung statt der
 Oberfläche eine Seite mit der Bauanleitung; das fertige Abbild aus dem Release
 hat sie eingebaut.
 
-Ohne eigenen Bau: in `docker-compose.yml` die Zeile `build: .` streichen und
-`image: ghcr.io/patimweb-labs/sprechwerk:0.1` eintragen. Fest auf eine
-Minor-Version statt `latest`: vor 1.0 kommt ein Bruch als neue Minor-Version,
-und ein Update migriert die Daten ohne Rückweg (SPEC §2) — das soll ein
-bewusster Schritt sein.
+Ohne eigenen Bau: `docker run` mit dem Abbild aus dem Release —
 
-Ein Volume (`/data`), ein Port nach außen (`7443/udp`), sonst nichts —
+```bash
+docker run -d --name sprechwerk -p 7443:7443/udp -p 127.0.0.1:7444:7444/tcp \
+  -v sprechwerk-daten:/data ghcr.io/patimweb-labs/sprechwerk:1.2
+```
+
+Fest auf eine Minor-Version statt `latest` setzen, wenn der Betrieb ruhig
+bleiben soll: ein Update migriert die Daten ohne Rückweg
+([`SPEC.md`](SPEC.md) §2) — das soll ein bewusster Schritt sein.
+
+Ein Volume (`/data`), ein Port nach außen (`7443/udp`), sonst nichts. Weitere
 Einstellungen in `docker-compose.yml` oder als Umgebungsvariablen (siehe
 [Betrieb](#betrieb)). In der Firewall nur **UDP** 7443 freigeben; TCP braucht
 QUIC nicht. Die Verwaltung (7444/tcp) ist nur auf dem Host selbst erreichbar.
@@ -259,12 +290,21 @@ selbst) und einen C-Compiler für den TLS-Anbieter (`aws-lc-rs`); `cmake` ist
 nicht nötig. `sprechwerk beispiel > sprechwerk.toml` erzeugt eine vollständige
 Konfiguration zum Anpassen.
 
-### Fenster
+**Unter Windows und macOS** das Archiv aus dem Release entpacken und
+`sprechwerk.exe` (Windows) bzw. `sprechwerk` (macOS) starten: ein Konsolenfenster
+zeigt das Protokoll, der Browser öffnet die Verwaltung. Daten, Zertifikat und
+Sicherungen landen in `daten/` neben dem Programm; Schließen des Fensters beendet
+den Server. Auch hier warnen SmartScreen bzw. Gatekeeper beim ersten Start (unter
+macOS: `xattr -d com.apple.quarantine sprechwerk sprechwerk-cli`). Die Firewall
+fragt nach UDP 7443; für Mitglieder von außen muss der Router diesen Port
+weiterleiten.
 
-Gebaut wird aus dem Quellbaum; Voraussetzungen auf jeder Plattform: Rust (über
-`rustup`), Node.js 22 und die Komponentenbibliothek
-[`weppelmann-ui`](https://github.com/Smotherer007/weppelmann-ui) **neben** diesem
-Verzeichnis (`../weppelmann-ui`, dort einmal `npm ci && npm run tokens`).
+### Fenster aus dem Quellbaum
+
+Voraussetzungen auf jeder Plattform: Rust (über `rustup`), Node.js 22 und die
+Komponentenbibliothek [`weppelmann-ui`](https://github.com/Smotherer007/weppelmann-ui)
+**neben** diesem Verzeichnis (`../weppelmann-ui`, dort einmal
+`npm ci && npm run tokens`).
 
 ```bash
 cd ui && npm ci && cd ..
@@ -278,8 +318,9 @@ das Fenster die Entwicklungsadresse (Port 1423).
 Pakete wie im Release baut `npm --prefix ui run pakete` — die Tauri-CLI kommt
 dabei aus `ui/node_modules`, festgelegt auf eine Version; nichts weiter zu
 installieren. Ergebnis unter `crates/desktop/target/release/bundle/`. Welche
-Pakete auf welchem System entstehen, steht in `crates/desktop/tauri.<system>.conf.json`;
-das Flatpak entsteht aus dem `.deb` (Anleitung im Kopf von
+Pakete auf welchem System entstehen, steht in
+`crates/desktop/tauri.<system>.conf.json`; das Flatpak entsteht aus dem `.deb`
+(Anleitung im Kopf von
 `crates/desktop/packaging/flatpak/de.weppelmann.Sprechwerk.yml`).
 
 **Linux — Fedora** (so geprüft):
@@ -314,10 +355,9 @@ Geräte über CoreAudio. Für den Bau gehört `libopus.0.dylib` nach
 Ausprobieren ohne Paket genügt `brew install opus`.
 
 Windows und macOS bauen **in der CI bei jedem PR** (`pakete.yml`, mit Clippy
-auf der jeweiligen Plattform). Auf echten Geräten ist dort noch niemand
-gewesen — Rückmeldungen von Windows und macOS sind willkommen. Unter Windows
-und macOS kommen Geräteliste, Pegel und Prüfton über cpal, unter Linux über
-`pactl`/`parec`/`paplay`; entschieden wird danach, was vorhanden ist.
+auf der jeweiligen Plattform), der Server ebenso (`server.yml`). Auf echten
+Geräten ist dort noch niemand gewesen — Rückmeldungen von Windows und macOS sind
+willkommen.
 
 ## Das erste Mal verbinden
 
@@ -334,8 +374,12 @@ und macOS kommen Geräteliste, Pegel und Prüfton über cpal, unter Linux über
    die Leitung gehen.
 3. Der **erste** Client wird Administrator. Wer zuerst kommt, verwaltet — also
    zuerst du, dann die anderen. War jemand schneller, oder soll noch jemand
-   Administrator werden: in der [Verwaltung](#verwaltung-im-browser) beim
-   Namen die Rolle wählen.
+   Administrator werden: in der [Verwaltung](#verwaltung-im-browser) beim Namen
+   die Rolle wählen.
+
+Wurde der Server neu aufgesetzt (neues Zertifikat), muss der gemerkte Wert
+einmal ausdrücklich vergessen werden: Serverliste → „Zertifikat vergessen" →
+neu verbinden.
 
 ## Verwaltung im Browser
 
@@ -365,36 +409,42 @@ Link von selbst. Auf einem Server ohne Bildschirm von einem anderen Rechner aus:
 Der Code ist bei jedem Start neu (128 Bit Zufall); ein fester lässt sich setzen
 (`verwaltung.code`, mindestens 16 Zeichen). Räume, Sperren und Konfiguration
 ändert die Verwaltung nicht — das bleibt bei Fenster und Datei
-(`docs/adr/0011-verwaltung-im-browser.md`).
-
-Wurde der Server neu aufgesetzt (neues Zertifikat), muss der gemerkte Wert
-einmal ausdrücklich vergessen werden: Serverliste → „Zertifikat vergessen" →
-neu verbinden.
+([`docs/adr/0011-verwaltung-im-browser.md`](docs/adr/0011-verwaltung-im-browser.md)).
 
 ## Sicherheit und Daten
 
 **Auf der Leitung:** QUIC = TLS 1.3 mit AEAD, Schlüsselwechsel und Forward
 Secrecy. Schlüsselvereinbarung hybrid `X25519MLKEM768` — klassisch *und*
-quantensicher in einem Handschlag. Gemessener Aufpreis: +50 µs je
-Verbindungsaufbau (`docs/QUALITAET.md` §2c).
+quantensicher in einem Handschlag ([`docs/adr/0010-quantensicherheit.md`](docs/adr/0010-quantensicherheit.md)).
 
 **Anmeldung:** kein Passwortkonto, sondern ein Ed25519-Schlüsselpaar; der Server
 fordert je Verbindung einen Beweis über eine Zufallszahl an. Die Kennung liegt
 als Datei auf dem Rechner — wer sie kopiert, ist derselbe Mensch.
 
 **Alles Ende zu Ende** ([ADR 0012](docs/adr/0012-alles-ende-zu-ende.md)):
-lesen dürfen die **Mitglieder**, nicht der Betreiber. Wer als Betreiber
-mitlesen will, verbindet sich mit dem Client — dann ist er Mitglied wie jeder
-andere und steht in der Mitgliederliste.
+lesen dürfen die **Mitglieder**, nicht der Betreiber. Wer als Betreiber mitlesen
+will, verbindet sich mit dem Client — dann ist er Mitglied wie jeder andere und
+steht in der Mitgliederliste.
 
 * **Text:** ein Serverschlüssel für alle Mitglieder. Der erste Client erzeugt
   ihn, danach gibt ihn ein Mitglied dem nächsten weiter — verpackt für dessen
   Kennung und unterschrieben; der Server vermittelt nur und kennt den Schlüssel
-  nie. In Datenbank und Sicherung steht ausschließlich Geheimtext, Klartext
-  nimmt der Server gar nicht an. Nach einer Sperre gilt ein neuer Schlüssel.
+  nie. Nach einer Sperre gilt ein neuer Schlüssel. Reaktionen und Vorschauen
+  reisen im selben Umschlag wie der Text.
 * **Sprache:** jeder Raum, ohne Schalter. Ein Gruppenschlüssel pro Raum und
   Epoche, einzeln per X25519-Umschlag verteilt. Beim Verlassen dreht die
   Epoche — wer geht, hört nichts mehr.
+* **Link-Vorschau:** die Seite ruft **der Absender** ab (8 s Frist, höchstens
+  512 KiB HTML, 8 MiB Bild, neutrale Kennung, keine Cookies). Er schickt Titel,
+  gekürzte Beschreibung und ein auf 480 px verkleinertes, neu geschriebenes JPEG
+  — nicht das Originalbild. Wer das nicht will, schaltet es in den Einstellungen
+  ab; Links bleiben anklickbar.
+
+| Sieht der Server | Sieht er nicht |
+|---|---|
+| wer wann in welchem Raum ist und spricht | was gesagt wird |
+| dass jemand schreibt, wie lang (ungefähr), wann | was geschrieben wird |
+| Namen, Rollen, Kennungen der Mitglieder | Reaktionen, Effekte, Vorschauinhalte |
 
 **Der Preis:** Wer neu ist (oder auf einem neuen Gerät ohne die Schlüsseldatei)
 und allein online, kann erst lesen und schreiben, wenn ein Mitglied online
@@ -402,35 +452,35 @@ kommt, das den Schlüssel hat. Gehen alle Geräte mit Schlüssel verloren, ist d
 Verlauf für niemanden mehr lesbar — auch nicht für den Betreiber. Der Server
 kann nicht mehr nach Inhalt suchen.
 
-**Was das nicht leistet:** Der Betreiber sieht Metadaten: wer wann mit wem, wie
-lang eine Nachricht ungefähr ist. Ein Server, den der Betreiber **umbaut**,
-kann ein erfundenes Mitglied anmelden und bekäme dann den Schlüssel wie jedes
-Mitglied — es stünde aber in der Mitgliederliste. Ein Abgleich der Kennungen
-außerhalb des Servers (wie Sicherheitsnummern) ist noch nicht gebaut. Ein Mitglied, das mitschneidet, hat den Schlüssel.
-Ein kompromittiertes Gerät ist kompromittiert. Offen und dokumentiert: die
-Umlage des Raumschlüssels hat noch keine Forward Secrecy, und Anmeldung wie
-Umlage sind klassisch. Die hybride Umlage mit Wegwerfschlüsseln ist gebaut und
-geprüft, aber noch nicht verdrahtet (`docs/adr/0010-quantensicherheit.md`,
+**Was das nicht leistet:** Der Betreiber sieht Metadaten. Ein Server, den der
+Betreiber **umbaut**, kann ein erfundenes Mitglied anmelden und bekäme dann den
+Schlüssel wie jedes Mitglied — es stünde aber in der Mitgliederliste. Ein
+Abgleich der Kennungen außerhalb des Servers (wie Sicherheitsnummern) ist noch
+nicht gebaut. Ein Mitglied, das mitschneidet, hat den Schlüssel. Ein
+kompromittiertes Gerät ist kompromittiert. Offen und dokumentiert: die Umlage
+des Raumschlüssels hat noch keine Forward Secrecy, und Anmeldung wie Umlage sind
+klassisch. Die hybride Umlage mit Wegwerfschlüsseln ist gebaut und geprüft, aber
+noch nicht verdrahtet ([`docs/adr/0010-quantensicherheit.md`](docs/adr/0010-quantensicherheit.md),
 Schritt 2).
 
 **Datenschutz:** Alles liegt beim Betreiber — eine SQLite-Datei und Sicherungen
 als JSON unter `<daten>`, beides nur für den Eigentümer lesbar (0600), sonst
-nichts. Keine Telemetrie, keine Cloud,
-kein Konto bei uns, keine Verbindung zu Dritten. Gespeichert werden je Mitglied
-Anzeigename, öffentlicher Schlüssel, Rolle und „zuletzt gesehen", dazu die Texte
-als Geheimtext (gelöscht nach der Aufbewahrungsfrist, wenn eine gesetzt ist), das
-Prüfprotokoll und die Sperrliste — bei einer Adresssperre mit IP-Adresse.
-Sprache wird **nicht** gespeichert. Das Betriebsprotokoll auf der Konsole
-(`docker compose logs`) nennt bei jeder Anmeldung die Adresse; wie lange es
-aufbewahrt wird, entscheidet der Betreiber.
+nichts. Keine Telemetrie, keine Cloud, kein Konto bei uns, keine Verbindung zu
+Dritten. Gespeichert werden je Mitglied Anzeigename, öffentlicher Schlüssel,
+Rolle und „zuletzt gesehen", dazu die Texte als Geheimtext (gelöscht nach der
+Aufbewahrungsfrist, wenn eine gesetzt ist), das Prüfprotokoll und die
+Sperrliste — bei einer Adresssperre mit IP-Adresse. Sprache wird **nicht**
+gespeichert. Das Betriebsprotokoll auf der Konsole (`docker compose logs`) nennt
+bei jeder Anmeldung die Adresse; wie lange es aufbewahrt wird, entscheidet der
+Betreiber.
 
 Im Fenster liegen nur die eigene Schlüsseldatei, die Serverschlüssel für den
 Chat (`serverschluessel.json`), die gemerkten Server mit ihren Fingerabdrücken
-und die Einstellungen — darin, wenn man es so will, das
-Serverpasswort. Schlüsseldateien und Einstellungen sind unter Linux und macOS nur
-für den eigenen Benutzer lesbar (0600, schon beim Anlegen); unter Windows schützt
-sie das Benutzerprofil. Keine Secrets im Code; die Konfiguration kommt aus Datei
-und Umgebung.
+und die Einstellungen — darin, wenn man es so will, das Serverpasswort.
+Schlüsseldateien und Einstellungen sind unter Linux und macOS nur für den
+eigenen Benutzer lesbar (0600, schon beim Anlegen); unter Windows schützt sie
+das Benutzerprofil. Keine Secrets im Code; die Konfiguration kommt aus Datei und
+Umgebung (Beispiel in `.env.example`).
 
 ## Betrieb
 
@@ -481,8 +531,10 @@ statt halb gelesen.
 scripts/pruefen.sh              # alles: Form, Werkzeuge, Tests, Ansichten im Browser, Sprachproben
 scripts/pruefen.sh --nur-tests  # schnell
 scripts/latenz.sh               # p50/p95/p99 durch den Server
+scripts/lastprobe.sh            # Antwort und Rundruf unter Last
 scripts/rundlauf.sh             # Server + zwei Clients von Hand
 scripts/sprechprobe.sh          # Ton durch den Server, ohne Mikrofon
+scripts/verlustprobe.sh         # Verlust und Jitter, über einen Proxy
 scripts/audio-ende-zu-ende.sh   # echter Gerätepfad mit virtuellen Geräten
 npm --prefix ui run bilder      # alle Ansichten in drei Schemata → docs/bilder/
 ```
@@ -513,19 +565,22 @@ für Werkzeuge. Das Wichtigste in Kürze:
 ## Aufbau
 
 ```
-crates/domain    Zustand und Regeln: Räume, Rollen, Rechte, Protokoll — kein Netz
-crates/protocol  Sprache auf der Leitung: Rahmen, Nachrichten, Sprachkopf, Fingerabdruck
-crates/store     SQLite, Export/Import, Migrationen, Sicherungen
-crates/adapters  Netz: QUIC, Anmeldung, Zertifikatsprüfung, Ende-zu-Ende, Klang
-crates/audio     Aufnahme/Wiedergabe, Opus, Verlustausgleich
-crates/ipc       Vertrag zum Fenster: Befehle, Ereignisse, Modellstand
-crates/server    Dienst: Listener, Befehlsausführung, Sicherung, Konfiguration
-crates/cli       Referenzclient auf der Kommandozeile
-crates/desktop   Fensteranwendung (Tauri 2, eigene Sperrdatei) + ui/ (Vue 3)
+crates/domain        Zustand und Regeln: Räume, Rollen, Rechte, Protokoll — kein Netz
+crates/protocol      Sprache auf der Leitung: Rahmen, Nachrichten, Sprachkopf, Geheimtext
+crates/store         SQLite, Export/Import, Migrationen, Sicherungen
+crates/adapters      Netz: QUIC, Anmeldung, Zertifikatsprüfung, Ende-zu-Ende, Klang
+crates/audio         Aufnahme/Wiedergabe, Opus, Verlustausgleich
+crates/linkvorschau  Link-Vorschau: Seite abrufen, Bild verkleinern (nur im Client)
+crates/ipc           Vertrag zum Fenster: Befehle, Ereignisse, Modellstand
+crates/server        Dienst: Listener, Befehlsausführung, Mitschrift, Sicherung, Verwaltung
+crates/cli           Referenzclient auf der Kommandozeile
+crates/desktop       Fensteranwendung (Tauri 2, eigene Sperrdatei) + ui/ (Vue 3)
 ```
 
 Richtung der Abhängigkeiten: `domain ← adapters ← ipc ← ui`. `domain` kennt kein
-Netz — deshalb sind Rechte, Räume und Verläufe ohne Sockets prüfbar. Mehr in
+Netz — deshalb sind Rechte, Räume und Verläufe ohne Sockets prüfbar. Der Server
+baut weder HTTP-Client noch Bilddecoder mit; die Link-Vorschau liegt deshalb in
+einem eigenen Crate, das nur die Clients ziehen. Mehr in
 [`docs/architektur.md`](docs/architektur.md) und
 [`docs/datenfluss.md`](docs/datenfluss.md).
 
@@ -537,15 +592,17 @@ Client                                    Server
   ◄── Anforderung { nonce }                 Beweisaufforderung
   ── Hallo { kennung, beweis, name } ──►    Ed25519-Signatur über den Nonce
   ◄── Willkommen { Räume, Mitglieder }      oder Fehler
-  ◄──► Rahmen (4 Byte Länge + JSON)         Text, Befehle, Antworten
+  ◄──► Rahmen (4 Byte Länge + JSON)         Text als Geheimtext, Befehle, Antworten
   ◄──► Datagramme (6 Byte Kopf + Opus)      Sprache, unzuverlässig
 ```
 
 Der Server öffnet den Steuerstrom, weil ein QUIC-Strom der Gegenstelle erst mit
 den ersten Bytes sichtbar wird. Je Verbindung kommt die Antwort auf einen Befehl
 vor jeder Meldung, die ein späterer Befehl eines anderen auslöst — der Client
-darf sich darauf verlassen (`docs/datenfluss.md` §2). Begleitend: das Handbuch
-zu TeamSpeak 3 auf Protokollebene liegt als Nachbardokumentation
+darf sich darauf verlassen ([`docs/datenfluss.md`](docs/datenfluss.md) §2). Der
+Raum steht **nicht** im Sprachkopf, sondern im Sitzungszustand des Servers;
+damit ist Umleiten in fremde Räume unmöglich. Begleitend: das Handbuch zu
+TeamSpeak 3 auf Protokollebene liegt als Nachbardokumentation
 (`../fernwerk/docs/handbuch/`), nicht in diesem Repository.
 
 ## Lizenz

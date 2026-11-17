@@ -363,11 +363,27 @@ impl Bund {
         ich: MemberId,
         inhalt: &Inhalt,
     ) -> Result<String, SchreibFehler> {
-        let Inhalt::Text { text } = inhalt;
-        if text.trim().is_empty() {
-            return Err(SchreibFehler::Leer);
+        match inhalt {
+            Inhalt::Text { text, .. } => {
+                if text.trim().is_empty() {
+                    return Err(SchreibFehler::Leer);
+                }
+                if text.chars().count() > sprechwerk_domain::MAX_MESSAGE_LEN {
+                    return Err(SchreibFehler::ZuLang);
+                }
+            }
+            Inhalt::Reaktion { zeichen, .. } => {
+                if zeichen.trim().is_empty() {
+                    return Err(SchreibFehler::Leer);
+                }
+                if zeichen.len() > sprechwerk_protocol::inhalt::MAX_ZEICHEN_BYTES {
+                    return Err(SchreibFehler::ZuLang);
+                }
+            }
         }
-        if text.chars().count() > sprechwerk_domain::MAX_MESSAGE_LEN {
+        // Mit Vorschaubild kann der Umschlag wachsen — über der Grenze nähme
+        // ihn der Server nicht an.
+        if inhalt.schreiben().len() > sprechwerk_protocol::geheimtext::MAX_INHALT_BYTES {
             return Err(SchreibFehler::ZuLang);
         }
         let s = self
@@ -424,7 +440,7 @@ mod tests {
     }
 
     fn text(t: &str) -> Inhalt {
-        Inhalt::Text { text: t.into() }
+        Inhalt::text(t)
     }
 
     fn stand(id: &str) -> Schluesselstand {

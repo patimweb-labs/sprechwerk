@@ -9,7 +9,7 @@
 // unterschiedlichen Rollen, Nachrichten und ein Prüfprotokoll. Jede Aktion
 // verändert den Stand und meldet ihn — genau wie der echte Rust-Teil.
 
-import type { Mitglied, Nachricht, Raum, Zustand, Einstellungen, Rolle } from "./api";
+import type { Effekt, Mitglied, Nachricht, Raum, Zustand, Einstellungen, Rolle } from "./api";
 
 const jetzt = Date.now();
 const minut = 60_000;
@@ -50,6 +50,7 @@ function nachricht(id: string, verfasser: string, verfasserName: string, text: s
     zeit: jetzt - vorMinuten * minut,
     geloescht,
     loeschbar: false,
+    reaktionen: [],
   };
 }
 
@@ -81,7 +82,26 @@ const nachrichten: Record<string, Nachricht[]> = {
     nachricht("nachricht_0002", "mitglied_aaaa0000000000000000000000000002", "Bosse", "Ich bringe die Folien mit, Folie 7 ist neu.", 38),
     nachricht("nachricht_0003", "mitglied_aaaa0000000000000000000000000003", "Mira", "Kann jemand den Beamer testen? Letztes Mal war der Ton weg.", 31),
     nachricht("nachricht_0004", ICH, "Ada", "Erledigt — und der Rückkanal ist jetzt auf Kanal 3 statt 5.", 22),
-    nachricht("nachricht_0005", "mitglied_aaaa0000000000000000000000000003", "Mira", "Danke!", 19),
+    {
+      ...nachricht("nachricht_0005", "mitglied_aaaa0000000000000000000000000003", "Mira", "Danke!", 19),
+      reaktionen: [
+        { zeichen: "👍", anzahl: 2, ich: true, namen: ["Ada", "Bosse"] },
+        { zeichen: "🎉", anzahl: 1, ich: false, namen: ["Jonas"] },
+      ],
+    },
+    {
+      ...nachricht("nachricht_0008", "mitglied_aaaa0000000000000000000000000002", "Bosse", "Die Ausschreibung steht: https://verein.example/sommerfest", 15),
+      inhalt: {
+        zustand: "text",
+        text: "Die Ausschreibung steht: https://verein.example/sommerfest",
+        effekt: "konfetti",
+        vorschau: {
+          url: "https://verein.example/sommerfest",
+          titel: "Sommerfest 2026 — Anmeldung offen",
+          beschreibung: "Am 12. Juli am Vereinsheim. Helfer für Aufbau und Grill gesucht.",
+        },
+      },
+    },
     nachricht("nachricht_0006", "mitglied_aaaa0000000000000000000000000004", "Timo", "(versehentlich im falschen Raum)", 12, true),
     nachricht("nachricht_0007", "mitglied_aaaa0000000000000000000000000002", "Bosse", "Ich fange in zehn Minuten an, vorher noch schnell die Liste prüfen.", 4),
   ],
@@ -110,8 +130,11 @@ function zustandDerWahrheit(verbunden: boolean): Zustand {
     // Protokoll und Betriebszahlen holt man sich ausdrücklich; im Dummy
     // beginnen sie leer, damit man den Weg „noch nicht gelesen" sieht.
     latenz_ms: null,
-    schluessel: [],
+    // Der Raumschlüssel liegt vor — sonst zeigte der Dummy „Schlüssel fehlt".
+    schluessel: verbunden ? [{ raum: aktuellerRaum, epoche: 1 }] : [],
     textschluessel: verbunden ? "bereit" : "unbekannt",
+    effekt: null,
+    entwurf: { art: "keiner" },
     guete: null,
     sperren: [],
     protokoll: [],
@@ -157,6 +180,7 @@ export const einstellungenVorgabe: Einstellungen = {
   rauschunterdrueckung: true,
   noisegate: true,
   echounterdrueckung: true,
+  link_vorschau: true,
   vertrauen: [
     { server: "sprechwerk.verein.example:7443", fingerabdruck: ZERTIFIKAT },
   ],
@@ -284,13 +308,81 @@ export const mockApi = {
     }
   },
 
-  async textSenden(text: string): Promise<void> {
+  async textSenden(text: string, effekt: Effekt | null = null): Promise<void> {
     const raumId = stand.aktueller_raum ?? "raum_0004";
     const n = nachricht(neueId("nachricht"), ICH, "Ada", text, 0);
+    const e = stand.entwurf;
+    n.inhalt = {
+      zustand: "text",
+      text,
+      effekt,
+      vorschau: e.art === "fertig" && text.includes(e.vorschau.url) ? e.vorschau : null,
+    };
+    stand.entwurf = { art: "keiner" };
+    if (effekt) stand.effekt = { nachricht: n.id, effekt, nr: (stand.effekt?.nr ?? 0) + 1 };
     n.loeschbar = true;
     (nachrichten[raumId] ??= []).push(n);
     stand.nachrichten = (nachrichten[raumId] ?? []).map((x) => ({ ...x, loeschbar: true }));
     melden();
+  },
+
+  async reagieren(id: string, zeichen: string): Promise<void> {
+    const raumId = stand.aktueller_raum ?? "raum_0004";
+    const ziel = (nachrichten[raumId] ?? []).find((n) => n.id === id);
+    if (!ziel) return;
+    const r = ziel.reaktionen.find((x) => x.zeichen === zeichen);
+    if (r && r.ich) {
+      r.anzahl -= 1;
+      r.ich = false;
+      r.namen = r.namen.filter((n) => n !== "Ada");
+      ziel.reaktionen = ziel.reaktionen.filter((x) => x.anzahl > 0);
+    } else if (r) {
+      r.anzahl += 1;
+      r.ich = true;
+      r.namen.push("Ada");
+    } else {
+      ziel.reaktionen.push({ zeichen, anzahl: 1, ich: true, namen: ["Ada"] });
+    }
+    stand.nachrichten = (nachrichten[raumId] ?? []).map((x) => ({ ...x, loeschbar: true }));
+    melden();
+  },
+
+  async effektZeigen(id: string): Promise<void> {
+    const n = stand.nachrichten.find((x) => x.id === id);
+    if (n?.inhalt.zustand === "text" && n.inhalt.effekt) {
+      stand.effekt = { nachricht: id, effekt: n.inhalt.effekt, nr: (stand.effekt?.nr ?? 0) + 1 };
+      melden();
+    }
+  },
+
+  async vorschau(url: string | null): Promise<void> {
+    const e = stand.entwurf;
+    if (!url) {
+      stand.entwurf = { art: "keiner" };
+    } else if ((e.art === "fertig" && e.vorschau.url === url) || ((e.art === "laedt" || e.art === "ohne") && e.url === url)) {
+      return;
+    } else {
+      // Der Dummy ruft nichts ab: er tut so, nach einer kleinen Pause.
+      stand.entwurf = { art: "laedt", url };
+      setTimeout(() => {
+        if (stand.entwurf.art === "laedt" && stand.entwurf.url === url) {
+          stand.entwurf = { art: "fertig", vorschau: { url, titel: new URL(url).hostname, beschreibung: "Vorschau aus dem Klickdummy" } };
+          melden();
+        }
+      }, 400);
+    }
+    melden();
+  },
+
+  async vorschauVerwerfen(): Promise<void> {
+    const e = stand.entwurf;
+    if (e.art === "fertig") stand.entwurf = { art: "ohne", url: e.vorschau.url };
+    else if (e.art === "laedt") stand.entwurf = { art: "ohne", url: e.url };
+    melden();
+  },
+
+  async linkOeffnen(url: string): Promise<void> {
+    window.open(url, "_blank", "noopener");
   },
 
   async nachrichtLoeschen(id: string): Promise<void> {

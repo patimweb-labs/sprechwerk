@@ -34,6 +34,43 @@ Oberfläche bekommt nur das Ergebnis (`inhalt`: Text, wartet, unlesbar, …).
 Fehlt der Schlüssel, bleibt eine Nachricht „wartet" und wird lesbar, sobald
 ein Mitglied ihn weitergegeben hat — ohne den Verlauf neu zu laden.
 
+### Reaktionen, Effekte, Link-Vorschau (ADR 0012, Stufe 2)
+
+Alles läuft **denselben** Weg wie Text — der Server sieht nur Geheimtext und
+weiß nicht, ob darin ein Text, eine Reaktion oder eine Vorschau steckt.
+
+```mermaid
+sequenceDiagram
+    participant UI as ui/ (Vue)
+    participant D as crates/desktop
+    participant L as crates/linkvorschau
+    participant W as fremde Seite
+    participant I as crates/ipc
+    participant S as Server
+
+    UI->>D: invoke("vorschau", { url }) (erster Link im Entwurf, 0,5 s Ruhe)
+    D->>D: Zustand.entwurf = laedt
+    D->>L: Holer::holen (eigene Aufgabe)
+    L->>W: GET (Seite, dann og:image)
+    L-->>D: Linkvorschau { titel, beschreibung, bild (JPEG, 480 px) }
+    D-->>UI: Zustand.entwurf = fertig → Karte über dem Eingabefeld
+    UI->>D: invoke("text_senden", { text, effekt })
+    D->>S: Inhalt::Text { text, effekt, vorschau } verschlüsselt
+    UI->>D: invoke("reagieren", { nachricht, zeichen })
+    D->>D: abbilden::meine_reaktion → setzen oder zurücknehmen
+    D->>S: Inhalt::Reaktion { ziel, zeichen, weg } verschlüsselt
+    S-->>D: ServerFrame::Text (Geheimtext, an alle im Raum)
+    D->>I: inhalt_abbilden (prüft Link, Längen, Bild) · reaktionen_zaehlen
+    D->>I: effekt_ausloesen (nur bei neu angekommenen Nachrichten)
+    D-->>UI: Zustand (nachrichten[].reaktionen, effekt { nr })
+```
+
+Nur der **Absender** ruft die Seite ab; Empfänger bekommen die fertige
+Vorschau im Umschlag und fragen keine fremde Seite an. Reaktionen sind eigene
+Umschläge, die der Client am Ziel zusammenfasst (`reaktionen_zaehlen`, rein,
+jedes Mal aus dem ganzen Verlauf). Ein Effekt spielt, wenn `effekt.nr` sich
+ändert — die Oberfläche braucht dafür keinen eigenen Zustand.
+
 Der Rückweg über das Ereignis ist **kein** Umweg: der Absender bekommt seine
 Nachricht vom Server zurück, damit die Zeit und die Reihenfolge stimmen, die der
 Server vergeben hat.

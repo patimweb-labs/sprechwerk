@@ -88,7 +88,7 @@ describe("Chat", () => {
     await feld.setValue("Hallo Welt");
     await feld.trigger("keyup", { key: "Enter" });
     await flushPromises();
-    expect(senden).toHaveBeenCalledWith("Hallo Welt");
+    expect(senden).toHaveBeenCalledWith("Hallo Welt", null);
     expect((feld.element as HTMLInputElement).value).toBe("Hallo Welt");
     expect(modell.meldung).toBe("Text zu lang");
 

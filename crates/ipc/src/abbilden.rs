@@ -137,6 +137,8 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
             anwesend,
         } => {
             zustand.aktueller_raum = Some(raum);
+            // Ein Effekt gehört zum Raum, in dem er ankam.
+            zustand.effekt = None;
             zustand.nachrichten = verlauf
                 .iter()
                 .map(|n| nachricht_abbilden(n, zustand))
@@ -272,6 +274,8 @@ pub fn getrennt(zustand: &mut Zustand, grund: Option<String>) {
         None => Verbindung::Getrennt,
     });
     zustand.aktueller_raum = None;
+    zustand.effekt = None;
+    zustand.entwurf = crate::Linkentwurf::Keiner;
     zustand.mitglieder.clear();
     zustand.raeume.clear();
     // Der Fingerabdruck gehört zur Verbindung: ohne Verbindung kein Wert.
@@ -357,7 +361,189 @@ fn nachricht_abbilden(n: &Message, zustand: &Zustand) -> Nachricht {
         zeit: n.zeit,
         geloescht: n.geloescht,
         loeschbar,
+        reaktionen: Vec::new(),
     }
+}
+
+/// Höchstlänge eines Vorschautitels (Zeichen).
+pub const MAX_TITEL: usize = 200;
+/// Höchstlänge einer Vorschaubeschreibung (Zeichen).
+pub const MAX_BESCHREIBUNG: usize = 300;
+/// Höchstlänge eines Vorschaubilds (Base64-Zeichen, ≈ 150 KiB JPEG).
+pub const MAX_BILD: usize = 200_000;
+
+/// Übersetzt einen entschlüsselten Inhalt in das, was die Oberfläche zeigt.
+///
+/// **Hier wird geprüft**, was ein anderes Mitglied geschickt hat: der Inhalt
+/// ist zwar unterschrieben vom Schlüssel, aber nicht vertrauenswürdig. Ein
+/// Link, auf den man klicken kann, muss `http(s)` sein; ein Titel darf das
+/// Fenster nicht sprengen; ein Bild muss Base64 sein.
+pub fn inhalt_abbilden(inhalt: sprechwerk_protocol::inhalt::Inhalt) -> crate::NachrichtInhalt {
+    use sprechwerk_protocol::inhalt::{Effekt, Inhalt, MAX_ZEICHEN_BYTES};
+    match inhalt {
+        Inhalt::Text {
+            text,
+            effekt,
+            vorschau,
+        } => crate::NachrichtInhalt::Text {
+            text,
+            effekt: effekt.filter(|e| *e != Effekt::Unbekannt),
+            vorschau: vorschau.and_then(vorschau_pruefen),
+        },
+        Inhalt::Reaktion { ziel, zeichen, weg } => {
+            let ziel = sprechwerk_domain::MessageId::from_text(&ziel);
+            let zeichen_ok = !zeichen.trim().is_empty()
+                && zeichen.len() <= MAX_ZEICHEN_BYTES
+                && !zeichen.chars().any(|c| c.is_control() || c.is_whitespace());
+            match ziel {
+                Ok(ziel) if zeichen_ok => crate::NachrichtInhalt::Reaktion { ziel, zeichen, weg },
+                _ => crate::NachrichtInhalt::Unlesbar,
+            }
+        }
+    }
+}
+
+/// Ist das eine Adresse, die man im Browser öffnen darf? Nur `http` und
+/// `https`, keine Leer- oder Steuerzeichen — kein `javascript:`, kein `file:`.
+pub fn ist_weblink(url: &str) -> bool {
+    let klein = url.to_ascii_lowercase();
+    let rest = klein
+        .strip_prefix("https://")
+        .or_else(|| klein.strip_prefix("http://"));
+    matches!(rest, Some(r) if !r.is_empty())
+        && url.len() <= 2048
+        && !url.chars().any(|c| c.is_whitespace() || c.is_control())
+}
+
+fn kuerzen(text: &str, hoechstens: usize) -> String {
+    let sauber: String = text
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let sauber = sauber.trim();
+    if sauber.chars().count() <= hoechstens {
+        return sauber.to_string();
+    }
+    let mut aus: String = sauber.chars().take(hoechstens.saturating_sub(1)).collect();
+    aus.push('…');
+    aus
+}
+
+fn vorschau_pruefen(
+    v: sprechwerk_protocol::inhalt::Linkvorschau,
+) -> Option<sprechwerk_protocol::inhalt::Linkvorschau> {
+    if !ist_weblink(&v.url) {
+        return None;
+    }
+    let titel = kuerzen(&v.titel, MAX_TITEL);
+    let beschreibung = v
+        .beschreibung
+        .map(|b| kuerzen(&b, MAX_BESCHREIBUNG))
+        .filter(|b| !b.is_empty());
+    let bild = v.bild.filter(|b| {
+        !b.is_empty()
+            && b.len() <= MAX_BILD
+            && b.bytes()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'+' | b'/' | b'='))
+    });
+    if titel.is_empty() && bild.is_none() {
+        return None;
+    }
+    Some(sprechwerk_protocol::inhalt::Linkvorschau {
+        url: v.url,
+        titel,
+        beschreibung,
+        bild,
+    })
+}
+
+/// Fasst die Reaktionen im Verlauf an ihren Zielen zusammen.
+///
+/// Rein und vollständig: jedes Mal aus dem ganzen Verlauf neu gerechnet. Je
+/// Verfasser und Zeichen zählt die **letzte** Reaktion (gesetzt oder
+/// zurückgenommen); ein Mitglied zählt je Zeichen höchstens einmal.
+pub fn reaktionen_zaehlen(zustand: &mut Zustand) {
+    use sprechwerk_domain::{MemberId, MessageId};
+    /// Ziel, Zeichen und wer (Kennung, Name).
+    type Eintrag = (MessageId, String, Vec<(MemberId, String)>);
+    let ich = zustand.ich();
+    // In der Reihenfolge des ersten Auftretens.
+    let mut stand: Vec<Eintrag> = Vec::new();
+    for n in &zustand.nachrichten {
+        let crate::NachrichtInhalt::Reaktion { ziel, zeichen, weg } = &n.inhalt else {
+            continue;
+        };
+        let pos = match stand.iter().position(|(z, c, _)| z == ziel && c == zeichen) {
+            Some(p) => p,
+            None => {
+                stand.push((*ziel, zeichen.clone(), Vec::new()));
+                stand.len() - 1
+            }
+        };
+        let leute = &mut stand[pos].2;
+        let schon = leute.iter().position(|(wer, _)| *wer == n.verfasser);
+        match (weg, schon) {
+            (true, Some(i)) => {
+                leute.remove(i);
+            }
+            (false, None) => leute.push((n.verfasser, n.verfasser_name.clone())),
+            _ => {}
+        }
+    }
+    for n in zustand.nachrichten.iter_mut() {
+        n.reaktionen = if matches!(n.inhalt, crate::NachrichtInhalt::Text { .. }) {
+            stand
+                .iter()
+                .filter(|(ziel, _, leute)| *ziel == n.id && !leute.is_empty())
+                .map(|(_, zeichen, leute)| crate::Reaktionen {
+                    zeichen: zeichen.clone(),
+                    anzahl: leute.len(),
+                    ich: leute.iter().any(|(wer, _)| Some(*wer) == ich),
+                    namen: leute.iter().map(|(_, name)| name.clone()).collect(),
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+    }
+}
+
+/// Habe ich an dieser Nachricht schon mit diesem Zeichen reagiert? Dann
+/// nimmt ein zweiter Klick sie zurück.
+pub fn meine_reaktion(
+    zustand: &Zustand,
+    nachricht: sprechwerk_domain::MessageId,
+    zeichen: &str,
+) -> bool {
+    zustand
+        .nachrichten
+        .iter()
+        .find(|n| n.id == nachricht)
+        .is_some_and(|n| n.reaktionen.iter().any(|r| r.zeichen == zeichen && r.ich))
+}
+
+/// Spielt den Effekt einer Nachricht ab, falls sie einen hat. `true`, wenn ja.
+pub fn effekt_ausloesen(zustand: &mut Zustand, nachricht: sprechwerk_domain::MessageId) -> bool {
+    let effekt = zustand
+        .nachrichten
+        .iter()
+        .find(|n| n.id == nachricht)
+        .and_then(|n| match &n.inhalt {
+            crate::NachrichtInhalt::Text {
+                effekt: Some(e), ..
+            } => Some(*e),
+            _ => None,
+        });
+    let Some(effekt) = effekt else {
+        return false;
+    };
+    let nr = zustand.effekt.as_ref().map_or(1, |e| e.nr + 1);
+    zustand.effekt = Some(crate::Effektauftritt {
+        nachricht,
+        effekt,
+        nr,
+    });
+    true
 }
 
 /// Setzt den Inhalt aller Nachrichten neu, mit dem, was `lesen` aus der rohen
@@ -473,15 +659,8 @@ mod tests {
         assert_eq!(z.nachrichten.len(), 1);
         assert_eq!(z.nachrichten[0].inhalt, crate::NachrichtInhalt::Wartet);
         // Wer den Schlüssel hat, macht daraus Text.
-        entschluesseln(&mut z, |m| crate::NachrichtInhalt::Text {
-            text: m.text.clone(),
-        });
-        assert_eq!(
-            z.nachrichten[0].inhalt,
-            crate::NachrichtInhalt::Text {
-                text: "passt".into()
-            }
-        );
+        entschluesseln(&mut z, |m| text_inhalt(&m.text));
+        assert_eq!(z.nachrichten[0].inhalt, text_inhalt("passt"));
     }
 
     #[test]
@@ -594,5 +773,248 @@ mod tests {
             })
         );
         assert!(z.mitglieder.is_empty() && z.raeume.is_empty());
+    }
+
+    fn text_inhalt(t: &str) -> crate::NachrichtInhalt {
+        crate::NachrichtInhalt::Text {
+            text: t.into(),
+            effekt: None,
+            vorschau: None,
+        }
+    }
+
+    fn reaktion(ziel: u128, zeichen: &str, weg: bool) -> crate::NachrichtInhalt {
+        crate::NachrichtInhalt::Reaktion {
+            ziel: MessageId::aus_roh(ziel),
+            zeichen: zeichen.into(),
+            weg,
+        }
+    }
+
+    /// Ein Verlauf aus (Nummer, Verfasser, Inhalt) — schon „entschlüsselt".
+    fn verlauf(z: &mut Zustand, eintraege: Vec<(u128, u128, crate::NachrichtInhalt)>) {
+        let hier = RoomId::aus_roh(7);
+        z.aktueller_raum = Some(hier);
+        for (id, wer, inhalt) in eintraege {
+            verarbeite(
+                z,
+                ServerFrame::Text {
+                    nachricht: nachricht(id, wer, "geheim", hier),
+                },
+            );
+            z.nachrichten.last_mut().unwrap().inhalt = inhalt;
+        }
+        reaktionen_zaehlen(z);
+    }
+
+    #[test]
+    fn reaktionen_werden_am_ziel_zusammengefasst() {
+        let mut z = verbunden(Role::Mitglied);
+        verlauf(
+            &mut z,
+            vec![
+                (1, 2, text_inhalt("Wer kommt Samstag?")),
+                (2, 1, reaktion(1, "👍", false)),
+                (3, 2, reaktion(1, "👍", false)),
+                (4, 2, reaktion(1, "🎉", false)),
+                // doppelt zählt nicht
+                (5, 2, reaktion(1, "👍", false)),
+                // auf etwas, das es nicht gibt: verschwindet still
+                (6, 2, reaktion(99, "👍", false)),
+            ],
+        );
+        let r = &z.nachrichten[0].reaktionen;
+        assert_eq!(r.len(), 2);
+        assert_eq!(
+            (r[0].zeichen.as_str(), r[0].anzahl, r[0].ich),
+            ("👍", 2, true)
+        );
+        assert_eq!(r[0].namen.len(), 2);
+        assert_eq!(
+            (r[1].zeichen.as_str(), r[1].anzahl, r[1].ich),
+            ("🎉", 1, false)
+        );
+        assert!(meine_reaktion(&z, MessageId::aus_roh(1), "👍"));
+        assert!(!meine_reaktion(&z, MessageId::aus_roh(1), "🎉"));
+        // Reaktionen selbst tragen keine Reaktionen.
+        assert!(z.nachrichten[1].reaktionen.is_empty());
+    }
+
+    #[test]
+    fn zuruecknehmen_zaehlt_die_letzte() {
+        let mut z = verbunden(Role::Mitglied);
+        verlauf(
+            &mut z,
+            vec![
+                (1, 2, text_inhalt("Hallo")),
+                (2, 1, reaktion(1, "❤️", false)),
+                (3, 1, reaktion(1, "❤️", true)),
+                // fremdes Zurücknehmen nimmt nichts von mir weg
+                (4, 2, reaktion(1, "😂", false)),
+                (5, 3, reaktion(1, "😂", true)),
+            ],
+        );
+        let r = &z.nachrichten[0].reaktionen;
+        assert_eq!(r.len(), 1, "{r:?}");
+        assert_eq!((r[0].zeichen.as_str(), r[0].anzahl), ("😂", 1));
+        assert!(!meine_reaktion(&z, MessageId::aus_roh(1), "❤️"));
+    }
+
+    #[test]
+    fn geloeschtes_ziel_zeigt_keine_reaktionen() {
+        let mut z = verbunden(Role::Mitglied);
+        verlauf(
+            &mut z,
+            vec![
+                (1, 2, text_inhalt("weg damit")),
+                (2, 1, reaktion(1, "👍", false)),
+            ],
+        );
+        verarbeite(
+            &mut z,
+            ServerFrame::NachrichtGeloescht {
+                nachricht: MessageId::aus_roh(1),
+                hart: false,
+            },
+        );
+        reaktionen_zaehlen(&mut z);
+        assert!(z.nachrichten[0].reaktionen.is_empty());
+    }
+
+    #[test]
+    fn inhalt_wird_geprueft() {
+        use sprechwerk_protocol::inhalt::{Effekt, Inhalt, Linkvorschau};
+        let v = |url: &str, bild: Option<&str>| Linkvorschau {
+            url: url.into(),
+            titel: "  Titel\n mit Umbruch ".into(),
+            beschreibung: Some("x".repeat(1000)),
+            bild: bild.map(str::to_string),
+        };
+        let gelesen = inhalt_abbilden(Inhalt::Text {
+            text: "t".into(),
+            effekt: Some(Effekt::Unbekannt),
+            vorschau: Some(v("https://example.org/a", Some("QUJD"))),
+        });
+        let crate::NachrichtInhalt::Text {
+            effekt, vorschau, ..
+        } = gelesen
+        else {
+            panic!("kein Text");
+        };
+        assert_eq!(effekt, None, "unbekannter Effekt fällt weg");
+        let vorschau = vorschau.unwrap();
+        assert_eq!(vorschau.titel, "Titel  mit Umbruch");
+        assert_eq!(
+            vorschau.beschreibung.unwrap().chars().count(),
+            MAX_BESCHREIBUNG
+        );
+        assert_eq!(vorschau.bild.as_deref(), Some("QUJD"));
+
+        // Kein Weblink: keine Vorschau, nichts zum Anklicken.
+        for url in [
+            "javascript:alert(1)",
+            "file:///etc/passwd",
+            "https://",
+            "https://a b",
+        ] {
+            let i = inhalt_abbilden(Inhalt::Text {
+                text: "t".into(),
+                effekt: None,
+                vorschau: Some(v(url, None)),
+            });
+            assert!(
+                matches!(i, crate::NachrichtInhalt::Text { vorschau: None, .. }),
+                "{url}"
+            );
+        }
+        // Ein Bild, das kein Base64 ist, fällt weg — der Rest bleibt.
+        let i = inhalt_abbilden(Inhalt::Text {
+            text: "t".into(),
+            effekt: None,
+            vorschau: Some(v("https://example.org", Some("\"><script>"))),
+        });
+        let crate::NachrichtInhalt::Text {
+            vorschau: Some(v), ..
+        } = i
+        else {
+            panic!("Vorschau fehlt");
+        };
+        assert!(v.bild.is_none());
+
+        // Reaktionen: Ziel muss eine Kennung sein, Zeichen kurz.
+        let r = |ziel: &str, zeichen: &str| {
+            inhalt_abbilden(Inhalt::Reaktion {
+                ziel: ziel.into(),
+                zeichen: zeichen.into(),
+                weg: false,
+            })
+        };
+        assert!(matches!(
+            r(&MessageId::aus_roh(5).text(), "👍"),
+            crate::NachrichtInhalt::Reaktion { .. }
+        ));
+        assert_eq!(r("irgendwas", "👍"), crate::NachrichtInhalt::Unlesbar);
+        assert_eq!(
+            r(&MessageId::aus_roh(5).text(), &"a".repeat(40)),
+            crate::NachrichtInhalt::Unlesbar
+        );
+        assert_eq!(
+            r(&MessageId::aus_roh(5).text(), "ein Satz"),
+            crate::NachrichtInhalt::Unlesbar
+        );
+    }
+
+    #[test]
+    fn effekt_spielt_und_zaehlt_hoch() {
+        use sprechwerk_protocol::inhalt::Effekt;
+        let mut z = verbunden(Role::Mitglied);
+        verlauf(
+            &mut z,
+            vec![
+                (1, 2, text_inhalt("ohne")),
+                (
+                    2,
+                    2,
+                    crate::NachrichtInhalt::Text {
+                        text: "Glückwunsch!".into(),
+                        effekt: Some(Effekt::Konfetti),
+                        vorschau: None,
+                    },
+                ),
+            ],
+        );
+        assert!(!effekt_ausloesen(&mut z, MessageId::aus_roh(1)));
+        assert!(z.effekt.is_none());
+        assert!(effekt_ausloesen(&mut z, MessageId::aus_roh(2)));
+        assert_eq!(z.effekt.as_ref().unwrap().nr, 1);
+        assert!(effekt_ausloesen(&mut z, MessageId::aus_roh(2)));
+        let e = z.effekt.clone().unwrap();
+        assert_eq!((e.effekt, e.nr), (Effekt::Konfetti, 2));
+        // Raumwechsel: der Effekt gehört nicht mit.
+        verarbeite(
+            &mut z,
+            ServerFrame::Betreten {
+                raum: RoomId::aus_roh(8),
+                verlauf: vec![],
+                anwesend: vec![],
+            },
+        );
+        assert!(z.effekt.is_none());
+    }
+
+    #[test]
+    fn weblinks() {
+        assert!(ist_weblink("https://example.org"));
+        assert!(ist_weblink("HTTP://Example.org/pfad?x=1"));
+        for nein in [
+            "",
+            "example.org",
+            "ftp://x",
+            "javascript:x",
+            "https://",
+            "https://a\nb",
+        ] {
+            assert!(!ist_weblink(nein), "{nein}");
+        }
     }
 }

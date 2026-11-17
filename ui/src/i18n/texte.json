@@ -1486,5 +1486,125 @@
   "en": "The chat key comes from another member as soon as one who has it is online. Until then you cannot write.",
   "es": "La clave del chat llega de otro miembro en cuanto uno que la tenga esté conectado. Hasta entonces no puedes escribir.",
   "fr": "La clé du chat vient d’un autre membre dès qu’un membre qui la possède est en ligne. D’ici là, tu ne peux pas écrire."
+ },
+ "chat.actions": {
+  "de": "Aktionen zur Nachricht",
+  "en": "Message actions",
+  "es": "Acciones del mensaje",
+  "fr": "Actions du message"
+ },
+ "react.👍": {
+  "de": "Daumen hoch",
+  "en": "Thumbs up",
+  "es": "Pulgar arriba",
+  "fr": "Pouce levé"
+ },
+ "react.❤️": {
+  "de": "Herz",
+  "en": "Heart",
+  "es": "Corazón",
+  "fr": "Cœur"
+ },
+ "react.😂": {
+  "de": "Lachen",
+  "en": "Laughing",
+  "es": "Risa",
+  "fr": "Rire"
+ },
+ "react.😮": {
+  "de": "Staunen",
+  "en": "Surprised",
+  "es": "Sorpresa",
+  "fr": "Surprise"
+ },
+ "react.😢": {
+  "de": "Traurig",
+  "en": "Sad",
+  "es": "Triste",
+  "fr": "Triste"
+ },
+ "react.🎉": {
+  "de": "Feiern",
+  "en": "Celebrate",
+  "es": "Celebrar",
+  "fr": "Fête"
+ },
+ "react.count": {
+  "de": "{} — {} von {}",
+  "en": "{} — {} from {}",
+  "es": "{} — {} de {}",
+  "fr": "{} — {} de {}"
+ },
+ "effect.konfetti": {
+  "de": "Konfetti",
+  "en": "Confetti",
+  "es": "Confeti",
+  "fr": "Confettis"
+ },
+ "effect.herzen": {
+  "de": "Herzen",
+  "en": "Hearts",
+  "es": "Corazones",
+  "fr": "Cœurs"
+ },
+ "effect.beben": {
+  "de": "Beben",
+  "en": "Shake",
+  "es": "Temblor",
+  "fr": "Secousse"
+ },
+ "effect.none": {
+  "de": "Kein Effekt",
+  "en": "No effect",
+  "es": "Sin efecto",
+  "fr": "Aucun effet"
+ },
+ "effect.short": {
+  "de": "✨",
+  "en": "✨",
+  "es": "✨",
+  "fr": "✨"
+ },
+ "effect.choose": {
+  "de": "Effekt für die nächste Nachricht",
+  "en": "Effect for the next message",
+  "es": "Efecto para el próximo mensaje",
+  "fr": "Effet pour le prochain message"
+ },
+ "effect.replay": {
+  "de": "{} noch einmal",
+  "en": "Replay {}",
+  "es": "Repetir {}",
+  "fr": "Rejouer {}"
+ },
+ "preview.loading": {
+  "de": "Vorschau wird geladen …",
+  "en": "Loading preview …",
+  "es": "Cargando vista previa …",
+  "fr": "Chargement de l’aperçu …"
+ },
+ "preview.remove": {
+  "de": "Ohne Vorschau senden",
+  "en": "Send without preview",
+  "es": "Enviar sin vista previa",
+  "fr": "Envoyer sans aperçu"
+ },
+ "set.link_preview": {
+  "de": "Link-Vorschau erzeugen",
+  "en": "Generate link previews",
+  "es": "Generar vistas previas de enlaces",
+  "fr": "Générer des aperçus de liens"
+ },
+ "set.link_preview.hint": {
+  "de": "Schreibst du einen Link, ruft dieses Gerät die Seite ab und schickt Titel und Bild verschlüsselt mit. Die Seite sieht dabei deine Adresse — die anderen rufen nichts ab. Aus: Links bleiben anklickbar, nur ohne Vorschau.",
+  "en": "When you write a link, this device fetches the page and sends title and image along, encrypted. The site sees your address — the others fetch nothing. Off: links stay clickable, just without a preview.",
+  "es": "Al escribir un enlace, este dispositivo carga la página y envía título e imagen cifrados. La página ve tu dirección; los demás no cargan nada. Desactivado: los enlaces siguen siendo clicables, sin vista previa.",
+  "fr": "Quand tu écris un lien, cet appareil charge la page et envoie titre et image, chiffrés. Le site voit ton adresse — les autres ne chargent rien. Désactivé : les liens restent cliquables, sans aperçu."
+ },
+ "set.chat": {
+  "de": "Chat",
+  "en": "Chat",
+  "es": "Chat",
+  "fr": "Discussion"
  }
 }

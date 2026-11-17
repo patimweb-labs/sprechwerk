@@ -20,6 +20,7 @@ use tauri::{Emitter, Manager};
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // Fenster- und Taskleistensymbol: kommt aus der Anwendung selbst,
             // nicht aus dem Paket — so stimmt es auch beim Start aus dem
@@ -85,6 +86,11 @@ pub fn run() {
             commands::trennen,
             commands::betreten,
             commands::text_senden,
+            commands::reagieren,
+            commands::effekt_zeigen,
+            commands::vorschau,
+            commands::vorschau_verwerfen,
+            commands::link_oeffnen,
             commands::nachricht_loeschen,
             commands::raum_anlegen,
             commands::raum_umbenennen,

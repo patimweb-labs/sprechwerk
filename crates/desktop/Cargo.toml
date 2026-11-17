@@ -20,9 +20,15 @@ sprechwerk-domain = { path = "../domain" }
 sprechwerk-protocol = { path = "../protocol" }
 sprechwerk-adapters = { path = "../adapters" }
 sprechwerk-ipc = { path = "../ipc" }
+# Link-Vorschau: der Absender ruft die Seite ab (ADR 0012 §2).
+sprechwerk-linkvorschau = { path = "../linkvorschau" }
 
 # `image-png`: damit das Fenstersymbol aus einer PNG-Datei gesetzt werden kann.
 tauri = { version = "2", features = ["image-png"] }
+# Links aus dem Chat im Browser des Systems öffnen — nicht im Fenster, das
+# sonst die Oberfläche verlässt. Der offizielle Weg in Tauri 2; aufgerufen
+# nur aus Rust, nach der Prüfung auf http(s), nie direkt aus der Oberfläche.
+tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "net", "macros"] }

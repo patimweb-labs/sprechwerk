@@ -30,9 +30,10 @@ COPY crates/store/Cargo.toml crates/store/
 COPY crates/adapters/Cargo.toml crates/adapters/
 COPY crates/ipc/Cargo.toml crates/ipc/
 COPY crates/audio/Cargo.toml crates/audio/
+COPY crates/linkvorschau/Cargo.toml crates/linkvorschau/
 COPY crates/server/Cargo.toml crates/server/
 COPY crates/cli/Cargo.toml crates/cli/
-RUN for k in domain protocol store adapters ipc audio; do \
+RUN for k in domain protocol store adapters ipc audio linkvorschau; do \
       mkdir -p "crates/$k/src" && echo "" > "crates/$k/src/lib.rs"; \
     done \
  && echo "fn main() {}" > crates/server/src/main.rs \

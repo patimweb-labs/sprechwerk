@@ -89,7 +89,8 @@ Version steigt, Daten bleiben, Kopie liegt daneben.
 
 **[P] Drei Säulen: Sprache, Text, Rechte.** Alles andere ist „später", nicht
 „gestrichen": Dateien, Status/Abwesenheit, Bildschirm teilen, Video,
-Hintergrundeffekte, Emojis/Reaktionen, Suche.
+Hintergrundeffekte, Suche. *(Reaktionen, Effekte und Link-Vorschau: Nachtrag
+2026-11-17, ADR 0012 Stufe 2.)*
 
 **[A] Ende-zu-Ende je Raum:** Sprache kann je Raum Ende zu Ende verschlüsselt
 werden (ADR 0006, umgesetzt). Text bleibt serverseitig lesbar — die Zusage gilt
@@ -190,7 +191,15 @@ darf jede Nachricht löschen, hart, mit Protokolleintrag.
 **[A] Aufbewahrung:** standardmäßig unbegrenzt, im Container einstellbar
 (`retention_days`, 0 = unbegrenzt).
 **[A] Nachrichtenumfang:** reiner Text, Länge begrenzt (Standard 4 000
-Zeichen). Keine Formatierung, keine Anhänge, keine Reaktionen in Version 1.
+Zeichen). Keine Formatierung, keine Anhänge in Version 1.
+**[A] Nachtrag 2026-11-17 (ADR 0012, Stufe 2):** Reaktionen (feste Auswahl
+von sechs Zeichen, ein zweiter Klick nimmt zurück), Effekte (Konfetti, Herzen,
+Beben — spielen einmal beim Empfang, nicht beim Laden des Verlaufs, nicht bei
+`prefers-reduced-motion`), Links anklickbar (nur `http(s)`, öffnen im Browser
+des Systems), Link-Vorschau vom **Absender** abgerufen. *Preis:* die Seite
+sieht die Adresse des Absenders (abschaltbar); jede Reaktion ist eine eigene
+gespeicherte Nachricht; ein älterer Client zeigt Reaktionen als „neuere
+Version nötig", Effekt und Vorschau fehlen bei ihm einfach.
 
 ## 7. Technik
 

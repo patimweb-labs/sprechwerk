@@ -6,6 +6,9 @@
 sicherungen/
 *.tmp
 
+# Eigene Umgebung: kann das Serverpasswort enthalten (.env.example ist die Vorlage)
+/.env
+
 # Oberfläche
 ui/node_modules/
 ui/dist/
