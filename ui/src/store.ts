@@ -2,7 +2,7 @@
 // keine Ansicht hält eigene Kopien der Wahrheit (AGENTS.md §2.1).
 import { computed, reactive, ref, watch } from "vue";
 import { listen } from "@tauri-apps/api/event";
-import { api, istDummy, type Einstellungen, type Zustand } from "./api";
+import { api, istDummy, type Effekt, type Einstellungen, type Zustand } from "./api";
 import { abonnieren } from "./mock";
 import { rolle, setSprache, sprache, t } from "./i18n";
 
@@ -15,6 +15,8 @@ export const modell = reactive<Zustand>({
   latenz_ms: null,
   schluessel: [],
   textschluessel: "unbekannt",
+  effekt: null,
+  entwurf: { art: "keiner" },
   guete: null,
   sperren: [],
   protokoll: [],
@@ -41,6 +43,7 @@ export const einstellungen = reactive<Einstellungen>({
   rauschunterdrueckung: true,
   noisegate: true,
   echounterdrueckung: true,
+  link_vorschau: true,
   vertrauen: [],
 });
 
@@ -435,10 +438,34 @@ export async function betreten(raum: string) {
 }
 
 /** Sendet Text. `false`, wenn nichts ging — die Ansicht gibt den Text zurück. */
-export async function sende(text: string): Promise<boolean> {
+export async function sende(text: string, effekt: Effekt | null = null): Promise<boolean> {
   const bereinigt = text.trim();
   if (!bereinigt) return true;
-  return (await befehl(async () => (await api.textSenden(bereinigt), true))) ?? false;
+  return (await befehl(async () => (await api.textSenden(bereinigt, effekt), true))) ?? false;
+}
+
+/** Reagieren — oder, wenn ich das Zeichen schon gesetzt habe, zurücknehmen. */
+export async function reagiere(nachricht: string, zeichen: string) {
+  await befehl(() => api.reagieren(nachricht, zeichen));
+}
+
+/** Den Effekt einer Nachricht noch einmal abspielen. */
+export async function effektZeigen(nachricht: string) {
+  await befehl(() => api.effektZeigen(nachricht));
+}
+
+/** Der erste Link im Entwurf hat sich geändert. Ohne Einstellung: keiner. */
+export async function entwurfsLink(url: string | null) {
+  await befehl(() => api.vorschau(einstellungen.link_vorschau ? url : null));
+}
+
+export async function vorschauVerwerfen() {
+  await befehl(() => api.vorschauVerwerfen());
+}
+
+/** Öffnet einen Link im Browser des Systems (geprüft im Rust-Teil). */
+export async function linkOeffnen(url: string) {
+  await befehl(() => api.linkOeffnen(url));
 }
 
 export async function setzeRolle(mitglied: string, rolle: string) {

@@ -9,6 +9,7 @@
 import { computed, onMounted, onUnmounted } from "vue";
 import * as UI from "@weppelmann/components";
 import { istSprechtaste, istSprechtasteLos, sprechMaustaste } from "./sprechtaste";
+import { sichtbar } from "./chat";
 import {
   IconPlug,
   IconHeadphoneOff,
@@ -261,7 +262,7 @@ async function tonUmschalten() {
       :state="verbindungsText"
       :counts="
         verbunden
-          ? t('app.counts', modell.mitglieder.length, modell.nachrichten.length)
+          ? t('app.counts', modell.mitglieder.length, sichtbar(modell.nachrichten).length)
           : t('app.saved_servers', einstellungen.favoriten.length)
       "
     >

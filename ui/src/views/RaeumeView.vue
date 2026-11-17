@@ -9,7 +9,11 @@
 // • Eingriffe liegen im Kontextmenü (Rechtsklick oder „…"), nie im Hauptweg.
 import { computed, nextTick, ref, watch } from "vue";
 import * as UI from "@weppelmann/components";
-import { IconLock, IconMore, IconPanelRight, IconPlus, IconSprechblase } from "@weppelmann/icons";
+import { IconClose, IconLock, IconMore, IconPanelRight, IconPlus, IconSprechblase } from "@weppelmann/icons";
+import Beitrag from "./Beitrag.vue";
+import EffektBuehne from "./EffektBuehne.vue";
+import { EFFEKTE, ersterLink, sichtbar } from "../chat";
+import type { Effekt } from "../api";
 import {
   ausRaumWerfen,
   betreten,
@@ -19,8 +23,8 @@ import {
   setzeRolle,
   darfRollenVergeben,
   einstellungen,
+  entwurfsLink,
   legeRaumAn,
-  loesche,
   meinRaum,
   modell,
   raumLoeschen,
@@ -33,12 +37,39 @@ import {
   trenneMitglied,
   t,
   rolle as rollenName,
-  uhrzeit,
   verbunden,
   verschieben,
+  vorschauVerwerfen,
 } from "../store";
 
 const eingabe = ref("");
+/**
+ * Effekt für die nächste Nachricht. Gehört zum Entwurf wie der Text im Feld —
+ * er geht mit dem Absenden hinaus und ist danach wieder leer.
+ */
+const effektWahl = ref<Effekt | null>(null);
+/** Was im Verlauf als Beitrag steht (Reaktionen hängen an ihrem Ziel). */
+const beitraege = computed(() => sichtbar(modell.nachrichten));
+
+const effektMenue = computed<UI.MenuItem[]>(() => [
+  { id: "kein", label: t("effect.none") },
+  ...EFFEKTE.map((e) => ({ id: e, label: t(`effect.${e}`) })),
+]);
+function effektGewaehlt(wahl: string) {
+  effektWahl.value = wahl === "kein" ? null : (wahl as Effekt);
+}
+
+// Link-Vorschau: der erste Link im Entwurf geht an den Rust-Teil, der sie
+// abruft. Kurz gewartet, damit nicht jeder Tastendruck mitten in der Adresse
+// eine Seite anfragt.
+let vorschauZeit: ReturnType<typeof setTimeout> | undefined;
+watch(
+  () => ersterLink(eingabe.value),
+  (url) => {
+    clearTimeout(vorschauZeit);
+    vorschauZeit = setTimeout(() => void entwurfsLink(url), url ? 500 : 0);
+  },
+);
 const verlauf = ref<HTMLElement | null>(null);
 
 // ---- Menüs --------------------------------------------------------------
@@ -70,13 +101,13 @@ function chatUmschalten() {
   if (!chatEingeklappt.value) {
     // Aufgeklappt: alles ist gelesen.
     ungelesen.value = 0;
-    letzteGesehen.value = modell.nachrichten.length;
+    letzteGesehen.value = beitraege.value.length;
   }
   void speichere();
 }
 
 watch(
-  () => modell.nachrichten.length,
+  () => beitraege.value.length,
   (anzahl) => {
     if (!chatEingeklappt.value) {
       letzteGesehen.value = anzahl;
@@ -259,7 +290,7 @@ async function bestaetigen() {
 }
 
 watch(
-  () => modell.nachrichten.length,
+  () => beitraege.value.length,
   async () => {
     await nextTick();
     if (verlauf.value) verlauf.value.scrollTop = verlauf.value.scrollHeight;
@@ -271,7 +302,12 @@ async function absenden() {
   eingabe.value = "";
   // Abgelehnt (Server weg, zu lang): der Text kommt zurück ins Feld, statt
   // verloren zu sein — es sei denn, inzwischen wurde Neues getippt.
-  if (!(await sende(text)) && eingabe.value === "") eingabe.value = text;
+  const effekt = effektWahl.value;
+  effektWahl.value = null;
+  if (!(await sende(text, effekt)) && eingabe.value === "") {
+    eingabe.value = text;
+    effektWahl.value = effekt;
+  }
 }
 </script>
 
@@ -396,6 +432,8 @@ async function absenden() {
         </div>
       </header>
 
+      <EffektBuehne />
+
       <div ref="verlauf" class="verlauf">
         <UI.WpEmptyState
           v-if="!meinRaum"
@@ -403,32 +441,12 @@ async function absenden() {
           :description="t('room.choose')"
         />
         <UI.WpEmptyState
-          v-else-if="modell.nachrichten.length === 0"
+          v-else-if="beitraege.length === 0"
           :title="t('room.empty.title')"
           :description="t('room.empty.desc')"
         />
 
-        <article
-          v-for="n in modell.nachrichten"
-          :key="n.id"
-          class="beitrag"
-          :class="{ 'ist-eigene': n.verfasser === eigeneId }"
-        >
-          <div class="beitrag__text">
-            <header class="beitrag__kopf">
-              <span class="beitrag__wer" :class="{ 'ist-eigene': n.verfasser === eigeneId }">{{ n.verfasser_name }}</span>
-              <span class="beitrag__wann">{{ uhrzeit(n.zeit) }}</span>
-              <button v-if="n.loeschbar" class="beitrag__aktion" type="button" @click="loesche(n.id)">
-                {{ t("chat.delete") }}
-              </button>
-            </header>
-            <p v-if="n.inhalt.zustand === 'text'" class="beitrag__inhalt">{{ n.inhalt.text }}</p>
-            <p v-else-if="n.inhalt.zustand === 'geloescht'" class="beitrag__weg">{{ t("chat.deleted") }}</p>
-            <p v-else-if="n.inhalt.zustand === 'wartet'" class="beitrag__weg">{{ t("chat.waiting") }}</p>
-            <p v-else-if="n.inhalt.zustand === 'neuer'" class="beitrag__weg">{{ t("chat.newer", n.inhalt.art) }}</p>
-            <p v-else class="beitrag__weg beitrag__weg--fehler">{{ t("chat.unreadable") }}</p>
-          </div>
-        </article>
+        <Beitrag v-for="n in beitraege" :key="n.id" :n="n" :eigene="n.verfasser === eigeneId" />
       </div>
 
       <!-- Ohne Serverschlüssel kein Schreiben: was hinausginge, wäre
@@ -436,14 +454,36 @@ async function absenden() {
       <p v-if="meinRaum && verbunden && modell.textschluessel === 'wartet'" class="schreiben schreiben--wartet" role="status">
         {{ t("chat.key_wait") }}
       </p>
-      <div v-else-if="meinRaum && verbunden" class="schreiben">
-        <UI.WpInput v-model="eingabe" :placeholder="t('chat.placeholder')" @keyup.enter="absenden" />
-        <UI.WpButton
-          :label="t('chat.send')"
-          variant="primary"
-          :state="eingabe.trim() ? 'default' : 'disabled'"
-          @press="absenden"
-        />
+      <div v-else-if="meinRaum && verbunden" class="entwurf">
+        <!-- Vorschau des ersten Links: so geht sie mit hinaus. Wegklicken
+             heißt, der Text geht ohne. -->
+        <div v-if="modell.entwurf.art === 'fertig'" class="entwurf__vorschau">
+          <img
+            v-if="modell.entwurf.vorschau.bild"
+            class="entwurf__bild"
+            :src="`data:image/jpeg;base64,${modell.entwurf.vorschau.bild}`"
+            alt=""
+          />
+          <span class="entwurf__titel">{{ modell.entwurf.vorschau.titel }}</span>
+          <UI.WpIconButton :icon="IconClose" :label="t('preview.remove')" size="sm" variant="ghost" @press="vorschauVerwerfen" />
+        </div>
+        <p v-else-if="modell.entwurf.art === 'laedt'" class="entwurf__laedt" role="status">{{ t("preview.loading") }}</p>
+        <div class="schreiben">
+          <UI.WpMenu :items="effektMenue" :label="t('effect.choose')" align="left" @select="effektGewaehlt">
+            <UI.WpButton
+              :label="effektWahl ? t(`effect.${effektWahl}`) : t('effect.short')"
+              size="sm"
+              :variant="effektWahl ? 'secondary' : 'ghost'"
+            />
+          </UI.WpMenu>
+          <UI.WpInput v-model="eingabe" :placeholder="t('chat.placeholder')" @keyup.enter="absenden" />
+          <UI.WpButton
+            :label="t('chat.send')"
+            variant="primary"
+            :state="eingabe.trim() ? 'default' : 'disabled'"
+            @press="absenden"
+          />
+        </div>
       </div>
     </section>
 
@@ -732,6 +772,7 @@ async function absenden() {
 
 /* ---- Spalte 2 ---- */
 .haupt {
+  position: relative;
   flex: 1;
   min-width: 0;
   display: flex;
@@ -832,95 +873,58 @@ async function absenden() {
   max-height: 60%;
 }
 
-.beitrag {
-  padding: var(--wp-space-1) 0 var(--wp-space-3);
-  border-left: calc(var(--wp-size-border) * 2) solid transparent;
-  padding-left: var(--wp-space-2);
-}
-
-/* Eigene Beiträge: Akzentkante links statt Farbe im Text. */
-.beitrag.ist-eigene {
-  border-left-color: var(--wp-color-accent-default);
-}
-
-.beitrag__wer.ist-eigene {
-  color: var(--wp-color-accent-default);
-}
-
-.beitrag__text {
-  min-width: 0;
-  flex: 1;
-}
-
-.beitrag__kopf {
-  display: flex;
-  align-items: baseline;
-  gap: var(--wp-space-2);
-}
-
-.beitrag__wer {
-  font-size: var(--wp-font-size-sm);
-  font-weight: var(--wp-font-weight-semibold);
-}
-
-.beitrag__wann {
-  font-size: var(--wp-font-size-xs);
-  color: var(--wp-color-text-faint);
-  font-variant-numeric: tabular-nums;
-}
-
-.beitrag__aktion {
-  margin-left: auto;
-  border: 0;
-  background: transparent;
-  color: var(--wp-color-text-faint);
-  font: inherit;
-  font-size: var(--wp-font-size-xs);
-  padding: 0;
-  opacity: 0;
-  transition: opacity var(--wp-duration-fast) ease;
-}
-
-.beitrag:hover .beitrag__aktion,
-.beitrag:focus-within .beitrag__aktion {
-  opacity: 1;
-}
-
-.beitrag__aktion:hover {
-  color: var(--wp-color-status-error);
-}
-
-.beitrag__inhalt {
-  margin: var(--wp-space-1) 0 0;
-  white-space: pre-wrap;
-  line-height: var(--wp-font-line-normal);
-}
-
-.beitrag__weg {
-  margin: var(--wp-space-1) 0 0;
-  color: var(--wp-color-text-faint);
-  font-style: italic;
-}
-
-.beitrag__weg--fehler {
-  color: var(--wp-color-status-warn);
-}
-
 .schreiben--wartet {
   margin: 0;
+  border-top: var(--wp-size-border) solid var(--wp-color-border-subtle);
+  background: var(--wp-color-bg-panel);
   font-size: var(--wp-font-size-sm);
   color: var(--wp-color-text-muted);
 }
 
-.schreiben {
-  display: flex;
-  gap: var(--wp-space-2);
-  padding: var(--wp-space-3) var(--wp-space-4);
+.entwurf {
   border-top: var(--wp-size-border) solid var(--wp-color-border-subtle);
   background: var(--wp-color-bg-panel);
 }
 
-.schreiben > :first-child {
+.entwurf__vorschau {
+  display: flex;
+  align-items: center;
+  gap: var(--wp-space-2);
+  margin: var(--wp-space-2) var(--wp-space-4) 0;
+  padding: var(--wp-space-1) var(--wp-space-2);
+  border-left: calc(var(--wp-size-border) * 2) solid var(--wp-color-border-strong);
+  background: var(--wp-color-bg-raised);
+}
+
+.entwurf__bild {
+  width: var(--wp-size-control-lg);
+  height: var(--wp-size-control-lg);
+  object-fit: cover;
+}
+
+.entwurf__titel {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--wp-font-size-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entwurf__laedt {
+  margin: var(--wp-space-2) var(--wp-space-4) 0;
+  font-size: var(--wp-font-size-xs);
+  color: var(--wp-color-text-faint);
+}
+
+.schreiben {
+  display: flex;
+  align-items: center;
+  gap: var(--wp-space-2);
+  padding: var(--wp-space-3) var(--wp-space-4);
+}
+
+.schreiben > :nth-child(2) {
   flex: 1;
 }
 

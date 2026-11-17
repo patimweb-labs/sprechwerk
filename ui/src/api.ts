@@ -48,8 +48,22 @@ export interface Mitglied {
  * Was eine Nachricht zeigt (ADR 0012). Entschlüsselt wird im Rust-Teil; hier
  * kommt nur das Ergebnis an — als Summentyp, nicht als Text mit Sonderwerten.
  */
+/** Effekte, die beim Empfang einer Nachricht einmal abspielen. */
+export type Effekt = "konfetti" | "herzen" | "beben";
+
+/** Vorschau einer Seite, abgerufen vom Absender (ADR 0012 §2). */
+export interface Linkvorschau {
+  url: string;
+  titel: string;
+  beschreibung?: string | null;
+  /** JPEG, Base64 — klein gerechnet vom Absender. */
+  bild?: string | null;
+}
+
 export type NachrichtInhalt =
-  | { zustand: "text"; text: string }
+  | { zustand: "text"; text: string; effekt?: Effekt | null; vorschau?: Linkvorschau | null }
+  /** Reaktion auf eine andere Nachricht — wird nicht als Beitrag gezeigt. */
+  | { zustand: "reaktion"; ziel: string; zeichen: string; weg: boolean }
   /** Verschlüsselt, der Schlüssel fehlt noch. */
   | { zustand: "wartet" }
   /** Verändert, umgehängt oder beschädigt. */
@@ -66,7 +80,32 @@ export interface Nachricht {
   zeit: number;
   geloescht: boolean;
   loeschbar: boolean;
+  /** Zusammengefasste Reaktionen auf diese Nachricht. */
+  reaktionen: Reaktionen[];
 }
+
+/** Wie oft ein Zeichen an einer Nachricht steht. */
+export interface Reaktionen {
+  zeichen: string;
+  anzahl: number;
+  /** Bin ich dabei? Dann nimmt ein Klick die eigene zurück. */
+  ich: boolean;
+  namen: string[];
+}
+
+/** Ein Effekt, der gerade abspielt; `nr` zählt bei jedem Auftritt hoch. */
+export interface Effektauftritt {
+  nachricht: string;
+  effekt: Effekt;
+  nr: number;
+}
+
+/** Link-Vorschau des Entwurfs im Eingabefeld. */
+export type Linkentwurf =
+  | { art: "keiner" }
+  | { art: "laedt"; url: string }
+  | { art: "fertig"; vorschau: Linkvorschau }
+  | { art: "ohne"; url: string };
 
 /** Der Raumschlüssel eines verschlüsselten Raums. */
 export interface Schluesselstand {
@@ -136,6 +175,10 @@ export interface Zustand {
    * anderen Mitglied, sobald eines online ist, das ihn hat (ADR 0012).
    */
   textschluessel: "unbekannt" | "bereit" | "wartet";
+  /** Effekt, der gerade abspielt (zuletzt angekommen oder wiederholt). */
+  effekt: Effektauftritt | null;
+  /** Link-Vorschau des Entwurfs. */
+  entwurf: Linkentwurf;
   /** Umlaufzeit zum Server in Millisekunden (aus Ping/Pong). */
   latenz_ms: number | null;
   /** Betriebszahlen, bis sie einmal abgefragt wurden: null. */
@@ -183,6 +226,8 @@ export interface Einstellungen {
   noisegate: boolean;
   /** Echounterdrückung: eigene Wiedergabe aus der Aufnahme rechnen. */
   echounterdrueckung: boolean;
+  /** Link-Vorschauen erzeugen (dieses Gerät ruft die Seite ab). */
+  link_vorschau: boolean;
   /**
    * Angeheftete Server-Zertifikate.
    *
@@ -214,7 +259,13 @@ const echtApi = {
     invoke<string>("verbinden", { server, name, passwort: passwort || null }),
   trennen: () => invoke<void>("trennen"),
   betreten: (raum: string) => invoke<void>("betreten", { raum }),
-  textSenden: (text: string) => invoke<void>("text_senden", { text }),
+  textSenden: (text: string, effekt: Effekt | null = null) =>
+    invoke<void>("text_senden", { text, effekt }),
+  reagieren: (nachricht: string, zeichen: string) => invoke<void>("reagieren", { nachricht, zeichen }),
+  effektZeigen: (nachricht: string) => invoke<void>("effekt_zeigen", { nachricht }),
+  vorschau: (url: string | null) => invoke<void>("vorschau", { url }),
+  vorschauVerwerfen: () => invoke<void>("vorschau_verwerfen"),
+  linkOeffnen: (url: string) => invoke<void>("link_oeffnen", { url }),
   nachrichtLoeschen: (nachricht: string) => invoke<void>("nachricht_loeschen", { nachricht }),
   raumAnlegen: (name: string) => invoke<void>("raum_anlegen", { name }),
   raumUmbenennen: (raum: string, name: string) => invoke<void>("raum_umbenennen", { raum, name }),
