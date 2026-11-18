@@ -214,8 +214,10 @@ fn fenster(o: Oberflaeche, groesse: (f32, f32)) -> (Harness<'static, Stand>, Fal
     let kern = Falsch::default();
     let (tx, rx) = mpsc::channel();
     let f = Fenster::neu(kern.clone(), rx, o);
+    // Kurzer Bildtakt: zwei Klicks hintereinander gelten als Doppelklick.
     let h = Harness::builder()
         .with_size(groesse)
+        .with_step_dt(1.0 / 30.0)
         .with_context_setup(sprechwerk_oberflaeche::einrichten)
         .build_ui_state(|ui, (f, _): &mut Stand| f.bild(ui), (f, tx));
     (h, kern)
@@ -267,14 +269,30 @@ fn chat_sendet_mit_enter() {
 }
 
 #[test]
-fn raum_wechseln_per_klick() {
+fn raum_wechseln_wie_bei_teamspeak() {
+    let wechselt = |kern: &Falsch| {
+        kern.0.borrow().iter().any(|a| {
+            matches!(a, Aktion::Befehl(Befehl::Betreten { raum }) if *raum == RoomId::aus_roh(2))
+        })
+    };
+    // Ein einfacher Mausklick zieht niemanden um.
     let (mut h, kern) = fenster(verbunden(Role::Mitglied, Ansicht::Raeume), (1100.0, 720.0));
     h.run();
     h.get_by_label_contains("Training").click();
     h.run();
-    assert!(kern.0.borrow().iter().any(
-        |a| matches!(a, Aktion::Befehl(Befehl::Betreten { raum }) if *raum == RoomId::aus_roh(2))
-    ));
+    assert!(!wechselt(&kern), "ein Klick wechselt nicht");
+    // Doppelklick wechselt.
+    h.get_by_label_contains("Training").click();
+    h.step();
+    h.get_by_label_contains("Training").click();
+    h.run();
+    assert!(wechselt(&kern), "Doppelklick wechselt");
+    // Ohne Maus (Tastatur, Screenreader) genügt das Auslösen.
+    let (mut h, kern) = fenster(verbunden(Role::Mitglied, Ansicht::Raeume), (1100.0, 720.0));
+    h.run();
+    h.get_by_label_contains("Training").click_accesskit();
+    h.run();
+    assert!(wechselt(&kern), "Auslösen ohne Maus wechselt");
 }
 
 #[test]
@@ -318,12 +336,12 @@ fn zustand_aus_dem_client_kommt_an() {
     let o = Oberflaeche::neu(einstellungen(), Zustand::neu());
     let (mut h, _) = fenster(o, (1000.0, 700.0));
     h.run();
-    assert!(h.query_by_label("Räume").is_none());
+    assert!(h.query_by_label("Verbindung trennen").is_none());
     let neu = beispiel(Role::Mitglied);
     h.state().1.send(Meldung::Zustand(Box::new(neu))).unwrap();
     h.run();
     assert!(
-        h.query_by_label("Räume").is_some(),
+        h.query_by_label("Verbindung trennen").is_some(),
         "nach dem Verbinden gibt es den Reiter"
     );
 }
@@ -373,7 +391,13 @@ fn kopfleiste_ueberlappt_bei_keiner_breite() {
             einklappen.right() <= breite,
             "Breite {breite}: Einklappknopf außerhalb"
         );
-        let links = h.get_by_label("Einstellungen").rect();
+        // Der Servername steht zweimal da (Werkzeugleiste, Wurzel des Baums);
+        // gemeint ist der obere.
+        let links = h
+            .get_all_by_label("Schachclub Nord")
+            .map(|n| n.rect())
+            .min_by(|a, b| a.top().total_cmp(&b.top()))
+            .unwrap();
         let rechts = h.get_by_label("Mikrofon stummschalten").rect();
         assert!(
             links.right() <= rechts.left(),

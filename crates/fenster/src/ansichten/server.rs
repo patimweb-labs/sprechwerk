@@ -92,12 +92,17 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
                             } else {
                                 t(s, "server.connect")
                             };
-                            let frei = !verbindet && !hier && !name_fehlt;
-                            if ui
+                            let frei = !verbindet && !name_fehlt;
+                            if hier {
+                                // Schon da: kein ausgegrauter Knopf, sondern der Stand.
+                                ui.add(Icon::Stecker.bild(thema::FONT_SIZE_MD, f.status_ok));
+                                ui.label(text(o, t(s, "server.connected"), Ton::Gut));
+                            } else if ui
                                 .add_enabled_ui(frei, |ui| {
                                     hauptknopf_mit(ui, &f, Icon::Stecker, &knopf)
                                 })
                                 .inner
+                                .on_disabled_hover_text(t(s, "set.name.hint"))
                                 .clicked()
                             {
                                 aktionen.push(o.verbinden(&fav.server));

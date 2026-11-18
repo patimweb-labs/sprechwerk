@@ -6,7 +6,7 @@
 //! Rand, und die Raumliste bekommt die Fläche (gemerkt in den Einstellungen). Eingreifen (stumm, verschieben, sperren) über das Menü am
 //! Namen — es erscheint nur, wenn die Rolle es erlaubt (AGENTS.md §2.3).
 
-use super::{icon, icon_knopf, kuerzel, leer, text, Icon};
+use super::{icon, icon_knopf, leer, text, Icon};
 use crate::app::Zwischenspeicher;
 use crate::logik::{self, Stueck, REAKTIONEN};
 use crate::modell::{Dialog, Oberflaeche};
@@ -69,126 +69,157 @@ pub fn zeigen(
         .show(ui, |ui| chat(ui, o, speicher, aktionen));
 }
 
+/// Der Kanalbaum: der Server als Wurzel, darunter die Räume, darunter die
+/// Leute — wie bei TeamSpeak. Ein Raum wird mit **Doppelklick** betreten (ein
+/// einfacher Klick soll niemanden versehentlich umziehen lassen); über
+/// Tastatur oder Screenreader genügt das Auslösen des Eintrags.
 fn raumliste(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) {
     let s = o.sprache();
     let f = *o.thema().farben();
-    ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(t(s, "app.rooms")).font(egui::FontId::new(thema::FONT_SIZE_MD, fett())),
-        );
-        if o.zustand.darf_raeume_verwalten() {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if icon_knopf(ui, &f, Icon::Plus, &t(s, "room.add"), false).clicked() {
-                    o.dialog = Dialog::RaumAnlegen {
-                        name: String::new(),
-                    };
+    let servername = match &o.zustand.verbindung {
+        Some(sprechwerk_ipc::Verbindung::Verbunden { server_name, .. }) => server_name.clone(),
+        _ => String::new(),
+    };
+    let mut anlegen = false;
+    egui::Sides::new()
+        .height(thema::SIZE_CONTROL_SM)
+        .shrink_left()
+        .truncate()
+        .show(
+            ui,
+            |ui| {
+                ui.add(Icon::Server.bild(thema::FONT_SIZE_LG, f.accent_default));
+                ui.label(
+                    RichText::new(&servername).font(egui::FontId::new(thema::FONT_SIZE_MD, fett())),
+                );
+            },
+            |ui| {
+                if o.zustand.darf_raeume_verwalten() {
+                    anlegen = icon_knopf(ui, &f, Icon::Plus, &t(s, "room.add"), false).clicked();
                 }
-            });
-        }
-    });
-    ui.separator();
+            },
+        );
+    if anlegen {
+        o.dialog = Dialog::RaumAnlegen {
+            name: String::new(),
+        };
+    }
+    ui.add_space(thema::SPACE_1);
     let raeume = o.zustand.raeume.clone();
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        for raum in &raeume {
-            let zahl = logik::anwesende(&o.zustand, raum.id).count();
-            let zahl = if zahl > 0 {
-                zahl.to_string()
-            } else {
-                String::new()
-            };
-            let schloss = Icon::Schloss.bild(
-                thema::FONT_SIZE_SM,
-                if raum.hier {
-                    f.accent_default
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = thema::SPACE_1;
+            for raum in &raeume {
+                let zahl = logik::anwesende(&o.zustand, raum.id).count();
+                let zahl = if zahl > 0 {
+                    zahl.to_string()
                 } else {
-                    f.text_faint
-                },
-            );
-            let knopf = if raum.verschluesselt {
-                egui::Button::image_and_text(schloss, raum.name.as_str())
-            } else {
-                egui::Button::new(raum.name.as_str())
-            };
-            let antwort = ui.add(
-                knopf
-                    .selected(raum.hier)
-                    .frame_when_inactive(raum.hier)
-                    .right_text(zahl)
-                    .min_size(egui::vec2(ui.available_width(), thema::SIZE_CONTROL_SM)),
-            );
-            let antwort = if raum.verschluesselt {
-                antwort.on_hover_text(t(s, "room.encrypted"))
-            } else {
-                antwort
-            };
-            if antwort.clicked() && !raum.hier {
-                aktionen.push(Aktion::Befehl(Befehl::Betreten { raum: raum.id }));
-            }
-            if o.zustand.darf_raeume_verwalten() {
+                    String::new()
+                };
+                let breite = ui.available_width();
+                let antwort = ui
+                    .horizontal(|ui| {
+                        ui.add_space(thema::SPACE_3);
+                        ui.add(
+                            egui::Button::new(
+                                RichText::new(&raum.name)
+                                    .font(egui::FontId::new(thema::FONT_SIZE_MD, fett())),
+                            )
+                            .selected(raum.hier)
+                            .frame_when_inactive(raum.hier)
+                            .right_text(RichText::new(zahl).color(f.text_faint))
+                            .min_size(egui::vec2(breite - thema::SPACE_3, thema::SIZE_CONTROL_SM)),
+                        )
+                    })
+                    .inner
+                    .on_hover_text(t(s, "room.join_hint"));
+                // Doppelklick mit der Maus — oder Auslösen ohne Maus.
+                let ohne_maus = antwort.clicked() && !ui.input(|i| i.pointer.any_click());
+                if (antwort.double_clicked() || ohne_maus) && !raum.hier {
+                    aktionen.push(Aktion::Befehl(Befehl::Betreten { raum: raum.id }));
+                }
                 antwort.context_menu(|ui| {
-                    if ui.button(t(s, "room.enter")).clicked() {
+                    if !raum.hier && ui.button(t(s, "room.enter")).clicked() {
                         aktionen.push(Aktion::Befehl(Befehl::Betreten { raum: raum.id }));
                         ui.close();
                     }
-                    if ui.button(t(s, "room.rename")).clicked() {
-                        o.dialog = Dialog::RaumUmbenennen {
-                            raum: raum.id,
-                            name: raum.name.clone(),
-                        };
-                        ui.close();
-                    }
-                    if ui.button(t(s, "room.delete")).clicked() {
-                        o.dialog = Dialog::RaumLoeschen {
-                            raum: raum.id,
-                            name: raum.name.clone(),
-                        };
-                        ui.close();
+                    if o.zustand.darf_raeume_verwalten() {
+                        if ui.button(t(s, "room.rename")).clicked() {
+                            o.dialog = Dialog::RaumUmbenennen {
+                                raum: raum.id,
+                                name: raum.name.clone(),
+                            };
+                            ui.close();
+                        }
+                        if ui.button(t(s, "room.delete")).clicked() {
+                            o.dialog = Dialog::RaumLoeschen {
+                                raum: raum.id,
+                                name: raum.name.clone(),
+                            };
+                            ui.close();
+                        }
                     }
                 });
-            }
-            if raum.hier && logik::schluessel_vorhanden(&o.zustand, raum.id) == Some(false) {
-                ui.horizontal_wrapped(|ui| {
-                    icon(ui, &f, Icon::Warnung, Ton::Warnung);
-                    ui.label(text(o, t(s, "room.key_missing"), Ton::Warnung));
-                });
-                if ui.small_button(t(s, "room.key_request")).clicked() {
-                    aktionen.push(Aktion::Befehl(Befehl::SchluesselAnfordern {
-                        raum: raum.id,
-                    }));
+                if raum.hier && logik::schluessel_vorhanden(&o.zustand, raum.id) == Some(false) {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_space(thema::SPACE_6);
+                        icon(ui, &f, Icon::Warnung, Ton::Warnung);
+                        ui.label(text(o, t(s, "room.key_missing"), Ton::Warnung).small());
+                        if ui.small_button(t(s, "room.key_request")).clicked() {
+                            aktionen.push(Aktion::Befehl(Befehl::SchluesselAnfordern {
+                                raum: raum.id,
+                            }));
+                        }
+                    });
+                }
+                let leute: Vec<Mitglied> = logik::anwesende(&o.zustand, raum.id).cloned().collect();
+                for m in &leute {
+                    person(ui, o, m, aktionen);
                 }
             }
-            let leute: Vec<Mitglied> = logik::anwesende(&o.zustand, raum.id).cloned().collect();
-            for m in &leute {
-                ui.horizontal(|ui| {
-                    ui.add_space(thema::SPACE_3);
-                    kuerzel(ui, &f, &m.name, m.ich, m.spricht);
-                    let mut zeile = m.name.clone();
-                    if m.ich {
-                        zeile.push_str(&format!(" ({})", t(s, "chat.you")));
-                    }
-                    let mut unter = rolle(s, m.rolle);
-                    if m.stumm {
-                        unter.push_str(&format!(" · {}", t(s, "state.muted")));
-                    }
-                    if m.taub {
-                        unter.push_str(&format!(" · {}", t(s, "state.deaf")));
-                    }
-                    let a = ui
-                        .vertical(|ui| {
-                            ui.spacing_mut().item_spacing.y = 0.0;
-                            ui.label(zeile);
-                            ui.label(text(o, unter, Ton::Blass).small());
-                        })
-                        .response
-                        .interact(egui::Sense::click());
-                    if !m.ich && logik::darf_eingreifen(&o.zustand) {
-                        a.context_menu(|ui| mitgliedmenue(ui, o, m, aktionen));
-                    }
-                });
-            }
-            ui.add_space(thema::SPACE_1);
-        }
-    });
+        });
+}
+
+/// Eine Person im Baum: Status-Icon vorn (spricht, still, stumm, taub), Name,
+/// Rolle hinten. Das Menü zum Eingreifen nur mit Recht und nie an sich selbst.
+fn person(ui: &mut egui::Ui, o: &mut Oberflaeche, m: &Mitglied, aktionen: &mut Vec<Aktion>) {
+    let s = o.sprache();
+    let f = *o.thema().farben();
+    let (bild, farbe, zustand) = match logik::personenstatus(m) {
+        logik::Personenstatus::Spricht => (Icon::Mikrofon, f.status_ok, t(s, "member.speaking")),
+        logik::Personenstatus::Still => (Icon::Mikrofon, f.text_faint, String::new()),
+        logik::Personenstatus::Stumm => (Icon::MikrofonAus, f.status_error, t(s, "state.muted")),
+        logik::Personenstatus::Taub => (Icon::KopfhoererAus, f.status_error, t(s, "state.deaf")),
+    };
+    let breite = ui.available_width();
+    let antwort = ui
+        .horizontal(|ui| {
+            ui.set_min_width(breite);
+            ui.add_space(thema::SPACE_6);
+            ui.add(bild.bild(thema::FONT_SIZE_MD, farbe));
+            let name = if m.ich {
+                RichText::new(format!("{} ({})", m.name, t(s, "chat.you"))).color(f.accent_default)
+            } else {
+                RichText::new(&m.name)
+            };
+            ui.label(name);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(thema::SPACE_2);
+                ui.label(text(o, rolle(s, m.rolle), Ton::Blass).small());
+            });
+        })
+        .response
+        .interact(egui::Sense::click());
+    let hinweis = if zustand.is_empty() {
+        rolle(s, m.rolle)
+    } else {
+        format!("{} · {zustand}", rolle(s, m.rolle))
+    };
+    let antwort = antwort.on_hover_text(hinweis);
+    if !m.ich && logik::darf_eingreifen(&o.zustand) {
+        antwort.context_menu(|ui| mitgliedmenue(ui, o, m, aktionen));
+    }
 }
 
 fn mitgliedmenue(ui: &mut egui::Ui, o: &mut Oberflaeche, m: &Mitglied, aktionen: &mut Vec<Aktion>) {
@@ -341,9 +372,14 @@ fn chat(
                 .stick_to_bottom(true)
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
+                    let mut vorher: Option<&Nachricht> = None;
                     for n in &nachrichten {
-                        beitrag(ui, o, s, n, versatz, speicher, aktionen);
-                        ui.add_space(thema::SPACE_2);
+                        let kopf = logik::neuer_block(vorher, n);
+                        if kopf && vorher.is_some() {
+                            ui.add_space(thema::SPACE_3);
+                        }
+                        beitrag(ui, o, s, n, kopf, versatz, speicher, aktionen);
+                        vorher = Some(n);
                     }
                 });
         });
@@ -355,6 +391,7 @@ fn beitrag(
     o: &Oberflaeche,
     s: Sprache,
     n: &Nachricht,
+    kopf: bool,
     versatz: i64,
     speicher: &mut Zwischenspeicher,
     aktionen: &mut Vec<Aktion>,
@@ -364,24 +401,26 @@ fn beitrag(
     let antwort = ui
         .vertical(|ui| {
             ui.spacing_mut().item_spacing.y = thema::SPACE_1;
-            ui.horizontal(|ui| {
-                let name = if ich {
-                    format!("{} ({})", n.verfasser_name, t(s, "chat.you"))
-                } else {
-                    n.verfasser_name.clone()
-                };
-                let farbe = if ich {
-                    f.accent_default
-                } else {
-                    f.text_default
-                };
-                ui.label(
-                    RichText::new(name)
-                        .font(egui::FontId::new(thema::FONT_SIZE_MD, fett()))
-                        .color(farbe),
-                );
-                ui.label(text(o, logik::uhrzeit(n.zeit, versatz), Ton::Blass).small());
-            });
+            if kopf {
+                ui.horizontal(|ui| {
+                    let name = if ich {
+                        format!("{} ({})", n.verfasser_name, t(s, "chat.you"))
+                    } else {
+                        n.verfasser_name.clone()
+                    };
+                    let farbe = if ich {
+                        f.accent_default
+                    } else {
+                        f.text_default
+                    };
+                    ui.label(
+                        RichText::new(name)
+                            .font(egui::FontId::new(thema::FONT_SIZE_MD, fett()))
+                            .color(farbe),
+                    );
+                    ui.label(text(o, logik::uhrzeit(n.zeit, versatz), Ton::Blass).small());
+                });
+            }
             match &n.inhalt {
                 NachrichtInhalt::Text {
                     text: inhalt,

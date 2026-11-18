@@ -211,6 +211,16 @@ des Systems), Link-Vorschau vom **Absender** abgerufen. *Preis:* die Seite
 sieht die Adresse des Absenders (abschaltbar); jede Reaktion ist eine eigene
 gespeicherte Nachricht; ein älterer Client zeigt Reaktionen als „neuere
 Version nötig", Effekt und Vorschau fehlen bei ihm einfach.
+**[A] Nachtrag 2026-11-18: Bedienung wie TeamSpeak** (*Nutzer:* „Du darfst
+dich gerne an TeamSpeak orientieren."). Der Kanalbaum ist die Hauptansicht:
+Server als Wurzel, Räume, darunter die Leute mit Status-Icon (spricht, stumm,
+taub) und Rolle. Ein Raum wird mit **Doppelklick** betreten — ein einfacher
+Klick zieht niemanden versehentlich um; ohne Maus (Tastatur, Screenreader)
+genügt das Auslösen. Serverliste, Protokoll, Sperren und Einstellungen sind
+Werkzeuge rechts oben, nicht gleichrangige Reiter. Der Chat fasst Nachrichten
+derselben Person zu Blöcken zusammen (neuer Kopf nach 5 Minuten Pause).
+*Preis:* wer Ein-Klick gewohnt ist (Discord), muss umlernen.
+
 **[A] Nachtrag 2026-11-18:** Effekte entfallen (*Nutzer:* „Die Effekte
 kannst du entfernen, die braucht es nicht."). Alte Nachrichten mit Effekt
 bleiben lesbar; das Feld wird übergangen.

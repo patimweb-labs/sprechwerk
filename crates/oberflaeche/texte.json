@@ -1684,5 +1684,29 @@
     "en": "Port (UDP)",
     "es": "Puerto (UDP)",
     "fr": "Port (UDP)"
+  },
+  "room.join_hint": {
+    "de": "Doppelklick: betreten",
+    "en": "Double-click: join",
+    "es": "Doble clic: entrar",
+    "fr": "Double-clic : entrer"
+  },
+  "member.speaking": {
+    "de": "spricht",
+    "en": "speaking",
+    "es": "hablando",
+    "fr": "parle"
+  },
+  "server.connected": {
+    "de": "verbunden",
+    "en": "connected",
+    "es": "conectado",
+    "fr": "connecté"
+  },
+  "app.tree": {
+    "de": "Räume und Leute",
+    "en": "Rooms and people",
+    "es": "Salas y personas",
+    "fr": "Salons et personnes"
   }
 }

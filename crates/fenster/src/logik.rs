@@ -91,6 +91,41 @@ pub fn uhrzeit(ms: i64, versatz_sekunden: i64) -> String {
     format!("{:02}:{:02}", tag / 3600, (tag % 3600) / 60)
 }
 
+/// Abstand, ab dem eine Nachricht derselben Person einen neuen Block beginnt.
+const BLOCKPAUSE_MS: i64 = 5 * 60_000;
+
+/// Beginnt `n` einen neuen Block (Name und Uhrzeit darüber)? Ja, wenn jemand
+/// anderes schreibt oder seit der letzten Nachricht Zeit vergangen ist — so
+/// steht der Name nicht über jeder Zeile.
+pub fn neuer_block(vorher: Option<&Nachricht>, n: &Nachricht) -> bool {
+    match vorher {
+        None => true,
+        Some(v) => v.verfasser != n.verfasser || n.zeit - v.zeit > BLOCKPAUSE_MS,
+    }
+}
+
+/// Was eine Person gerade tut — ein Wert, ein Icon im Baum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Personenstatus {
+    Spricht,
+    Still,
+    Stumm,
+    Taub,
+}
+
+/// Taub geht vor stumm geht vor sprechen: wer nichts hört, soll es sehen.
+pub fn personenstatus(m: &Mitglied) -> Personenstatus {
+    if m.taub {
+        Personenstatus::Taub
+    } else if m.stumm {
+        Personenstatus::Stumm
+    } else if m.spricht {
+        Personenstatus::Spricht
+    } else {
+        Personenstatus::Still
+    }
+}
+
 /// Ein Stück Chattext: Text oder Link.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Stueck {
@@ -326,6 +361,51 @@ mod tests {
     fn uhrzeit_mit_versatz() {
         assert_eq!(uhrzeit(0, 0), "00:00");
         assert_eq!(uhrzeit(13 * 3_600_000 + 5 * 60_000, 3600), "14:05");
+    }
+
+    fn nachricht(von: u128, zeit: i64) -> Nachricht {
+        Nachricht {
+            id: sprechwerk_domain::MessageId::aus_roh(zeit as u128),
+            verfasser: sprechwerk_domain::MemberId::aus_roh(von),
+            verfasser_name: "x".into(),
+            inhalt: NachrichtInhalt::Geloescht,
+            roh: None,
+            zeit,
+            geloescht: false,
+            loeschbar: false,
+            reaktionen: vec![],
+        }
+    }
+
+    #[test]
+    fn bloecke_nach_person_und_pause() {
+        let a = nachricht(1, 0);
+        let b = nachricht(1, 60_000);
+        let c = nachricht(2, 120_000);
+        let d = nachricht(2, 120_000 + 6 * 60_000);
+        assert!(neuer_block(None, &a));
+        assert!(!neuer_block(Some(&a), &b), "dieselbe Person, gleich danach");
+        assert!(neuer_block(Some(&b), &c), "andere Person");
+        assert!(neuer_block(Some(&c), &d), "nach einer Pause");
+    }
+
+    #[test]
+    fn status_taub_vor_stumm_vor_spricht() {
+        let mut m = Mitglied {
+            id: sprechwerk_domain::MemberId::aus_roh(1),
+            name: "A".into(),
+            rolle: sprechwerk_domain::Role::Mitglied,
+            raum: None,
+            spricht: true,
+            stumm: false,
+            taub: false,
+            ich: false,
+        };
+        assert_eq!(personenstatus(&m), Personenstatus::Spricht);
+        m.stumm = true;
+        assert_eq!(personenstatus(&m), Personenstatus::Stumm);
+        m.taub = true;
+        assert_eq!(personenstatus(&m), Personenstatus::Taub);
     }
 
     #[test]

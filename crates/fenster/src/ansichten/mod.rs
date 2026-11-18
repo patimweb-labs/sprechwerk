@@ -19,8 +19,8 @@ use eframe::egui::{self, RichText, Stroke};
 use sprechwerk_client::sitzung::Aktion;
 use sprechwerk_ipc::{Befehl, Verbindung};
 pub use sprechwerk_oberflaeche::bausteine::{
-    self, hauptknopf, hauptknopf_mit, icon, icon_knopf, icon_text_knopf, karte, knopf, kuerzel,
-    pegelbalken, Icon,
+    self, hauptknopf, hauptknopf_mit, icon, icon_knopf, icon_text_knopf, karte, knopf, pegelbalken,
+    Icon,
 };
 
 /// Text in einer Bedeutungsfarbe.
@@ -38,13 +38,13 @@ pub fn leer(ui: &mut egui::Ui, o: &Oberflaeche, titel: &str, erklaerung: &str) {
     bausteine::leer(ui, o.thema().farben(), titel, erklaerung)
 }
 
-/// Ab dieser Breite stehen die Reiter mit Text da, darunter nur als Icon.
-const BREIT: f32 = thema::SPACE_8 * 14.0;
-
-/// Kopfleiste: Marke, Ansichten, eigenes Mikrofon und Ton, Trennen.
+/// Kopfleiste wie die Werkzeugleiste von TeamSpeak: links der Server, auf
+/// dem man ist (ein Klick führt zum Kanalbaum, der Hauptansicht), rechts die
+/// Werkzeuge — eigenes Mikrofon und Ton, dann Protokoll und Sperren (nur mit
+/// Recht), Serverliste, Einstellungen, Trennen.
 ///
-/// `Sides` teilt die Zeile: rechts die Knöpfe in fester Breite, links bekommt
-/// den Rest — bei einem schmalen Fenster schieben sich nie Teile übereinander.
+/// `Sides` teilt die Zeile: rechts feste Breite, links wird gekürzt — bei
+/// einem schmalen Fenster schiebt sich nichts übereinander.
 pub fn kopf(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) {
     let s = o.sprache();
     let f = *o.thema().farben();
@@ -59,10 +59,17 @@ pub fn kopf(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) 
                 )),
         )
         .show(ui, |ui| {
-            let breit = ui.available_width() >= BREIT;
-            // Rechts nur Abzüge des Modells — links wird es verändert.
             let verbunden = o.verbunden();
             let audio = o.audio;
+            let ansicht = o.ansicht;
+            let darf_protokoll = o.zustand.darf_protokoll_lesen();
+            let darf_sperren = logik::darf_sperren(&o.zustand);
+            let servername = match &o.zustand.verbindung {
+                Some(Verbindung::Verbunden { server_name, .. }) => Some(server_name.clone()),
+                _ => None,
+            };
+            let mut wahl_links: Option<Ansicht> = None;
+            let mut wahl: Option<Ansicht> = None;
             let mut rechts = Vec::new();
             egui::Sides::new()
                 .height(thema::SIZE_CONTROL_SM)
@@ -76,41 +83,58 @@ pub fn kopf(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) 
                                 .font(egui::FontId::new(thema::FONT_SIZE_LG, fett()))
                                 .color(f.accent_default),
                         );
-                        ui.add_space(thema::SPACE_3);
-                        let mut reiter = vec![(Ansicht::Server, Icon::Server, "server.title")];
-                        if o.verbunden() {
-                            reiter.push((Ansicht::Raeume, Icon::Sprechblase, "app.rooms"));
-                            if o.zustand.darf_protokoll_lesen() {
-                                reiter.push((Ansicht::Protokoll, Icon::Protokoll, "app.audit"));
-                            }
-                            if logik::darf_sperren(&o.zustand) {
-                                reiter.push((Ansicht::Sperren, Icon::Sperre, "app.bans"));
-                            }
-                        }
-                        reiter.push((Ansicht::Einstellungen, Icon::Einstellungen, "app.settings"));
-                        for (ansicht, bild, schluessel) in reiter {
-                            let gewaehlt = o.ansicht == ansicht;
-                            let name = t(s, schluessel);
-                            let antwort = if breit {
-                                icon_text_knopf(ui, &f, bild, &name, gewaehlt)
-                            } else {
-                                icon_knopf(ui, &f, bild, &name, gewaehlt)
-                            };
-                            if antwort.clicked() {
-                                aktionen.extend(o.oeffnen(ansicht));
+                        if let Some(name) = &servername {
+                            ui.add_space(thema::SPACE_3);
+                            if icon_text_knopf(
+                                ui,
+                                &f,
+                                Icon::Server,
+                                name,
+                                ansicht == Ansicht::Raeume,
+                            )
+                            .on_hover_text(t(s, "app.tree"))
+                            .clicked()
+                            {
+                                wahl_links = Some(Ansicht::Raeume);
                             }
                         }
                     },
                     |ui| {
-                        if !verbunden {
-                            return;
-                        }
-                        if icon_knopf(ui, &f, Icon::Trennen, &t(s, "app.disconnect"), false)
-                            .clicked()
+                        // Von rechts nach links: Trennen steht ganz außen.
+                        if verbunden
+                            && icon_knopf(ui, &f, Icon::Trennen, &t(s, "app.disconnect"), false)
+                                .clicked()
                         {
                             rechts.push(Aktion::Befehl(Befehl::Trennen));
                             rechts.push(Aktion::AudioStoppen);
                         }
+                        for (ziel, bild, schluessel, sichtbar) in [
+                            (
+                                Ansicht::Einstellungen,
+                                Icon::Einstellungen,
+                                "app.settings",
+                                true,
+                            ),
+                            (Ansicht::Server, Icon::Leute, "app.menu_servers", true),
+                            (Ansicht::Sperren, Icon::Sperre, "app.bans", darf_sperren),
+                            (
+                                Ansicht::Protokoll,
+                                Icon::Protokoll,
+                                "app.audit",
+                                darf_protokoll,
+                            ),
+                        ] {
+                            if sichtbar
+                                && icon_knopf(ui, &f, bild, &t(s, schluessel), ansicht == ziel)
+                                    .clicked()
+                            {
+                                wahl = Some(ziel);
+                            }
+                        }
+                        if !verbunden {
+                            return;
+                        }
+                        ui.separator();
                         let (bild, name) = if audio.taub {
                             (Icon::KopfhoererAus, "app.sound_unmute")
                         } else {
@@ -131,6 +155,9 @@ pub fn kopf(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) 
                         pegelbalken(ui, &f, pegel, None, thema::SPACE_7);
                     },
                 );
+            if let Some(ziel) = wahl_links.or(wahl) {
+                aktionen.extend(o.oeffnen(ziel));
+            }
             aktionen.extend(rechts);
         });
 }
