@@ -1,5 +1,8 @@
 # deb und rpm aus denselben Dateien (nfpm, https://nfpm.goreleaser.com).
-# Aufruf über packaging/linux/paket.sh, das VERSION, ARCH und STAGE setzt.
+# Aufruf über packaging/linux/paket.sh (aus dem Wurzelverzeichnis), das
+# VERSION und ARCH setzt. Umgebungsvariablen setzt nfpm nur in Feldern wie
+# `version` und `arch` ein, nicht in `contents` — deshalb steht der Pfad
+# dort fest, relativ zum Wurzelverzeichnis.
 name: sprechwerk
 arch: ${ARCH}
 platform: linux
@@ -25,6 +28,6 @@ overrides:
     depends:
       - opus
 contents:
-  - src: ${STAGE}/usr/
+  - src: dist/stage/usr/
     dst: /usr/
     type: tree

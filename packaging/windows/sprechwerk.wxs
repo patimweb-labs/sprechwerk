@@ -11,19 +11,20 @@
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Sprechwerk">
-        <Component Id="Programme" Guid="*">
-          <File Source="target\release\sprechwerk-fenster.exe" KeyPath="yes" />
-          <File Source="target\release\sprechwerk-server-fenster.exe" />
-          <File Source="target\release\sprechwerk.exe" />
-          <File Source="target\release\sprechwerk-cli.exe" />
-          <File Source="packaging\opus\opus.dll" />
-          <File Source="LICENSE" Name="LICENSE.txt" />
-        </Component>
+        <!-- Eine Datei je Komponente: nur so erzeugt WiX die GUID selbst
+             (WIX0367 bei mehreren Dateien in einer Komponente). -->
+        <Component Id="Fenster"><File Source="target\release\sprechwerk-fenster.exe" /></Component>
+        <Component Id="ServerFenster"><File Source="target\release\sprechwerk-server-fenster.exe" /></Component>
+        <Component Id="Server"><File Source="target\release\sprechwerk.exe" /></Component>
+        <Component Id="Cli"><File Source="target\release\sprechwerk-cli.exe" /></Component>
+        <Component Id="Opus"><File Source="packaging\opus\opus.dll" /></Component>
+        <Component Id="Lizenz"><File Source="LICENSE" Name="LICENSE.txt" /></Component>
       </Directory>
     </StandardDirectory>
 
     <StandardDirectory Id="ProgramMenuFolder">
-      <Component Id="Startmenue" Guid="*">
+      <!-- Schlüsselpfad ist ein Registrierungswert: dafür braucht WiX eine feste GUID. -->
+      <Component Id="Startmenue" Guid="3c9e8f21-6a4b-4d7e-b1c2-7f5a0e9d4b36">
         <Shortcut Id="FensterVerknuepfung" Name="Sprechwerk" Target="[INSTALLFOLDER]sprechwerk-fenster.exe"
                   WorkingDirectory="INSTALLFOLDER" Icon="sprechwerk.ico" />
         <Shortcut Id="ServerVerknuepfung" Name="Sprechwerk Server" Target="[INSTALLFOLDER]sprechwerk-server-fenster.exe"
@@ -33,7 +34,12 @@
     </StandardDirectory>
 
     <Feature Id="Alles">
-      <ComponentRef Id="Programme" />
+      <ComponentRef Id="Fenster" />
+      <ComponentRef Id="ServerFenster" />
+      <ComponentRef Id="Server" />
+      <ComponentRef Id="Cli" />
+      <ComponentRef Id="Opus" />
+      <ComponentRef Id="Lizenz" />
       <ComponentRef Id="Startmenue" />
     </Feature>
   </Package>
