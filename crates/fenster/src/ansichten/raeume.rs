@@ -181,7 +181,23 @@ fn raumliste(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>)
         });
 }
 
-/// Das Sprechlicht vor dem Namen, wie bei TeamSpeak: ein Quadrat, das
+/// Breite der Rollenspalte im Baum — fest, damit das Sprechlicht daneben bei
+/// allen Personen übereinander steht.
+const ROLLENSPALTE: f32 = thema::SPACE_8 * 1.5;
+
+/// Eine Spalte fester Breite, Inhalt rechtsbündig.
+fn spalte(ui: &mut egui::Ui, breite: f32, inhalt: impl FnOnce(&mut egui::Ui)) {
+    ui.allocate_ui_with_layout(
+        egui::vec2(breite, thema::SIZE_CONTROL_SM),
+        egui::Layout::right_to_left(egui::Align::Center),
+        |ui| {
+            ui.set_min_size(egui::vec2(breite, thema::FONT_SIZE_MD));
+            inhalt(ui);
+        },
+    );
+}
+
+/// Das Sprechlicht neben dem Namen, wie bei TeamSpeak: ein Quadrat, das
 /// aufleuchtet, solange jemand spricht (und damit mit der Stimme flackert).
 /// Stumm und taub zeigen statt dessen ihr Icon — das ist wichtiger.
 fn sprechlicht(ui: &mut egui::Ui, f: &thema::Farben, status: logik::Personenstatus) {
@@ -214,8 +230,8 @@ fn sprechlicht(ui: &mut egui::Ui, f: &thema::Farben, status: logik::Personenstat
     }
 }
 
-/// Eine Person im Baum: Sprechlicht vorn (spricht, still, stumm, taub), Name,
-/// Rolle hinten. Das Menü zum Eingreifen nur mit Recht und nie an sich selbst.
+/// Eine Person im Baum: Name, dann in festen Spalten Sprechlicht (spricht,
+/// still, stumm, taub) und Rolle. Das Menü zum Eingreifen nur mit Recht und nie an sich selbst.
 fn person(ui: &mut egui::Ui, o: &mut Oberflaeche, m: &Mitglied, aktionen: &mut Vec<Aktion>) {
     let s = o.sprache();
     let f = *o.thema().farben();
@@ -238,17 +254,29 @@ fn person(ui: &mut egui::Ui, o: &mut Oberflaeche, m: &Mitglied, aktionen: &mut V
     let antwort = ui
         .horizontal(|ui| {
             ui.set_min_width(breite);
-            ui.add_space(thema::SPACE_6);
-            sprechlicht(ui, &f, status);
+            // Eingerückt unter den Raum (wie ein Ast im Baum).
+            ui.add_space(thema::SPACE_6 + thema::SPACE_4);
             let name = if m.ich {
                 RichText::new(format!("{} ({})", m.name, t(s, "chat.you"))).color(f.accent_default)
             } else {
                 RichText::new(&m.name)
             };
-            ui.label(name);
+            // Feste Spalten von rechts: Rolle, Sprechlicht — bei jeder Person
+            // an derselben Stelle, egal wie lang Name oder Rolle sind. Der
+            // Name nimmt den Rest und wird gekürzt.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(thema::SPACE_2);
-                ui.label(text(o, rolle(s, m.rolle), Ton::Blass).small());
+                spalte(ui, ROLLENSPALTE, |ui| {
+                    ui.add(
+                        egui::Label::new(text(o, rolle(s, m.rolle), Ton::Blass).small()).truncate(),
+                    );
+                });
+                ui.add_space(thema::SPACE_2);
+                sprechlicht(ui, &f, status);
+                ui.add_space(thema::SPACE_2);
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.add(egui::Label::new(name).truncate());
+                });
             });
         })
         .response
