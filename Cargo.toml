@@ -12,6 +12,10 @@ members = [
     "crates/cli",
     "crates/audio",
     "crates/linkvorschau",
+    "crates/client",
+    "crates/oberflaeche",
+    "crates/fenster",
+    "crates/server-fenster",
 ]
 
 [workspace.package]
@@ -57,3 +61,8 @@ nnnoiseless = "0.5"
 # Echounterdrückung: WebRTC AEC3 als reines Rust.
 aec3 = "0.4"
 hex = "0.4"
+
+# Ausgelieferte Programme ohne Symboltabellen: die Fenster schrumpfen dadurch
+# auf etwa die Hälfte. Fehlerberichte bleiben lesbar (Panik-Texte bleiben).
+[profile.release]
+strip = true

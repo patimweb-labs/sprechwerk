@@ -1,24 +1,23 @@
-# Pakete des Fensters: Linux (.deb, .rpm, AppImage), Flatpak, Windows, macOS.
+# Pakete der Fenster (ADR 0013): Linux (tar.gz, .deb, .rpm, AppImage),
+# Flatpak, Windows (.msi, .zip), macOS (.dmg universal, Konsole als .zip).
+#
+# Aufbau wie bei FigCraft: die Arbeit steht in Skripten unter `packaging/`,
+# die auch lokal laufen; dieser Workflow stellt nur Werkzeuge bereit und ruft
+# sie auf. Reines Rust — kein Node, kein WebKit, keine Komponentenbibliothek.
 #
 # Ein Baustein, zwei Aufrufer:
-#   * `pruefen.yml` bei jedem Push und PR — damit ein Bruch auf Windows oder
-#     macOS im PR auffällt und nicht erst im Release. Die Pakete liegen danach
-#     als Artefakte am Lauf (zum Ausprobieren vor dem Release).
-#   * `release.yml` mit dem Tag — dort werden dieselben Artefakte ans Release
-#     gehängt.
+#   * `pruefen.yml` bei jedem Push und PR — ein Bruch auf Windows oder macOS
+#     fällt im PR auf. Die Pakete liegen danach als Artefakte am Lauf.
+#   * `release.yml` mit dem Tag — dieselben Artefakte gehen ans Release.
 #
-# **Opus** wird zur Laufzeit geladen (`crates/audio/src/opus.rs`). Unter Linux
-# und im Flatpak bringt das System es mit; für Windows und macOS wird es hier
-# aus den Quellen gebaut und ins Paket gelegt:
-#   * Windows: `opus.dll` neben `sprechwerk-desktop.exe`, mit statischer
-#     C-Laufzeit — sonst bräuchte die DLL das „Visual C++ Redistributable".
-#   * macOS: `libopus.0.dylib` in `Sprechwerk.app/Contents/Frameworks`, für
-#     arm64 und x86_64 (eine Datei, `lipo`), ab macOS 11. Homebrew-Bibliotheken
-#     liefen nur ab der macOS-Version des Bau-Rechners.
+# **Opus** wird zur Laufzeit geladen (`crates/audio/src/opus.rs`). Linux und
+# Flatpak bringen es mit; für Windows und macOS wird es hier aus den Quellen
+# gebaut und mit ausgeliefert (`packaging/opus/`, nicht im Repository):
+#   * Windows: `opus.dll` neben den `.exe`, statische C-Laufzeit.
+#   * macOS: `libopus.0.dylib` in `Contents/Frameworks`, arm64 + x86_64, ab 11.
 #
 # **Unsigniert** (kein Apple-Entwicklerkonto, kein Windows-Zertifikat): macOS
-# wird nur ad hoc signiert, Gatekeeper und SmartScreen warnen beim ersten
-# Start. Was Nutzer dann tun, steht in der README.
+# wird ad hoc signiert, Gatekeeper und SmartScreen fragen beim ersten Start.
 
 name: pakete
 
@@ -40,13 +39,15 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   OPUS_VERSION: "1.5.2"
-  # Offizielle Prüfsumme aus https://downloads.xiph.org/releases/opus/SHA256SUMS.txt
   OPUS_SHA256: 65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1
+  NFPM_VERSION: "2.43.0"
 
 jobs:
   linux:
-    name: Linux (.deb, .rpm, AppImage)
-    runs-on: ubuntu-24.04
+    name: Linux (tar.gz, .deb, .rpm, AppImage)
+    # 22.04: ältere glibc (2.35) — die Programme laufen damit auch auf älteren
+    # Systemen, nicht nur auf dem neuesten.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -54,55 +55,40 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-
-      # Dieselben Bibliotheken wie in `pruefen.yml`; `file` braucht der
-      # AppImage-Bau.
-      - name: Systembibliotheken für Tauri
+      # Fenster (winit/glow) und Ton laden ihre Systembibliotheken zur
+      # Laufzeit — zum Bauen genügen Compiler und pkg-config. `file` und
+      # `libfuse2` braucht appimagetool.
+      - name: Werkzeuge
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev librsvg2-dev patchelf \
-            build-essential pkg-config file
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config file libfuse2
+          curl -fsSLO "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
+          curl -fsSLO "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/checksums.txt"
+          sha256sum -c --ignore-missing checksums.txt
+          tar xzf "nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" nfpm
+          sudo install -m755 nfpm /usr/local/bin/nfpm
+          curl -fsSLo appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          sudo install -m755 appimagetool /usr/local/bin/appimagetool
 
-      - name: Komponentenbibliothek holen
-        shell: bash
-        env:
-          TOKEN: ${{ secrets.WEPPELMANN_UI_TOKEN }}
-        # `$(pwd)` statt `github.workspace`: der ist unter Windows ein Pfad mit
-        # Backslashes, und das hier läuft in Bash.
-        run: &komponenten |
-          ziel="$(pwd)/../weppelmann-ui"
-          url="https://github.com/Smotherer007/weppelmann-ui.git"
-          if [ -n "$TOKEN" ]; then
-            url="https://x-access-token:${TOKEN}@github.com/Smotherer007/weppelmann-ui.git"
-          fi
-          git clone --depth 1 "$url" "$ziel"
-          cd "$ziel" && npm ci --no-audit --no-fund && npm run -s tokens
+      - name: Clippy (Fenster)
+        if: inputs.pruefen
+        run: cargo clippy --locked -p sprechwerk-fenster -p sprechwerk-server-fenster --all-targets -- -D warnings
 
-      - name: Abhängigkeiten der Oberfläche
-        run: cd ui && npm ci --no-audit --no-fund
-
-      # `APPIMAGE_EXTRACT_AND_RUN`: linuxdeploy ist selbst ein AppImage und
-      # bräuchte sonst FUSE, das der Läufer nicht hat.
       - name: Pakete bauen
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
-        run: npm --prefix ui run pakete
+        run: packaging/linux/paket.sh
 
       - uses: actions/upload-artifact@v7
         with:
           name: pakete-linux
           if-no-files-found: error
           path: |
-            crates/desktop/target/release/bundle/deb/*.deb
-            crates/desktop/target/release/bundle/rpm/*.rpm
-            crates/desktop/target/release/bundle/appimage/*.AppImage
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/*.AppImage
 
-  # Umgepackt aus dem `.deb` (Begründung im Manifest).
   flatpak:
     name: Flatpak
     needs: linux
@@ -126,28 +112,26 @@ jobs:
 
       - name: Bauen
         run: |
-          cp linux/deb/*.deb crates/desktop/packaging/flatpak/sprechwerk.deb
+          version=$(packaging/version.sh)
+          cp linux/sprechwerk-*-linux-x86_64.tar.gz packaging/flatpak/sprechwerk.tar.gz
           flatpak-builder --user --install-deps-from=flathub --repo=repo --force-clean \
-            bau crates/desktop/packaging/flatpak/de.weppelmann.Sprechwerk.yml
-          version=$(jq -r .version crates/desktop/tauri.conf.json)
-          flatpak build-bundle repo "Sprechwerk_${version}_x86_64.flatpak" de.weppelmann.Sprechwerk \
+            bau packaging/flatpak/de.weppelmann.Sprechwerk.yml
+          flatpak build-bundle repo "Sprechwerk-${version}-x86_64.flatpak" de.weppelmann.Sprechwerk \
             --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
 
       - uses: actions/upload-artifact@v7
         with:
           name: pakete-flatpak
           if-no-files-found: error
-          path: Sprechwerk_*.flatpak
+          path: Sprechwerk-*.flatpak
 
   windows:
-    name: Windows (.exe, .msi)
+    name: Windows (.msi, .zip)
     runs-on: windows-2025
     defaults:
       run:
         shell: bash
     env:
-      # `aws-lc-sys` (TLS) braucht unter Windows sonst NASM; die mitgelieferten
-      # vorgebauten Objekte tun es auch.
       AWS_LC_SYS_PREBUILT_NASM: "1"
     steps:
       - uses: actions/checkout@v7
@@ -155,10 +139,6 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
 
       - name: Opus bauen (opus.dll, statische C-Laufzeit)
         run: |
@@ -169,31 +149,27 @@ jobs:
             -DBUILD_SHARED_LIBS=ON -DOPUS_BUILD_PROGRAMS=OFF -DOPUS_BUILD_TESTING=OFF \
             -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
           cmake --build opus-bau --config Release
-          mkdir -p crates/desktop/opus
-          cp opus-bau/Release/opus.dll crates/desktop/opus/opus.dll
+          mkdir -p packaging/opus
+          cp opus-bau/Release/opus.dll packaging/opus/opus.dll
 
-      - name: Komponentenbibliothek holen
-        env:
-          TOKEN: ${{ secrets.WEPPELMANN_UI_TOKEN }}
-        run: *komponenten
+      - name: WiX
+        run: dotnet tool install --global wix --version 5.0.2
 
-      - name: Abhängigkeiten der Oberfläche
-        run: cd ui && npm ci --no-audit --no-fund
-
-      - name: Werkzeuge (Clippy auf Windows)
+      - name: Clippy auf Windows
         if: inputs.pruefen
-        run: cd crates/desktop && cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked -p sprechwerk-fenster -p sprechwerk-server-fenster -p sprechwerk-client --all-targets -- -D warnings
 
       - name: Pakete bauen
-        run: npm --prefix ui run pakete
+        shell: pwsh
+        run: ./packaging/windows/paket.ps1
 
       - uses: actions/upload-artifact@v7
         with:
           name: pakete-windows
           if-no-files-found: error
           path: |
-            crates/desktop/target/release/bundle/nsis/*.exe
-            crates/desktop/target/release/bundle/msi/*.msi
+            dist/*.msi
+            dist/*.zip
 
   macos:
     name: macOS (.dmg, Apple Silicon + Intel)
@@ -205,18 +181,9 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      # Im Repository ausgeführt, damit die Ziele für die Version aus
-      # `rust-toolchain.toml` dazukommen.
       - name: Rust für beide Architekturen
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-
-      # Je Architektur getrennt gebaut und dann zusammengefügt: Opus prüft beim
-      # Einrichten, welche SIMD-Befehle es benutzen kann — für zwei
-      # Architekturen in einem Lauf ginge das schief.
       - name: Opus bauen (libopus.0.dylib, arm64 + x86_64)
         run: |
           curl -fsSLo opus.tar.gz "https://downloads.xiph.org/releases/opus/opus-${OPUS_VERSION}.tar.gz"
@@ -229,28 +196,22 @@ jobs:
               -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
             cmake --build "opus-$arch"
           done
-          mkdir -p crates/desktop/opus
+          mkdir -p packaging/opus
           lipo -create opus-arm64/libopus.0.dylib opus-x86_64/libopus.0.dylib \
-            -output crates/desktop/opus/libopus.0.dylib
-          lipo -info crates/desktop/opus/libopus.0.dylib
+            -output packaging/opus/libopus.0.dylib
+          lipo -info packaging/opus/libopus.0.dylib
 
-      - name: Komponentenbibliothek holen
-        env:
-          TOKEN: ${{ secrets.WEPPELMANN_UI_TOKEN }}
-        run: *komponenten
-
-      - name: Abhängigkeiten der Oberfläche
-        run: cd ui && npm ci --no-audit --no-fund
-
-      - name: Werkzeuge (Clippy auf macOS)
+      - name: Clippy auf macOS
         if: inputs.pruefen
-        run: cd crates/desktop && cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked -p sprechwerk-fenster -p sprechwerk-server-fenster -p sprechwerk-client --all-targets -- -D warnings
 
       - name: Pakete bauen
-        run: npm --prefix ui run pakete -- --target universal-apple-darwin
+        run: packaging/macos/paket.sh
 
       - uses: actions/upload-artifact@v7
         with:
           name: pakete-macos
           if-no-files-found: error
-          path: crates/desktop/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          path: |
+            dist/*.dmg
+            dist/*.zip

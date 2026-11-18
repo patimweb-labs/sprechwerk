@@ -9,14 +9,8 @@
 
 # Baureste
 target/
-crates/desktop/target/
-crates/desktop/gen/
+dist/
 
-# Das Fenster gehört nicht in den Container (eigene `[workspace]`, Tauri,
-# Node) — der Server braucht es nicht.
-crates/desktop/
-ui/node_modules/
-ui/dist/
 
 # Betriebsdaten und Sicherungen
 data/

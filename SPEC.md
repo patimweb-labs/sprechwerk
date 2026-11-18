@@ -45,6 +45,17 @@ Mitglieder mit Rolle. **[A]** Ändern kann sie nur Rollen; Räume und Sperren
 bleiben beim Client, Konfiguration bei der Datei. Preis, Schutz und
 Alternativen: `docs/adr/0011-verwaltung-im-browser.md`.
 
+**[P] Nachtrag 2026-11-18: Verwaltung ohne Browser** (ADR 0013). Ersetzt den
+Nachtrag vom 17.11. *Begründung (Nutzer):* „Der Server braucht eine reine
+Konsolenvariante für Docker und eine, die eine reine Rust-Anwendung ist."
+Damit gilt die ursprüngliche Festlegung wieder — Diagnose **als Unterbefehl**:
+`sprechwerk stand | rolle <wer> <rolle> | protokoll` sprechen den laufenden
+Prozess über `127.0.0.1` an (Zugang: Schlüsseldatei im Datenverzeichnis), im
+Container per `docker exec`. Dazu das Programm `sprechwerk-server-fenster`,
+das den Dienst mitstartet und dieselbe Verwaltung zeigt. **[A]** Weiterhin
+ändert die Verwaltung nur Rollen. *Preis:* kein Zugriff von einem anderen
+Rechner ohne SSH; die Browser-Seite und ihr Zugangscode entfallen.
+
 **Nachtrag 2026-11-14:** Der Container hat einen `HEALTHCHECK`, und er prüft
 **kein** Netz: der Server schreibt alle 10 s ein Lebenszeichen nach
 `<daten>/lebt`, `sprechwerk --gesundheit` liest es und antwortet mit dem
@@ -200,6 +211,19 @@ des Systems), Link-Vorschau vom **Absender** abgerufen. *Preis:* die Seite
 sieht die Adresse des Absenders (abschaltbar); jede Reaktion ist eine eigene
 gespeicherte Nachricht; ein älterer Client zeigt Reaktionen als „neuere
 Version nötig", Effekt und Vorschau fehlen bei ihm einfach.
+**[A] Nachtrag 2026-11-18: Bedienung wie TeamSpeak** (*Nutzer:* „Du darfst
+dich gerne an TeamSpeak orientieren."). Der Kanalbaum ist die Hauptansicht:
+Server als Wurzel, Räume, darunter die Leute mit Status-Icon (spricht, stumm,
+taub) und Rolle. Ein Raum wird mit **Doppelklick** betreten — ein einfacher
+Klick zieht niemanden versehentlich um; ohne Maus (Tastatur, Screenreader)
+genügt das Auslösen. Serverliste, Protokoll, Sperren und Einstellungen sind
+Werkzeuge rechts oben, nicht gleichrangige Reiter. Der Chat fasst Nachrichten
+derselben Person zu Blöcken zusammen (neuer Kopf nach 5 Minuten Pause).
+*Preis:* wer Ein-Klick gewohnt ist (Discord), muss umlernen.
+
+**[A] Nachtrag 2026-11-18:** Effekte entfallen (*Nutzer:* „Die Effekte
+kannst du entfernen, die braucht es nicht."). Alte Nachrichten mit Effekt
+bleiben lesbar; das Feld wird übergangen.
 
 ## 7. Technik
 
@@ -213,6 +237,13 @@ Datagramme für Sprache, WebTransport als spätere Tür für Browser.
 **[P] Installierter Client** (Rust, pro System gebaut). Browser später
 vielleicht, über WebTransport.
 
+**[P] Nachtrag 2026-11-18: alles in Rust** (ADR 0013). Die Oberfläche ist
+kein Web mehr: egui statt Tauri + Vue, kein TypeScript, kein CSS, kein Node.
+*Begründung (Nutzer):* „Komplett Abstand nehmen von CSS, TypeScript und Co. —
+soll aber weiterhin minimalistisch gut aussehen." *Preis:* Texteingabe und
+Emoji sind schwächer als in einer Webview; die Vue-Komponenten von
+`weppelmann-ui` gelten hier nicht mehr, nur die Token-Dateien.
+
 **[A] Aufteilung in Crates:**
 
 ```
@@ -220,10 +251,13 @@ domain   Zustand: Räume, Rollen, Mitglieder, Nachrichten, Prüfprotokoll — ke
 protocol Sprache auf der Leitung: Rahmen, Serialisierung, Versionierung
 adapters Netz: QUIC-Verbindung, Anmeldung, Beweis (Ed25519); später Audio
 ipc      Vertrag zum Fenster: Befehle, Ereignisse, Modellstand
+client   Client-Kern ohne Oberfläche (Verbindung, Sprechpfad, Schlüssel)
 store    SQLite + JSON-Export/-Import + Migrationen
-server   QUIC-Listener, Befehlsausführung, Sicherung, Konfiguration
+server   Dienst als Bibliothek + Programm `sprechwerk`, Verwaltung, Sicherung
 cli      Referenzclient (zum Prüfen und für die Kommandozeile)
-desktop  Fensteranwendung (Tauri 2, eigene Workspace) + ui/ (Vue 3 + TS)
+oberflaeche     Bausatz der Fenster: Themes aus Tokens, Texte, Schriften
+fenster         Fenster zum Mitreden (egui)
+server-fenster  Server mit Fenster (egui)
 ```
 
 **[A] Sprache auf der Leitung:** JSON-Frames, längenpräfixiert (4 Byte,
@@ -287,8 +321,8 @@ Handelndem und Objekt. Aufbewahrung wie Text (unbegrenzt, einstellbar).
   für „Sperren wie TS3".
 * Kein Rückwärtsmigration beim Update.
 * Keine Formatierung, keine Anhänge, kein Video in Version 1.
-* Die Verwaltung im Browser vergibt nur Rollen: wer einen Raum umbenennen
-  will, braucht den Client (SPEC §2, Nachtrag 2026-11-17).
+* Die Verwaltung (Konsole, Server-Fenster) vergibt nur Rollen: wer einen Raum
+  umbenennen will, braucht den Client (SPEC §2, Nachtrag 2026-11-18).
 
 ## 10. Nachtrag: Entscheidungen aus der Umsetzung
 
@@ -318,7 +352,9 @@ Beim Schreiben des Codes waren weitere Festlegungen nötig. Alle sind **[A]**.
 4. ~~`server`~~ — erledigt (Konfiguration, TLS, QUIC, Sicherung, Sperren).
 5. ~~`cli`~~ — erledigt (Referenzclient, interaktiv und `--einmal`).
 6. ~~Sprachpfad~~ — erledigt (Datagramme, Rederecht, Verteilung nur im Raum).
-7. Offen: Audio im Client (Opus-Aufnahme/wiedergabe), Fensteranwendung,
-   Dateien, Status, Video/Bildschirm, Suche, Emojis.
+7. Offen: Dateien im Chat (ADR 0012 Stufe 3, für das egui-Fenster neu zu
+   bauen), Metadaten aus Fotos entfernen, Status, Video/Bildschirm, Suche
+   (nur im Client möglich). Erledigt: Audio im Client, Fensteranwendung (seit
+   ADR 0013 in reinem Rust), Reaktionen.
 8. Offen: gestaffelte Speicherung, wenn die Vollschreibung zum Flaschenhals
    wird; Wiederherstellung aus Sicherung als Unterbefehl.

@@ -1,0 +1,74 @@
+{
+  "color": {
+    "$type": "color",
+    "bg": {
+      "canvas": {
+        "$value": "#0A0A0A"
+      },
+      "panel": {
+        "$value": "#101010"
+      },
+      "raised": {
+        "$value": "#161616"
+      },
+      "input": {
+        "$value": "#0D0D0D"
+      },
+      "hover": {
+        "$value": "#1E1E1E"
+      },
+      "selected": {
+        "$value": "#262626"
+      }
+    },
+    "border": {
+      "subtle": {
+        "$value": "#242424"
+      },
+      "strong": {
+        "$value": "#3D3D3D"
+      }
+    },
+    "text": {
+      "default": {
+        "$value": "#E8E6E1"
+      },
+      "muted": {
+        "$value": "#A8A5A0"
+      },
+      "faint": {
+        "$value": "#7C7A76"
+      },
+      "on-accent": {
+        "$value": "#0A0A0A"
+      }
+    },
+    "accent": {
+      "default": {
+        "$value": "#E8E6E1"
+      },
+      "hover": {
+        "$value": "#FFFFFF"
+      },
+      "pressed": {
+        "$value": "#B5B2AD"
+      }
+    },
+    "status": {
+      "ok": {
+        "$value": "#B5B2AD"
+      },
+      "warn": {
+        "$value": "#D6D3CE"
+      },
+      "error": {
+        "$value": "#FFFFFF"
+      }
+    },
+    "focus": {
+      "ring": {
+        "$value": "#FFFFFF"
+      }
+    }
+  }
+}

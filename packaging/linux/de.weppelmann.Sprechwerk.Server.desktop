@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Sprechwerk Server
+GenericName=Sprachserver
+Comment=Den eigenen sprechwerk-Server starten und verwalten
+Exec=sprechwerk-server-fenster
+Icon=de.weppelmann.Sprechwerk
+Terminal=false
+Categories=Network;Chat;
+Keywords=Server;Sprache;Verein;
+StartupWMClass=de.weppelmann.Sprechwerk.Server

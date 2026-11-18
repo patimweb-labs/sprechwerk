@@ -68,7 +68,7 @@ pub fn pruefe_fingerabdruck(erwartet: Option<&str>, gesehen: &str) -> Result<(),
 
 /// Fingerabdruck in Gruppen zu vier Zeichen: `3ff0:5a78:eb5d:…`.
 ///
-/// Dieselbe Schreibweise wie in der Oberfläche (`ui/src/format.ts`), damit man
+/// Dieselbe Schreibweise wie im Fenster (`crates/fenster/src/logik.rs`), damit man
 /// Serverbildschirm und Fenster Zeichen für Zeichen vergleichen kann.
 pub fn gruppiere(fingerabdruck: &str) -> String {
     let roh = normalisiere(fingerabdruck);

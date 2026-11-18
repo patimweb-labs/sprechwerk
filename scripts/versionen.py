@@ -10,9 +10,9 @@ Gefunden 2026-11-16, beim Einrichten der Release-Pipeline:
   und in `Cargo.lock` an — `audio` wäre stehen geblieben, die Sperrdatei hätte
   nicht mehr gepasst, und jeder Bau mit `--locked` (Docker, Release) wäre
   gescheitert. Erst **nach** dem Merge des Release-PRs, mitten im Release.
-* `beforeBuildCommand` in `tauri.conf.json` zeigte auf `../../ui`. Tauri führt
-  den Befehl aber im Verzeichnis **über** `crates/desktop` aus — der Pfad ging
-  ins Leere, `tauri build` lief nie.
+* (bis 1.3) `beforeBuildCommand` in `tauri.conf.json` zeigte ins Leere. Seit
+  ADR 0013 gibt es kein Tauri mehr; geprüft wird stattdessen, dass Fenster,
+  Starter, Flatpak und Metainfo dieselbe Kennung tragen.
 
 Beides fällt nur auf, wenn man ein Release baut. Diese Prüfung findet es vorher.
 
@@ -40,16 +40,8 @@ def json_(pfad: str) -> dict:
 # 1. Eine Version, überall dieselbe.
 arbeitsbereich = toml("Cargo.toml")
 version = arbeitsbereich["workspace"]["package"]["version"]
-gefunden = {
-    "crates/desktop/Cargo.toml": toml("crates/desktop/Cargo.toml")["package"]["version"],
-    "crates/desktop/tauri.conf.json": json_("crates/desktop/tauri.conf.json")["version"],
-    "ui/package.json": json_("ui/package.json")["version"],
-    "ui/package-lock.json": json_("ui/package-lock.json")["version"],
-    "ui/package-lock.json (packages[''])": json_("ui/package-lock.json")["packages"][""]["version"],
-}
-for wo, v in gefunden.items():
-    if v != version:
-        befunde.append(f"{wo}: Version {v}, Arbeitsbereich {version}")
+# Seit ADR 0013 erben alle Pakete die Version aus dem Arbeitsbereich (Punkt 2);
+# die Paketskripte lesen sie dort (`packaging/version.sh`).
 
 # Vor dem ersten Release steht im Manifest 0.0.0 (release-please macht daraus
 # mit dem ersten `feat` 0.1.0); danach muss es die laufende Version sein.
@@ -71,7 +63,7 @@ for eintrag in konfig["extra-files"]:
         befunde.append(f"release-please-config.json: {eintrag['path']} gibt es nicht")
     namen = set(re.findall(r"@\.name\.value == '([^']+)'", eintrag["jsonpath"]))
     erfasst.setdefault(eintrag["path"], set()).update(namen)
-for sperre in ("Cargo.lock", "crates/desktop/Cargo.lock"):
+for sperre in ("Cargo.lock",):
     eigene = {
         p["name"] for p in toml(sperre)["package"]
         if p["name"].startswith("sprechwerk-") and "source" not in p
@@ -83,25 +75,25 @@ for sperre in ("Cargo.lock", "crates/desktop/Cargo.lock"):
             "wird nicht angehoben (in `extra-files` ergänzen)"
         )
 
-# 4. Tauri führt die Vorbefehle im Verzeichnis über `crates/desktop` aus.
-tauri = json_("crates/desktop/tauri.conf.json")
-for schluessel in ("beforeDevCommand", "beforeBuildCommand"):
-    befehl = tauri["build"].get(schluessel, "")
-    treffer = re.search(r"--prefix\s+(\S+)", befehl)
-    if treffer and not (WURZEL / "crates" / treffer.group(1) / "package.json").is_file():
-        befunde.append(f"tauri.conf.json {schluessel}: `{treffer.group(1)}` zeigt nicht auf ui/")
-
-# 5. Eine Kennung für das Fenster: Tauri (Wayland-App-ID), Flatpak, Metainfo.
-#    Weichen sie ab, findet der Schreibtisch Symbol und Starter nicht.
-kennung = tauri["identifier"]
-flatpak = (WURZEL / "crates/desktop/packaging/flatpak" / f"{kennung}.yml")
+# 4. Eine Kennung für das Fenster: App-ID (main.rs), Starter, Flatpak,
+#    Metainfo. Weichen sie ab, findet der Schreibtisch Symbol und Starter nicht.
+kennung = "de.weppelmann.Sprechwerk"
+haupt = (WURZEL / "crates/fenster/src/main.rs").read_text(encoding="utf-8")
+if f'with_app_id("{kennung}")' not in haupt:
+    befunde.append(f"crates/fenster/src/main.rs: App-ID ist nicht {kennung}")
+starter = WURZEL / "packaging/linux" / f"{kennung}.desktop"
+if not starter.is_file():
+    befunde.append(f"{starter.relative_to(WURZEL)} fehlt")
+elif f"StartupWMClass={kennung}" not in starter.read_text(encoding="utf-8"):
+    befunde.append(f"{starter.relative_to(WURZEL)}: StartupWMClass ist nicht {kennung}")
+flatpak = WURZEL / "packaging/flatpak" / f"{kennung}.yml"
 if not flatpak.is_file():
     befunde.append(f"Flatpak-Manifest {flatpak.relative_to(WURZEL)} fehlt (heißt nach der Kennung)")
 elif not re.search(rf"^id: {re.escape(kennung)}$", flatpak.read_text(encoding="utf-8"), re.M):
     befunde.append(f"{flatpak.relative_to(WURZEL)}: `id` ist nicht {kennung}")
-metainfo = flatpak.with_name(f"{kennung}.metainfo.xml")
-if metainfo.is_file() and f"<id>{kennung}</id>" not in metainfo.read_text(encoding="utf-8"):
-    befunde.append(f"{metainfo.relative_to(WURZEL)}: <id> ist nicht {kennung}")
+metainfo = WURZEL / "packaging/linux" / f"{kennung}.metainfo.xml"
+if not metainfo.is_file() or f"<id>{kennung}</id>" not in metainfo.read_text(encoding="utf-8"):
+    befunde.append(f"{metainfo.relative_to(WURZEL)}: fehlt oder <id> ist nicht {kennung}")
 
 if befunde:
     print("Versionen und Release-Konfiguration:")

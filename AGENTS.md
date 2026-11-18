@@ -2,13 +2,17 @@
 
 > Diese Datei liegt in **jedem** Repo (UI-Bibliothek und Apps). Sie ist die verbindliche
 > Arbeitsanweisung für Menschen und Agenten. Abweichungen nur mit Eintrag in
-> `docs/adr/` und Vermerk hier. Der projektspezifische Teil ist §8.
+> `docs/adr/` und Vermerk hier. Der projektspezifische Teil ist §9.
+>
+> **Vermerk (ADR 0013, 2026-11-18):** sprechwerk ist reines Rust — Oberfläche
+> mit egui statt Vue/Tauri. Wo diese Vorlage Vue, CSS-Variablen, `vue-tsc`,
+> `npm` oder Playwright nennt, gilt hier das Rust-Gegenstück aus §3, §4 und §9.
 
 ## 1. Worum es geht
 
 Sprach- und Texträume für Vereine: selbst gehostet, ein Container, ein UDP-Port
-(QUIC). Sprache wird verteilt, nicht gemischt. Server und Fensteranwendung in
-Rust, Oberfläche Tauri 2 + Vue.
+(QUIC). Sprache wird verteilt, nicht gemischt. Server, Fenster und
+Server-Fenster in reinem Rust, Oberfläche mit egui (ADR 0013).
 
 ## 2. Nicht verhandelbar
 
@@ -26,8 +30,9 @@ Rust, Oberfläche Tauri 2 + Vue.
    Tests laufen lassen, Problem rekursiv verkleinern. Cheats sind erlaubt, aber
    ticketpflichtig, lokal begrenzt und werden abgebaut.
 6. **Keine Farben, Größen oder Abstände im Code.** Nur semantische Tokens
-   (`var(--wp-color-text-default)`). Hex-Werte, `px`-Magie und `--wp-gray-300` in
-   Komponenten sind Fehler.
+   (`var(--wp-color-text-default)`; hier: `f.text_default`, `thema::SPACE_4`,
+   erzeugt von `crates/oberflaeche/build.rs`). Hex-Werte, Pixel-Magie und
+   Grundwerte wie `--wp-gray-300` in Ansichten sind Fehler.
 7. **Drei Themes, sonst nichts:** `dark`, `light`, `mono`. Keine Runtime-Themes,
    keine Nutzer-Themes, kein Theme-Editor.
 8. **Tests sind Teil der Lieferung.** Unit, Integration, Vertrag, Rundlauf.
@@ -44,47 +49,59 @@ Rust, Oberfläche Tauri 2 + Vue.
 ## 3. Struktur
 
 ```
-crates/domain    Datenmodell, Regeln, keine I/O          → Unit-Tests
-crates/adapters  Dateisystem, Netz, Geräte, Fremdsysteme → Integrationstests
-crates/ipc       Befehle/Ereignisse + Schema             → Vertragstests
-ui/              Vue 3 + TS, dünn; nutzt @weppelmann/components
-docs/            architektur.md, datenfluss.md, adr/
-tests/e2e/       Playwright gegen die App mit gemocktem Backend
+crates/domain          Datenmodell, Regeln, keine I/O              → Unit-Tests
+crates/protocol        Rahmen, Felder, Sprachkopf, Geheimtext      → Unit-Tests
+crates/store           SQLite, Export/Import, Sicherung            → Integrationstests
+crates/adapters        Netz, Schlüssel, Klang                      → Integrationstests
+crates/audio           Geräte, Opus, Verlustausgleich              → Unit-Tests
+crates/ipc             Befehle/Antworten + Modell                  → Vertragstests
+crates/client          Client-Kern ohne Oberfläche (Fassade)       → Unit-Tests
+crates/oberflaeche     Bausatz: Themes aus Tokens, Texte, Schriften
+crates/fenster         Fenster (egui), dünn: modell → Bild → Aktion → Oberflächentests
+crates/server          Dienst als Bibliothek + `sprechwerk`         → Integration, Rundlauf
+crates/server-fenster  Server mit Fenster (egui)                   → Oberflächentests
+crates/cli             Referenzclient
+packaging/             Paketskripte je System
+docs/                  architektur.md, datenfluss.md, adr/
 ```
 
-Richtung der Abhängigkeiten: `domain ← adapters ← ipc ← ui`. Nie zurück.
-`ui/` kennt keine Domäne, nur Befehle, Ereignisse und Zustände.
+Richtung der Abhängigkeiten: `domain ← adapters ← ipc ← client ← fenster`.
+Nie zurück. `fenster` kennt keine Domäne, nur Aktionen, Meldungen und Zustände;
+`oberflaeche` kennt weder Client noch Server.
 
 ## 4. Befehle
 
 ```bash
 # alles prüfen (das ist der Befehl vor jedem Commit)
 cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo test --workspace
-(cd crates/desktop && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test)
-npm --prefix ui run typecheck && npm --prefix ui run build
+./scripts/pruefen.sh                   # dasselbe + Bilder + Sprachproben
 ./scripts/latenz.sh                    # Latenz messen (p50/p95/p99)
 ./scripts/rundlauf.sh                  # Server + zwei Clienten von Hand
 ./scripts/sprechprobe.sh               # Sprachpfad ohne Gerät (Netz, Codec)
 ./scripts/audio-ende-zu-ende.sh        # Sprachpfad mit Gerät (virtuelle Geräte)
 
-npm --prefix ui run dev                # Frontend autark, Port 1423
-cargo run --manifest-path crates/desktop/Cargo.toml --features custom-protocol
+cargo run -p sprechwerk-fenster                      # Fenster
+SPRECHWERK_PROFIL=/tmp/b cargo run -p sprechwerk-fenster   # zweite Kennung
+cargo run -p sprechwerk-server-fenster               # Server mit Fenster
+cargo run -p sprechwerk-server                       # Server (Konsole)
+SPRECHWERK_BILDER=docs/bilder cargo test -p sprechwerk-fenster \
+  -p sprechwerk-server-fenster --test oberflaeche    # Bildschirmfotos erzeugen
+packaging/linux/paket.sh                             # Pakete wie im Release
 ```
 
 `cargo test` **mit** `--workspace`: ohne das prüft Cargo nur das Wurzelpaket und
-meldet „0 passed". `crates/desktop` steht in einer eigenen `[workspace]`-Tabelle
-(Tauri braucht das), wird von `--workspace` und `cargo fmt --all` also nicht
-erfasst und bekommt seinen eigenen Aufruf.
+meldet „0 passed".
 
-Frontend-Entwicklung läuft **ohne** das echte Backend: `ui/` lässt sich mit
-`npm --prefix ui run dev` allein starten (Port 1423); die Befehle schlagen dann
-fehl und werden als Meldung angezeigt. Wer für eine UI-Aufgabe einen echten
-Server oder eine Soundkarte braucht, hat die Grenze falsch gezogen.
+Oberflächenentwicklung läuft **ohne** das echte Backend: die Fenster hängen
+über das Trait `Kern` am Client; die Oberflächentests setzen ein Beispielmodell
+ein und bedienen das Fenster über AccessKit (`egui_kittest`). Wer für eine
+UI-Aufgabe einen echten Server oder eine Soundkarte braucht, hat die Grenze
+falsch gezogen.
 
 ## 5. Definition of Done
 
 - [ ] Tests grün (Unit, Integration, Vertrag, Rundlauf)
-- [ ] `clippy -D warnings`, `vue-tsc --noEmit` sauber
+- [ ] `clippy -D warnings` sauber (hier gibt es kein `vue-tsc`, ADR 0013)
 - [ ] alle drei Themes geprüft (dark, light, mono)
 - [ ] Tastaturbedienung geprüft, Fokus sichtbar, Rollen und Namen gesetzt
 - [ ] Screenshot im PR (vorher/nachher bei UI-Änderungen)
@@ -116,7 +133,8 @@ Server oder eine Soundkarte braucht, hat die Grenze falsch gezogen.
 - `docs/adr/NNNN-titel.md`: getroffene Entscheidung, Alternativen, Kosten.
 - `docs/QUALITAET.md`: Latenz- und Qualitätskriterien mit Messwerten.
 - `SPEC.md`: jede Festlegung mit Begründung und Preis.
-- Screenshots werden **erzeugt** (Playwright), nicht von Hand abgelegt.
+- Screenshots werden **erzeugt** (hier: `egui_kittest`, siehe §4), nicht von
+  Hand abgelegt.
 
 ## 8. Marke und Icons
 
@@ -141,9 +159,10 @@ Der Stil steht in `docs/marke/icons.md`; hier nur die Regeln, an die sich Code h
 - **Name, Zweck, Zielgruppe:** sprechwerk (Arbeitstitel) — Sprach- und
   Texträume für Vereine; Leute, die heute TeamSpeak oder Discord nutzen, und ein
   Betreiber, der selbst hostet (Docker, ein Volume, ein UDP-Port).
-- **Abweichende Befehle:** Oberfläche ist Tauri 2 + Vue (`ui/`, Port 1423) im
-  Crate `crates/desktop` (eigene `[workspace]`, deshalb eigener Aufruf).
-  Server: `crates/server` (`sprechwerk`), Referenzclient: `crates/cli`.
+- **Abweichende Befehle:** Oberfläche ist egui (`crates/fenster`,
+  `crates/server-fenster`), ein Arbeitsbereich, kein Node (ADR 0013).
+  Server: `crates/server` (`sprechwerk`, Verwaltung mit `sprechwerk stand |
+  rolle | protokoll`), Referenzclient: `crates/cli`.
 - **Besonderheiten:**
   * Sprache läuft als QUIC-Datagramm (6 Byte Kopf: Version, Codec, Folge,
     Sprecher),

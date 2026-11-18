@@ -32,20 +32,12 @@ cd "$WURZEL" || exit 0
 # Nur Arbeitsbereich und Fenster: schnell genug für „vor jedem Push". Die
 # Oberfläche braucht `npm install` und die Bibliothek daneben — das prüft die CI
 # (und `scripts/pruefen.sh` von Hand).
-echo "pre-push: Form, Werkzeuge und Tests (Arbeitsbereich und Fenster) …"
+echo "pre-push: Form, Werkzeuge und Tests …"
 
 fehler=0
 cargo fmt --all --check || fehler=1
 cargo clippy --all-targets -q -- -D warnings || fehler=1
-cargo test --quiet || fehler=1
-
-if [[ -d crates/desktop ]]; then
-  ( cd crates/desktop && cargo fmt --check ) || fehler=1
-  ( cd crates/desktop && cargo clippy --all-targets -q -- -D warnings ) || fehler=1
-  # Die Ende-zu-Ende-Tests starten den Serverprozess — er muss gebaut sein.
-  cargo build -q -p sprechwerk-server || fehler=1
-  ( cd crates/desktop && cargo test --quiet ) || fehler=1
-fi
+cargo test --workspace --quiet || fehler=1
 
 if [[ "$fehler" -ne 0 ]]; then
   echo

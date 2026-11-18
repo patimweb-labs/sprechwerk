@@ -11,7 +11,7 @@ Legende: **✔ gebaut und geprüft** · **◐ entworfen, nicht gebaut** · **○
 | Verschlüsselung (Transport) | ✔ | `docs/adr/0002-verschluesselung.md` |
 | Anmeldung (Ed25519-Beweis) | ✔ | `docs/adr/0002`, `crates/adapters` |
 | Räume (flach, ohne Unterräume), Rollen, Rechte | ✔ | `SPEC.md` §5, ADR 0009 |
-| Text (dauerhaft, Verlauf, Löschen) | ✔ | `SPEC.md` §6 |
+| Text (dauerhaft, Verlauf, Löschen), Ende zu Ende | ✔ | `SPEC.md` §6, `docs/adr/0012-alles-ende-zu-ende.md` |
 | Prüfprotokoll | ✔ | `SPEC.md` §8 |
 | Eingriffe: stumm, taub, verschieben, rauswerfen, trennen, sperren | ✔ | `docs/adr/0008-eingriffe-und-kontextmenues.md` |
 | Sprache (verteilen, Recht, Kopf) | ✔ | `docs/adr/0003`, `crates/server` |
@@ -21,11 +21,14 @@ Legende: **✔ gebaut und geprüft** · **◐ entworfen, nicht gebaut** · **○
 | Echounterdrückung (AEC3) | ✔ | `docs/AUDIO.md`, `crates/adapters/src/echo.rs` |
 | Verlustausgleich (FEC + Paritätsrahmen) | ✔ | `crates/audio/src/verlust.rs` |
 | Sprache Ende zu Ende, je Raum | ✔ | `docs/adr/0006-endezuende.md` |
-| Fenster (Tauri + Vue), Chat einklappbar | ✔ | `docs/adr/0001-aufbau-des-clients.md` |
+| Fenster in reinem Rust (egui), Chat einklappbar | ✔ | `docs/adr/0013-alles-in-rust.md` |
+| Verwaltung: Konsole und Server-Fenster | ✔ | `docs/adr/0013-alles-in-rust.md` |
+| Reaktionen, Link-Vorschau | ✔ | `docs/adr/0012-alles-ende-zu-ende.md` (Stufe 2) |
 | Betrieb (Docker, Sicherung, Export) | ✔ | `SPEC.md` §2, `README.md` |
-| Pakete je System | ◐ | `docs/adr/0007-paketierung-und-betrieb.md` |
-| Video, Bildschirm, Effekte | ◐ (bewusst später) | `docs/adr/0005-video-und-bildschirm.md` |
-| Dateien, Status, Emojis, Suche | ○ (Version 1 nicht) | `SPEC.md` §3 |
+| Pakete je System | ◐ (in der CI gebaut, auf echten Windows-/Mac-Geräten ungeprüft) | `packaging/`, `docs/adr/0013-alles-in-rust.md` |
+| Video, Bildschirm | ◐ (bewusst später) | `docs/adr/0005-video-und-bildschirm.md` |
+| Dateien im Chat | ◐ (entworfen, ADR 0012 Stufe 3; für das egui-Fenster neu zu bauen) | `docs/adr/0012-alles-ende-zu-ende.md` |
+| Status, Suche | ○ (Version 1 nicht) | `SPEC.md` §3 |
 | Skalierung über einen Prozess hinaus | ✗ | Abschnitt 9 |
 
 ---
@@ -34,8 +37,8 @@ Legende: **✔ gebaut und geprüft** · **◐ entworfen, nicht gebaut** · **○
 
 ```mermaid
 flowchart LR
-    subgraph Fenster["Fenster (Tauri 2 + Vue)"]
-        UI["ui/ — render(modell)"]
+    subgraph Fenster["Fenster (egui)"]
+        UI["crates/fenster — render(modell)"]
     end
     subgraph Kern["Client-Kern"]
         IPC["crates/ipc<br/>Befehle, Ereignisse, Modell"]
@@ -89,10 +92,10 @@ Betreten (`VerlaufLesen`). Löschen: Verfasser setzt Platzhalter, Moderator
 löscht hart — beides protokolliert. Aufbewahrungsfrist optional
 (`aufbewahrung_tage`).
 
-Warum nicht Ende-zu-Ende: der Text **liegt** auf dem Server, das ist die
-Zusage („dauerhaft"). E2E wäre nur mit clientseitiger Verschlüsselung möglich —
-dann könnte der Server nicht mehr suchen, aufräumen oder moderieren. Entscheidung
-in `docs/adr/0006-endezuende.md` begründet.
+Seit ADR 0012 Ende zu Ende: der Text liegt dauerhaft auf dem Server, aber nur
+als Geheimtext mit einem Serverschlüssel, den die Mitglieder haben. Der Server
+kann deshalb nicht mehr nach Inhalt suchen — Suche muss im Client laufen.
+(Die frühere Abwägung „Text bleibt lesbar" in ADR 0006 ist damit überholt.)
 
 ## 4. Rechte
 
@@ -115,14 +118,15 @@ vorher automatische Sicherung, kein Downgrade.
 
 ## 7. Fenster
 
-Drei Ansichten: Räume (zwei Seitenleisten, Verlauf, Eingabe), Protokoll
-(Tabelle), Einstellungen (Karten). Alles aus `@weppelmann/components`, nur
-semantische Tokens, drei Themes.
+Fünf Ansichten: Serverliste, Räume (Seitenleiste mit Räumen und Leuten,
+Verlauf, Eingabe), Protokoll und Sperren (Tabellen), Einstellungen (Karten).
+egui mit dem Bausatz aus `crates/oberflaeche`: Farben, Abstände und
+Schriftgrade aus den Token-Dateien, drei Themes (ADR 0013).
 
 ## 8. Was bewusst **nicht** in Version 1 ist
 
-Dateien, Status/Abwesenheit, Video, Bildschirmfreigabe, Emojis/Reaktionen,
-Suche. Jedes hat einen Entwurf (§9 bzw. ADR 0005), aber keinen Platz in v1 —
+Dateien, Status/Abwesenheit, Video, Bildschirmfreigabe, Suche.
+(Reaktionen kamen mit ADR 0012 Stufe 2 dazu; Effekte gab es kurz und sind wieder entfallen.) Jedes hat einen Entwurf (§9 bzw. ADR 0005), aber keinen Platz in v1 —
 weil „Struktur, die nicht verrottet" und „Betrieb, der beherrschbar ist" die
 Zusage sind, nicht der Funktionsumfang.
 

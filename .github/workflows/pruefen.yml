@@ -1,13 +1,8 @@
 # Prüfen: was vor dem Ausliefern stimmen muss.
 #
-# Drei Gründe, warum es diese Datei gibt:
-#   1. `cargo test` im Wurzelverzeichnis sammelt die Tests von `crates/desktop`
-#      **nicht** ein (Tauri hat eine eigene Sperrdatei, das Crate steht außerhalb
-#      des Arbeitsbereichs). Diese Tests liefen deshalb nie von selbst.
-#   2. `ui/` hatte lange überhaupt keine Prüfung.
-#   3. Zwei Werkzeuge, die das Projekt verlangt (`cargo fmt --check`,
-#      `cargo clippy -D warnings`), waren auf dem Commit-Stand nachweislich kaputt,
-#      ohne dass es jemandem auffiel.
+# Seit ADR 0013 ist alles ein Arbeitsbereich in Rust: Server, Client-Kern,
+# beide Fenster und ihre Oberflächentests (egui_kittest über AccessKit) laufen
+# mit einem `cargo test --workspace`. Kein Node, keine zweite Sperrdatei.
 #
 # Dieselben Schritte laufen lokal mit `scripts/pruefen.sh`.
 #
@@ -68,112 +63,6 @@ jobs:
       - name: Werkzeuge
         run: cargo clippy --all-targets -- -D warnings
 
-      - name: Tests
-        run: cargo test --workspace
-
-  fenster:
-    name: Fenster — eigenes Crate, eigene Sperrdatei
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      # Tauri braucht die Systembibliotheken von GTK/WebKit. Ohne sie baut das
-      # Fenster-Crate nicht — und dann laufen auch seine Tests nicht.
-      - name: Systembibliotheken für Tauri
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev librsvg2-dev patchelf \
-            build-essential pkg-config libopus0 pulseaudio-utils
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            . -> target
-            crates/desktop -> crates/desktop/target
-
-      # Die Ende-zu-Ende-Tests im Fenster-Crate starten den **echten**
-      # Serverprozess; ohne dieses Binary sagen sie das und schlagen fehl.
-      - name: Server bauen (für die Ende-zu-Ende-Tests)
-        run: cargo build -p sprechwerk-server
-
-      - name: Form
-        run: cd crates/desktop && cargo fmt --check
-
-      - name: Werkzeuge
-        run: cd crates/desktop && cargo clippy --all-targets -- -D warnings
-
-      - name: Tests
-        run: cd crates/desktop && cargo test
-
-  oberflaeche:
-    name: Oberfläche — Typen und Ansichten
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-
-      # `ui/package.json` hängt über `file:../../weppelmann-ui/...` an der
-      # Komponentenbibliothek. Der Pfad zeigt **neben** dieses Repository —
-      # deshalb wird sie dorthin geholt.
-      #
-      # Ist sie nicht öffentlich, braucht dieser Schritt ein Secret
-      # `WEPPELMANN_UI_TOKEN` (fine-grained, nur Lesen). Fehlt es und der
-      # anonyme Zugriff scheitert, sagt der Job das deutlich, statt an einem
-      # unverständlichen `npm ci`-Fehler zu scheitern.
-      - name: Komponentenbibliothek holen
-        env:
-          TOKEN: ${{ secrets.WEPPELMANN_UI_TOKEN }}
-        run: |
-          ziel="${{ github.workspace }}/../weppelmann-ui"
-          url="https://github.com/Smotherer007/weppelmann-ui.git"
-          if [ -n "$TOKEN" ]; then
-            url="https://x-access-token:${TOKEN}@github.com/Smotherer007/weppelmann-ui.git"
-          fi
-          if ! git clone --depth 1 "$url" "$ziel"; then
-            echo "::error::weppelmann-ui nicht erreichbar. Secret WEPPELMANN_UI_TOKEN setzen (nur Leserechte)."
-            exit 1
-          fi
-
-      - name: Tokens bauen
-        run: |
-          cd "${{ github.workspace }}/../weppelmann-ui"
-          npm ci --no-audit --no-fund
-          npm run -s tokens
-
-      - name: Abhängigkeiten der Oberfläche
-        run: cd ui && npm ci --no-audit --no-fund
-
-      - name: Typen
-        run: cd ui && npm run --silent typecheck
-
-      - name: Ansichten und Texte
-        run: cd ui && npm test --silent
-
-      # Im echten Browser: prüft, was jsdom nicht sieht (Stile, z. B. dass jeder
-      # Name in der Raumliste sichtbar ist), und erzeugt die Bilder aller
-      # Ansichten in dark, light und mono. Der Läufer bringt Chrome mit.
-      # Hochgeladen statt verglichen: die Schriftdarstellung unterscheidet sich
-      # zwischen Maschinen, die Bilder im Repository entstehen lokal.
-      - name: Ansichten im Browser (drei Themes)
-        run: cd ui && npm run --silent bilder
-
-      - name: Bilder ablegen
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ansichten
-          path: docs/bilder/*.png
-          if-no-files-found: ignore
-
   sprache:
     name: Sprache — Messungen am laufenden Server
     runs-on: ubuntu-24.04
@@ -228,8 +117,8 @@ jobs:
       pruefen: true
     secrets: inherit
 
-  # Den Server mit eingebauter Verwaltungsoberfläche auf allen Systemen bauen
-  # (`server.yml`) — Windows und macOS gibt es dort sonst erst im Release. Die
+  # Den Server (Konsole) auf allen Systemen bauen (`server.yml`) — Windows
+  # und macOS gibt es dort sonst erst im Release. Die
   # Archive hängen als Artefakte am Lauf, zum Ausprobieren vor dem Release.
   server:
     name: Server

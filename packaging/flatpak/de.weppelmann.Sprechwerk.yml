@@ -1,0 +1,30 @@
+# Flatpak aus dem tar.gz von packaging/linux/paket.sh (kein zweiter Bau).
+# Aufruf: siehe .github/workflows/pakete.yml (Job flatpak).
+id: de.weppelmann.Sprechwerk
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+command: sprechwerk-fenster
+
+finish-args:
+  # Fenster (egui über OpenGL)
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # QUIC zum Server
+  - --share=network
+  # Mikrofon und Lautsprecher (PipeWire spricht dasselbe Protokoll)
+  - --socket=pulseaudio
+
+modules:
+  - name: sprechwerk
+    buildsystem: simple
+    sources:
+      - type: file
+        path: sprechwerk.tar.gz
+    build-commands:
+      - tar -xzf sprechwerk.tar.gz
+      - install -Dm755 usr/bin/sprechwerk-fenster /app/bin/sprechwerk-fenster
+      - install -Dm755 usr/bin/sprechwerk-server-fenster /app/bin/sprechwerk-server-fenster
+      - cp -a usr/share /app/

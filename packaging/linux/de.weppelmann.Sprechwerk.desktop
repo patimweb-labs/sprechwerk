@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Sprechwerk
+GenericName=Sprach- und Texträume
+Comment=Sprach- und Texträume für Vereine
+Exec=sprechwerk-fenster
+Icon=de.weppelmann.Sprechwerk
+Terminal=false
+Categories=Network;Chat;AudioVideo;
+Keywords=Sprache;Chat;Teamspeak;Verein;
+# Muss zur App-ID des Fensters passen (main.rs: with_app_id), sonst findet
+# die Taskleiste das Symbol nicht.
+StartupWMClass=de.weppelmann.Sprechwerk

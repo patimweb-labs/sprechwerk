@@ -163,17 +163,18 @@ scripts/pruefen.sh --mit-audio  # zusätzlich der echte Gerätepfad
 scripts/pruefen.sh --nur-tests  # schnell: nur kompilieren und testen
 ```
 
-Warum es das gibt: `cargo test` im Wurzelverzeichnis sammelt die Tests von
-`crates/desktop` **nicht** ein — das Fenster-Crate steht wegen Tauri mit eigener
-Sperrdatei außerhalb des Arbeitsbereichs. Dazu kommen die Oberfläche (Typprüfung
-**und** Ansichten-Tests) und die drei Sprachproben, die kein Test sind, sondern
-Messungen an einem laufenden Server. Ohne einen gemeinsamen Einstieg vergisst man
-einen davon, und genau das war der Zustand bis heute.
+Seit ADR 0013 ist alles ein Arbeitsbereich in Rust: `cargo test --workspace`
+prüft Server, Client-Kern und beide Fenster. Dazu kommen die drei
+Sprachproben, die kein Test sind, sondern Messungen an einem laufenden Server.
 
-Die Ansichten-Tests (`ui/src/pruefung/`) rendern jede Ansicht mit dem
-eingebauten Klickdummy — ohne Fenster, ohne Server, ohne Soundkarte — und prüfen,
-was die Typprüfung nicht sieht: dass eine Ansicht **läuft**, dass ein Klick den
-Zustand ändert und dass jeder Text in allen vier Sprachen vorhanden ist.
+Die Oberflächentests (`crates/fenster/tests/oberflaeche.rs`,
+`crates/server-fenster/tests/oberflaeche.rs`, `egui_kittest`) zeichnen jede
+Ansicht mit einem Beispielmodell — ohne Server, ohne Soundkarte — und bedienen
+sie über AccessKit: ein Klick auf „Verbinden" ergibt die Aktion `Verbinden`,
+Enter im Eingabefeld sendet, ein Mitglied sieht keinen Reiter „Protokoll". Sie
+scheitern, wenn ein Bedienelement keinen zugänglichen Namen hat oder ein
+Zeichen in keiner Schrift vorkommt (gefunden beim Umstieg: Emoji, `●`, `⋯`).
+Mit `SPRECHWERK_BILDER=docs/bilder` schreiben sie die Bildschirmfotos.
 
 Der Ablauf meldet je Prüfung „bestanden" oder „FEHLGESCHLAGEN" und gibt am Ende
 einen Rückgabewert — geeignet für einen Wächter vor dem Ausliefern. Die

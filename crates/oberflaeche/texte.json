@@ -1,0 +1,1724 @@
+{
+  "app.settings": {
+    "de": "Einstellungen",
+    "en": "Settings",
+    "es": "Ajustes",
+    "fr": "Réglages"
+  },
+  "app.rooms": {
+    "de": "Räume",
+    "en": "Rooms",
+    "es": "Salas",
+    "fr": "Salons"
+  },
+  "app.disconnect": {
+    "de": "Verbindung trennen",
+    "en": "Disconnect",
+    "es": "Desconectar",
+    "fr": "Déconnecter"
+  },
+  "app.leave_server": {
+    "de": "Server verlassen",
+    "en": "Leave server",
+    "es": "Salir del servidor",
+    "fr": "Quitter le serveur"
+  },
+  "app.menu": {
+    "de": "Kontomenü",
+    "en": "Account menu",
+    "es": "Menú de cuenta",
+    "fr": "Menu du compte"
+  },
+  "app.connecting": {
+    "de": "verbinde zu {} …",
+    "en": "connecting to {} …",
+    "es": "conectando con {} …",
+    "fr": "connexion à {} …"
+  },
+  "app.not_connected": {
+    "de": "nicht verbunden",
+    "en": "not connected",
+    "es": "sin conexión",
+    "fr": "non connecté"
+  },
+  "app.mic_mute": {
+    "de": "Mikrofon stummschalten",
+    "en": "Mute microphone",
+    "es": "Silenciar micrófono",
+    "fr": "Couper le micro"
+  },
+  "app.mic_unmute": {
+    "de": "Mikrofon einschalten",
+    "en": "Unmute microphone",
+    "es": "Activar micrófono",
+    "fr": "Activer le micro"
+  },
+  "app.sound_mute": {
+    "de": "Ton stummschalten",
+    "en": "Mute sound",
+    "es": "Silenciar sonido",
+    "fr": "Couper le son"
+  },
+  "app.sound_unmute": {
+    "de": "Ton einschalten",
+    "en": "Unmute sound",
+    "es": "Activar sonido",
+    "fr": "Activer le son"
+  },
+  "app.counts": {
+    "de": "{} anwesend · {} Nachrichten",
+    "en": "{} online · {} messages",
+    "es": "{} presentes · {} mensajes",
+    "fr": "{} en ligne · {} messages"
+  },
+  "app.saved_servers": {
+    "de": "{} gemerkte Server",
+    "en": "{} saved servers",
+    "es": "{} servidores guardados",
+    "fr": "{} serveurs enregistrés"
+  },
+  "app.menu_servers": {
+    "de": "Serverliste",
+    "en": "Server list",
+    "es": "Lista de servidores",
+    "fr": "Liste des serveurs"
+  },
+  "server.title": {
+    "de": "Server",
+    "en": "Servers",
+    "es": "Servidores",
+    "fr": "Serveurs"
+  },
+  "server.sub": {
+    "de": "Gemerkte Server. Ein Klick verbindet — kein Suchen nach der Adresse.",
+    "en": "Saved servers. One click connects — no searching for addresses.",
+    "es": "Servidores guardados. Un clic conecta — sin buscar direcciones.",
+    "fr": "Serveurs enregistrés. Un clic connecte — sans chercher l'adresse."
+  },
+  "server.add": {
+    "de": "Server hinzufügen",
+    "en": "Add server",
+    "es": "Añadir servidor",
+    "fr": "Ajouter un serveur"
+  },
+  "server.col.name": {
+    "de": "Name",
+    "en": "Name",
+    "es": "Nombre",
+    "fr": "Nom"
+  },
+  "server.col.address": {
+    "de": "Adresse",
+    "en": "Address",
+    "es": "Dirección",
+    "fr": "Adresse"
+  },
+  "server.col.action": {
+    "de": "Aktion",
+    "en": "Action",
+    "es": "Acción",
+    "fr": "Action"
+  },
+  "server.connect": {
+    "de": "Verbinden",
+    "en": "Connect",
+    "es": "Conectar",
+    "fr": "Connecter"
+  },
+  "server.connecting": {
+    "de": "verbinde …",
+    "en": "connecting …",
+    "es": "conectando …",
+    "fr": "connexion …"
+  },
+  "server.last_used": {
+    "de": "zuletzt benutzt",
+    "en": "last used",
+    "es": "usado por última vez",
+    "fr": "dernière utilisation"
+  },
+  "server.remove": {
+    "de": "Aus der Liste entfernen",
+    "en": "Remove from list",
+    "es": "Quitar de la lista",
+    "fr": "Retirer de la liste"
+  },
+  "server.empty": {
+    "de": "Noch kein Server gemerkt — trag die Adresse deines Servers ein.",
+    "en": "No server saved yet — enter your server's address.",
+    "es": "Aún no hay servidores — introduce la dirección de tu servidor.",
+    "fr": "Aucun serveur enregistré — saisis l'adresse de ton serveur."
+  },
+  "server.footnote": {
+    "de": "Die Kennung liegt auf diesem Rechner (Schlüsseldatei). Auf einem anderen Gerät nimmst du sie mit — sonst bist du dort ein neues Mitglied.",
+    "en": "Your identity lives on this machine (key file). Carry it to another device — otherwise you are a new member there.",
+    "es": "Tu identidad está en este equipo (archivo de clave). Llévala a otro dispositivo — si no, allí eres un miembro nuevo.",
+    "fr": "Ton identité réside sur cette machine (fichier de clé). Emporte-la ailleurs — sinon tu y es un nouveau membre."
+  },
+  "server.certificate": {
+    "de": "Zertifikat dieses Servers",
+    "en": "This server's certificate",
+    "es": "Certificado de este servidor",
+    "fr": "Certificat de ce serveur"
+  },
+  "server.certificate_hint": {
+    "de": "Beim ersten Verbinden angeheftet und seitdem geprüft. Vergleiche ihn mit dem Wert, den der Server beim Start anzeigt.",
+    "en": "Pinned on the first connection and checked ever since. Compare it with the value the server prints at startup.",
+    "es": "Fijado en la primera conexión y comprobado desde entonces. Compáralo con el valor que el servidor muestra al arrancar.",
+    "fr": "Épinglé à la première connexion et vérifié depuis. Compare-le à la valeur que le serveur affiche au démarrage."
+  },
+  "server.certificate_forget": {
+    "de": "Zertifikat vergessen",
+    "en": "Forget certificate",
+    "es": "Olvidar certificado",
+    "fr": "Oublier le certificat"
+  },
+  "server.certificate_forgotten": {
+    "de": "Zertifikat vergessen — beim nächsten Verbinden wird neu angeheftet",
+    "en": "Certificate forgotten — it will be pinned again on the next connection",
+    "es": "Certificado olvidado — se fijará de nuevo en la próxima conexión",
+    "fr": "Certificat oublié — il sera épinglé à nouveau à la prochaine connexion"
+  },
+  "server.add.title": {
+    "de": "Server hinzufügen",
+    "en": "Add server",
+    "es": "Añadir servidor",
+    "fr": "Ajouter un serveur"
+  },
+  "server.add.desc": {
+    "de": "Name ist frei wählbar; die Adresse ist Host und Port, etwa verein.example:7443.",
+    "en": "Pick any name; the address is host and port, e.g. club.example:7443.",
+    "es": "Elige un nombre; la dirección es host y puerto, p. ej. club.example:7443.",
+    "fr": "Choisis un nom ; l'adresse est hôte et port, p. ex. club.example:7443."
+  },
+  "server.add.name": {
+    "de": "Name, z. B. Trainingsabend",
+    "en": "Name, e.g. training night",
+    "es": "Nombre, p. ej. noche de entreno",
+    "fr": "Nom, p. ex. soirée entraînement"
+  },
+  "server.add.address": {
+    "de": "Adresse, z. B. 192.0.2.10:7443",
+    "en": "Address, e.g. 192.0.2.10:7443",
+    "es": "Dirección, p. ej. 192.0.2.10:7443",
+    "fr": "Adresse, p. ex. 192.0.2.10:7443"
+  },
+  "server.remove.title": {
+    "de": "Server aus der Liste entfernen",
+    "en": "Remove server from list",
+    "es": "Quitar servidor de la lista",
+    "fr": "Retirer le serveur de la liste"
+  },
+  "server.remove.desc": {
+    "de": "Die Verbindung bleibt bestehen; nur der Eintrag verschwindet.",
+    "en": "The connection stays; only the entry goes away.",
+    "es": "La conexión se mantiene; solo desaparece la entrada.",
+    "fr": "La connexion reste ; seule l'entrée disparaît."
+  },
+  "server.remove.confirm": {
+    "de": "Entfernen",
+    "en": "Remove",
+    "es": "Quitar",
+    "fr": "Retirer"
+  },
+  "server.menu_for": {
+    "de": "Menü für {}",
+    "en": "Menu for {}",
+    "es": "Menú para {}",
+    "fr": "Menu pour {}"
+  },
+  "room.add": {
+    "de": "Raum anlegen",
+    "en": "Create room",
+    "es": "Crear sala",
+    "fr": "Créer un salon"
+  },
+  "room.enter": {
+    "de": "Betreten",
+    "en": "Enter",
+    "es": "Entrar",
+    "fr": "Entrer"
+  },
+  "room.rename": {
+    "de": "Umbenennen …",
+    "en": "Rename …",
+    "es": "Renombrar …",
+    "fr": "Renommer …"
+  },
+  "room.delete": {
+    "de": "Raum löschen …",
+    "en": "Delete room …",
+    "es": "Eliminar sala …",
+    "fr": "Supprimer le salon …"
+  },
+  "room.menu": {
+    "de": "Raum-Menü",
+    "en": "Room menu",
+    "es": "Menú de sala",
+    "fr": "Menu du salon"
+  },
+  "room.none": {
+    "de": "Kein Raum",
+    "en": "No room",
+    "es": "Ninguna sala",
+    "fr": "Aucun salon"
+  },
+  "room.choose": {
+    "de": "Wähle links einen Raum, um mitzulesen und zu sprechen.",
+    "en": "Pick a room on the left to read and talk.",
+    "es": "Elige una sala a la izquierda para leer y hablar.",
+    "fr": "Choisis un salon à gauche pour lire et parler."
+  },
+  "room.empty.title": {
+    "de": "Noch nichts geschrieben",
+    "en": "Nothing written yet",
+    "es": "Todavía nada escrito",
+    "fr": "Rien d'écrit pour l'instant"
+  },
+  "room.empty.desc": {
+    "de": "Der erste Satz ist der schwerste.",
+    "en": "The first sentence is the hardest.",
+    "es": "La primera frase es la más difícil.",
+    "fr": "La première phrase est la plus dure."
+  },
+  "room.add.title": {
+    "de": "Raum anlegen",
+    "en": "Create room",
+    "es": "Crear sala",
+    "fr": "Créer un salon"
+  },
+  "room.add.desc": {
+    "de": "Der Raum erscheint in der Wechselliste.",
+    "en": "The room appears in the room list.",
+    "es": "La sala aparece en la lista de salas.",
+    "fr": "Le salon apparaît dans la liste des salons."
+  },
+  "room.add.placeholder": {
+    "de": "Name des Raums",
+    "en": "Room name",
+    "es": "Nombre de la sala",
+    "fr": "Nom du salon"
+  },
+  "room.rename.title": {
+    "de": "Raum umbenennen",
+    "en": "Rename room",
+    "es": "Renombrar sala",
+    "fr": "Renommer le salon"
+  },
+  "room.rename.placeholder": {
+    "de": "Neuer Name",
+    "en": "New name",
+    "es": "Nuevo nombre",
+    "fr": "Nouveau nom"
+  },
+  "room.delete.title": {
+    "de": "Raum löschen",
+    "en": "Delete room",
+    "es": "Eliminar sala",
+    "fr": "Supprimer le salon"
+  },
+  "room.delete.desc": {
+    "de": "„{}“ wird gelöscht. Die Nachrichten des Raums verschwinden mit.",
+    "en": "“{}” will be deleted. Its messages go with it.",
+    "es": "Se eliminará «{}». Sus mensajes se van con ella.",
+    "fr": "« {} » sera supprimé. Ses messages partiront avec."
+  },
+  "chat.placeholder": {
+    "de": "Schreiben … (Enter sendet)",
+    "en": "Write … (Enter sends)",
+    "es": "Escribir … (Enter envía)",
+    "fr": "Écrire … (Entrée envoie)"
+  },
+  "chat.send": {
+    "de": "Senden",
+    "en": "Send",
+    "es": "Enviar",
+    "fr": "Envoyer"
+  },
+  "chat.deleted": {
+    "de": "Nachricht gelöscht",
+    "en": "Message deleted",
+    "es": "Mensaje eliminado",
+    "fr": "Message supprimé"
+  },
+  "chat.delete": {
+    "de": "löschen",
+    "en": "delete",
+    "es": "eliminar",
+    "fr": "supprimer"
+  },
+  "chat.you": {
+    "de": "du",
+    "en": "you",
+    "es": "tú",
+    "fr": "toi"
+  },
+  "member.mute": {
+    "de": "Mikrofon stummschalten",
+    "en": "Mute microphone",
+    "es": "Silenciar micrófono",
+    "fr": "Couper le micro"
+  },
+  "member.unmute": {
+    "de": "Sprechen freigeben",
+    "en": "Allow talking",
+    "es": "Permitir hablar",
+    "fr": "Autoriser la parole"
+  },
+  "member.deaf": {
+    "de": "Ton stummschalten",
+    "en": "Mute sound",
+    "es": "Silenciar sonido",
+    "fr": "Couper le son"
+  },
+  "member.undeaf": {
+    "de": "Ton freigeben",
+    "en": "Allow sound",
+    "es": "Permitir sonido",
+    "fr": "Rétablir le son"
+  },
+  "member.move": {
+    "de": "In Raum verschieben …",
+    "en": "Move to room …",
+    "es": "Mover a sala …",
+    "fr": "Déplacer vers un salon …"
+  },
+  "member.kick_room": {
+    "de": "Aus Raum werfen",
+    "en": "Remove from room",
+    "es": "Sacar de la sala",
+    "fr": "Retirer du salon"
+  },
+  "member.role": {
+    "de": "Rolle setzen …",
+    "en": "Set role …",
+    "es": "Asignar rol …",
+    "fr": "Définir le rôle …"
+  },
+  "member.kick": {
+    "de": "Vom Server trennen …",
+    "en": "Disconnect from server …",
+    "es": "Desconectar del servidor …",
+    "fr": "Déconnecter du serveur …"
+  },
+  "member.ban": {
+    "de": "Sperren …",
+    "en": "Ban …",
+    "es": "Bloquear …",
+    "fr": "Bannir …"
+  },
+  "member.server_hint": {
+    "de": "Server",
+    "en": "Server",
+    "es": "Servidor",
+    "fr": "Serveur"
+  },
+  "member.move.title": {
+    "de": "{} verschieben",
+    "en": "Move {}",
+    "es": "Mover a {}",
+    "fr": "Déplacer {}"
+  },
+  "member.move.desc": {
+    "de": "Wähle den Zielraum. Die Person wird sofort dorthin bewegt.",
+    "en": "Pick the target room. The person moves there at once.",
+    "es": "Elige la sala destino. La persona se mueve al instante.",
+    "fr": "Choisis le salon cible. La personne y est déplacée aussitôt."
+  },
+  "member.move.confirm": {
+    "de": "Verschieben",
+    "en": "Move",
+    "es": "Mover",
+    "fr": "Déplacer"
+  },
+  "member.kick.title": {
+    "de": "{} vom Server trennen",
+    "en": "Disconnect {}",
+    "es": "Desconectar a {}",
+    "fr": "Déconnecter {}"
+  },
+  "member.kick.desc": {
+    "de": "Die Person fliegt aus dem Gespräch und kann sofort wieder beitreten.",
+    "en": "The person is dropped from the call and may rejoin at once.",
+    "es": "La persona sale de la conversación y puede volver enseguida.",
+    "fr": "La personne quitte l'appel et peut revenir aussitôt."
+  },
+  "member.kick.reason": {
+    "de": "Grund (optional)",
+    "en": "Reason (optional)",
+    "es": "Motivo (opcional)",
+    "fr": "Motif (facultatif)"
+  },
+  "member.kick.confirm": {
+    "de": "Trennen",
+    "en": "Disconnect",
+    "es": "Desconectar",
+    "fr": "Déconnecter"
+  },
+  "member.ban.title": {
+    "de": "{} sperren",
+    "en": "Ban {}",
+    "es": "Bloquear a {}",
+    "fr": "Bannir {}"
+  },
+  "member.ban.desc": {
+    "de": "Die Kennung wird gesperrt; Wiederkommen ist mit diesem Gerät nicht möglich.",
+    "en": "The identity is banned; it cannot return from this device.",
+    "es": "Se bloquea la identidad; no puede volver desde este equipo.",
+    "fr": "L'identité est bannie ; elle ne peut pas revenir depuis cet appareil."
+  },
+  "member.ban.confirm": {
+    "de": "Sperren",
+    "en": "Ban",
+    "es": "Bloquear",
+    "fr": "Bannir"
+  },
+  "set.title": {
+    "de": "Einstellungen",
+    "en": "Settings",
+    "es": "Ajustes",
+    "fr": "Réglages"
+  },
+  "set.sub": {
+    "de": "Was dieses Fenster betrifft — der Server steht in der Serverliste, seine Konfiguration in der Serverdatei.",
+    "en": "What this window is about — the server lives in the server list, its configuration in the server file.",
+    "es": "Lo que afecta a esta ventana — el servidor está en la lista, su configuración en el archivo.",
+    "fr": "Ce qui concerne cette fenêtre — le serveur est dans la liste, sa configuration dans le fichier."
+  },
+  "set.me": {
+    "de": "Ich",
+    "en": "Me",
+    "es": "Yo",
+    "fr": "Moi"
+  },
+  "set.me.sub": {
+    "de": "Wie du auftrittst.",
+    "en": "How you appear.",
+    "es": "Cómo apareces.",
+    "fr": "Comment tu apparais."
+  },
+  "set.name": {
+    "de": "Name",
+    "en": "Name",
+    "es": "Nombre",
+    "fr": "Nom"
+  },
+  "set.name.hint": {
+    "de": "Der Name, mit dem du dich verbindest.",
+    "en": "The name you connect with.",
+    "es": "El nombre con el que te conectas.",
+    "fr": "Le nom avec lequel tu te connectes."
+  },
+  "set.name.placeholder": {
+    "de": "Wie heißt du?",
+    "en": "What's your name?",
+    "es": "¿Cómo te llamas?",
+    "fr": "Comment t'appelles-tu ?"
+  },
+  "set.mic": {
+    "de": "Mikrofon",
+    "en": "Microphone",
+    "es": "Micrófono",
+    "fr": "Microphone"
+  },
+  "set.mic.sub": {
+    "de": "Aufnahme für das Gespräch.",
+    "en": "Capture for the conversation.",
+    "es": "Captura para la conversación.",
+    "fr": "Capture pour la conversation."
+  },
+  "set.speaker": {
+    "de": "Wiedergabe",
+    "en": "Playback",
+    "es": "Reproducción",
+    "fr": "Lecture"
+  },
+  "set.speaker.sub": {
+    "de": "Wohin die Stimmen gehen.",
+    "en": "Where the voices go.",
+    "es": "Adónde van las voces.",
+    "fr": "Où vont les voix."
+  },
+  "set.device": {
+    "de": "Gerät",
+    "en": "Device",
+    "es": "Dispositivo",
+    "fr": "Périphérique"
+  },
+  "set.default_device": {
+    "de": "Vorgabe des Systems",
+    "en": "System default",
+    "es": "Predeterminado del sistema",
+    "fr": "Par défaut du système"
+  },
+  "set.default_device_marked": {
+    "de": "{} (Vorgabe)",
+    "en": "{} (default)",
+    "es": "{} (predeterminado)",
+    "fr": "{} (par défaut)"
+  },
+  "set.mic_test": {
+    "de": "Sprechtest",
+    "en": "Mic test",
+    "es": "Prueba de voz",
+    "fr": "Test du micro"
+  },
+  "set.level": {
+    "de": "Eingangspegel",
+    "en": "Input level",
+    "es": "Nivel de entrada",
+    "fr": "Niveau d'entrée"
+  },
+  "set.mic.hint": {
+    "de": "Miss einmal deine Stimme: der Balken sollte deutlich über die Marke (Sprechschwelle) gehen. Bleibt er unten, ist das falsche Gerät gewählt.",
+    "en": "Say something: the bar should clearly pass the mark (speech threshold). If it stays low, the wrong device is selected.",
+    "es": "Di algo: la barra debe pasar claramente la marca (umbral). Si sigue baja, el dispositivo no es el correcto.",
+    "fr": "Parle : la barre doit dépasser nettement le repère (seuil). Si elle reste basse, le mauvais périphérique est choisi."
+  },
+  "set.speaker_test": {
+    "de": "Hörtest",
+    "en": "Sound test",
+    "es": "Prueba de sonido",
+    "fr": "Test du son"
+  },
+  "set.speaker.done": {
+    "de": "Ton gespielt — zu hören gewesen?",
+    "en": "Tone played — did you hear it?",
+    "es": "Tono reproducido — ¿lo has oído?",
+    "fr": "Son joué — tu l'as entendu ?"
+  },
+  "set.talk": {
+    "de": "Sprechen",
+    "en": "Talking",
+    "es": "Hablar",
+    "fr": "Parler"
+  },
+  "set.talk.sub": {
+    "de": "Wann dein Mikrofon sendet.",
+    "en": "When your microphone transmits.",
+    "es": "Cuándo transmite tu micrófono.",
+    "fr": "Quand ton micro émet."
+  },
+  "set.ptt": {
+    "de": "Push-to-Talk (Taste halten)",
+    "en": "Push-to-talk (hold a key)",
+    "es": "Pulsar para hablar (mantén una tecla)",
+    "fr": "Appuyer pour parler (maintenir une touche)"
+  },
+  "set.key": {
+    "de": "Taste",
+    "en": "Key",
+    "es": "Tecla",
+    "fr": "Touche"
+  },
+  "set.key.hint": {
+    "de": "Am besten eine Seitentaste der Maus (Maus 4/5) — sie stört weder beim Tippen noch bei Fensterkürzeln.",
+    "en": "Best is a side mouse button (Mouse 4/5) — it disturbs neither typing nor window shortcuts.",
+    "es": "Lo mejor es un botón lateral del ratón (Ratón 4/5) — no molesta al escribir ni a los atajos.",
+    "fr": "Le mieux est un bouton latéral de la souris (Souris 4/5) — il ne gêne ni la saisie ni les raccourcis."
+  },
+  "set.key.change": {
+    "de": "Ändern",
+    "en": "Change",
+    "es": "Cambiar",
+    "fr": "Changer"
+  },
+  "set.key.press": {
+    "de": "Taste drücken …",
+    "en": "Press a key …",
+    "es": "Pulsa una tecla …",
+    "fr": "Appuie sur une touche …"
+  },
+  "set.key.space_warn": {
+    "de": "Leertaste ist belegt: beim Tippen im Chat würdest du dauernd senden. Nimm Maus 4/5, „Alt links“ oder „Strg links“.",
+    "en": "Space is taken: typing in chat would transmit constantly. Use Mouse 4/5, “Left Alt” or “Left Ctrl”.",
+    "es": "La barra espaciadora está ocupada: al escribir en el chat transmitirías sin parar. Usa Ratón 4/5, «Alt izq.» o «Ctrl izq.».",
+    "fr": "L'espace est occupé : en écrivant dans le chat tu émettrais sans cesse. Prends Souris 4/5, « Alt gauche » ou « Ctrl gauche »."
+  },
+  "set.threshold": {
+    "de": "Sprechschwelle (bei offenem Mikrofon)",
+    "en": "Speech threshold (open mic)",
+    "es": "Umbral de voz (micrófono abierto)",
+    "fr": "Seuil de parole (micro ouvert)"
+  },
+  "set.lead": {
+    "de": "Vorlauf gegen abgeschnittenes erstes Wort",
+    "en": "Lead-in against a clipped first word",
+    "es": "Antelación contra la primera palabra cortada",
+    "fr": "Pré-roulement contre la première syllabe coupée"
+  },
+  "set.lead.hint": {
+    "de": "Der Vorlauf läuft ständig mit und geht beim Tastendruck vor dem Live-Ton hinaus. Deshalb braucht es keine Wartezeit wie bei TeamSpeak (dort 300 ms).",
+    "en": "The lead-in runs constantly and is sent before the live audio. That is why there is no delay like in TeamSpeak (300 ms there).",
+    "es": "La antelación corre siempre y se envía antes del audio en vivo. Por eso no hace falta esperar como en TeamSpeak (300 ms).",
+    "fr": "Le pré-roulement tourne en permanence et part avant l'audio en direct. D'où l'absence d'attente comme dans TeamSpeak (300 ms)."
+  },
+  "set.appearance": {
+    "de": "Darstellung",
+    "en": "Appearance",
+    "es": "Apariencia",
+    "fr": "Apparence"
+  },
+  "set.scheme": {
+    "de": "Farbschema",
+    "en": "Colour scheme",
+    "es": "Esquema de color",
+    "fr": "Jeu de couleurs"
+  },
+  "set.language": {
+    "de": "Sprache",
+    "en": "Language",
+    "es": "Idioma",
+    "fr": "Langue"
+  },
+  "set.save": {
+    "de": "Speichern",
+    "en": "Save",
+    "es": "Guardar",
+    "fr": "Enregistrer"
+  },
+  "rolle.administrator": {
+    "de": "Administrator",
+    "en": "Administrator",
+    "es": "Administrador",
+    "fr": "Administrateur"
+  },
+  "rolle.moderator": {
+    "de": "Moderator",
+    "en": "Moderator",
+    "es": "Moderador",
+    "fr": "Modérateur"
+  },
+  "rolle.mitglied": {
+    "de": "Mitglied",
+    "en": "Member",
+    "es": "Miembro",
+    "fr": "Membre"
+  },
+  "rolle.gast": {
+    "de": "Gast",
+    "en": "Guest",
+    "es": "Invitado",
+    "fr": "Invité"
+  },
+  "state.muted": {
+    "de": "stumm",
+    "en": "muted",
+    "es": "silenciado",
+    "fr": "coupé"
+  },
+  "state.deaf": {
+    "de": "taub",
+    "en": "deaf",
+    "es": "sordo",
+    "fr": "sourd"
+  },
+  "set.denoise": {
+    "de": "Rauschunterdrückung",
+    "en": "Noise suppression",
+    "es": "Supresión de ruido",
+    "fr": "Réduction de bruit"
+  },
+  "set.denoise.hint": {
+    "de": "Blendet Lüfter, Tastatur und Grundrauschen aus. Kostet etwas Rechenzeit im Aufnahmepfad.",
+    "en": "Hides fans, keyboard and background hiss. Costs a little CPU in the capture path.",
+    "es": "Oculta ventiladores, teclado y siseo de fondo. Cuesta algo de CPU en la captura.",
+    "fr": "Masque ventilateurs, clavier et souffle de fond. Coûte un peu de CPU à la capture."
+  },
+  "set.noisegate": {
+    "de": "Noisegate (unter der Schwelle stumm)",
+    "en": "Noise gate (silent below threshold)",
+    "es": "Puerta de ruido (silencio bajo el umbral)",
+    "fr": "Porte de bruit (silence sous le seuil)"
+  },
+  "set.noisegate.hint": {
+    "de": "Unterhalb der Sprechschwelle wird gar nichts gesendet — spart Bandbreite und lässt den Raum ruhig.",
+    "en": "Below the speech threshold nothing is sent at all — saves bandwidth and keeps the room quiet.",
+    "es": "Por debajo del umbral no se envía nada — ahorra ancho de banda y mantiene la sala en calma.",
+    "fr": "Sous le seuil, rien n'est envoyé — économise la bande passante et garde le salon calme."
+  },
+  "room.encrypted": {
+    "de": "Sprache Ende zu Ende verschlüsselt",
+    "en": "Voice end-to-end encrypted",
+    "es": "Voz cifrada de extremo a extremo",
+    "fr": "Voix chiffrée de bout en bout"
+  },
+  "set.aec": {
+    "de": "Echounterdrückung",
+    "en": "Echo cancellation",
+    "es": "Cancelación de eco",
+    "fr": "Annulation d'écho"
+  },
+  "set.aec.hint": {
+    "de": "Rechnet die eigene Wiedergabe aus der Aufnahme — sonst hören die anderen sich selbst, wenn du über Lautsprecher sprichst. Kostet etwas Rechenzeit.",
+    "en": "Removes your own playback from the capture — otherwise others hear themselves when you use speakers. Costs some CPU.",
+    "es": "Elimina tu propia reproducción de la captura — si no, los demás se oyen a sí mismos por altavoces. Cuesta algo de CPU.",
+    "fr": "Retire votre propre lecture de la capture — sinon les autres s'entendent via les haut-parleurs. Coûte un peu de CPU."
+  },
+  "chat.collapse": {
+    "de": "Chat einklappen",
+    "en": "Collapse chat",
+    "es": "Contraer el chat",
+    "fr": "Replier le chat"
+  },
+  "chat.expand": {
+    "de": "Chat ausklappen",
+    "en": "Expand chat",
+    "es": "Expandir el chat",
+    "fr": "Déplier le chat"
+  },
+  "chat.title": {
+    "de": "Chat",
+    "en": "Chat",
+    "es": "Chat",
+    "fr": "Chat"
+  },
+  "app.level": {
+    "de": "Mikrofonpegel",
+    "en": "Microphone level",
+    "es": "Nivel del micrófono",
+    "fr": "Niveau du micro"
+  },
+  "room.add.confirm": {
+    "de": "Anlegen",
+    "en": "Create",
+    "es": "Crear",
+    "fr": "Créer"
+  },
+  "member.role.desc": {
+    "de": "Die Rolle gilt sofort und steht im Prüfprotokoll.",
+    "en": "The role applies immediately and is written to the audit log.",
+    "es": "El rol se aplica de inmediato y queda en el registro.",
+    "fr": "Le rôle s'applique immédiatement et figure dans le journal."
+  },
+  "member.role.apply": {
+    "de": "Rolle setzen",
+    "en": "Set role",
+    "es": "Asignar rol",
+    "fr": "Définir le rôle"
+  },
+  "set.device_missing": {
+    "de": "{} (nicht gefunden)",
+    "en": "{} (not found)",
+    "es": "{} (no encontrado)",
+    "fr": "{} (introuvable)"
+  },
+  "app.audit": {
+    "de": "Protokoll",
+    "en": "Audit log",
+    "es": "Registro",
+    "fr": "Journal"
+  },
+  "audit.title": {
+    "de": "Prüfprotokoll",
+    "en": "Audit log",
+    "es": "Registro de auditoría",
+    "fr": "Journal d'audit"
+  },
+  "audit.sub": {
+    "de": "Was geschah, wer es tat — und was abgelehnt wurde. Einträge lassen sich nicht ändern.",
+    "en": "What happened, who did it — and what was refused. Entries cannot be changed.",
+    "es": "Qué pasó, quién lo hizo — y qué se rechazó. Las entradas no se pueden cambiar.",
+    "fr": "Ce qui s'est passé, qui l'a fait — et ce qui a été refusé. Les entrées ne sont pas modifiables."
+  },
+  "audit.refresh": {
+    "de": "Neu laden",
+    "en": "Reload",
+    "es": "Recargar",
+    "fr": "Recharger"
+  },
+  "audit.empty.title": {
+    "de": "Noch nichts geschehen",
+    "en": "Nothing has happened yet",
+    "es": "Todavía no ha pasado nada",
+    "fr": "Rien ne s'est encore passé"
+  },
+  "audit.empty.desc": {
+    "de": "Sobald jemand Räume, Rollen oder Sperren ändert, steht es hier.",
+    "en": "As soon as someone changes rooms, roles or bans, it appears here.",
+    "es": "En cuanto alguien cambie salas, roles o bloqueos, aparecerá aquí.",
+    "fr": "Dès que quelqu'un modifie des salons, des rôles ou des bannissements, cela apparaît ici."
+  },
+  "audit.col.time": {
+    "de": "Zeit",
+    "en": "Time",
+    "es": "Hora",
+    "fr": "Heure"
+  },
+  "audit.col.who": {
+    "de": "Wer",
+    "en": "Who",
+    "es": "Quién",
+    "fr": "Qui"
+  },
+  "audit.col.what": {
+    "de": "Was",
+    "en": "What",
+    "es": "Qué",
+    "fr": "Quoi"
+  },
+  "audit.col.target": {
+    "de": "Betroffen",
+    "en": "Subject",
+    "es": "Afectado",
+    "fr": "Concerné"
+  },
+  "audit.col.result": {
+    "de": "Ergebnis",
+    "en": "Result",
+    "es": "Resultado",
+    "fr": "Résultat"
+  },
+  "audit.refused": {
+    "de": "abgelehnt",
+    "en": "refused",
+    "es": "rechazado",
+    "fr": "refusé"
+  },
+  "audit.system": {
+    "de": "Server",
+    "en": "Server",
+    "es": "Servidor",
+    "fr": "Serveur"
+  },
+  "audit.no_right": {
+    "de": "Nur Administrator und Moderator dürfen das Protokoll lesen.",
+    "en": "Only administrators and moderators may read the log.",
+    "es": "Solo administradores y moderadores pueden leer el registro.",
+    "fr": "Seuls les administrateurs et modérateurs peuvent lire le journal."
+  },
+  "audit.action.raum_angelegt": {
+    "de": "Raum angelegt",
+    "en": "Room created",
+    "es": "Sala creada",
+    "fr": "Salon créé"
+  },
+  "audit.action.raum_umbenannt": {
+    "de": "Raum umbenannt",
+    "en": "Room renamed",
+    "es": "Sala renombrada",
+    "fr": "Salon renommé"
+  },
+  "audit.action.raum_geloescht": {
+    "de": "Raum gelöscht",
+    "en": "Room deleted",
+    "es": "Sala eliminada",
+    "fr": "Salon supprimé"
+  },
+  "audit.action.raum_verlassen": {
+    "de": "Raum gewechselt",
+    "en": "Room changed",
+    "es": "Sala cambiada",
+    "fr": "Salon changé"
+  },
+  "audit.action.raum_verschluesselt": {
+    "de": "Verschlüsselung geändert",
+    "en": "Encryption changed",
+    "es": "Cifrado cambiado",
+    "fr": "Chiffrement modifié"
+  },
+  "audit.action.rolle_gesetzt": {
+    "de": "Rolle gesetzt",
+    "en": "Role set",
+    "es": "Rol asignado",
+    "fr": "Rôle attribué"
+  },
+  "audit.action.gesperrt": {
+    "de": "gesperrt",
+    "en": "banned",
+    "es": "bloqueado",
+    "fr": "banni"
+  },
+  "audit.action.sperre_verhaengt": {
+    "de": "Sperre verhängt",
+    "en": "ban issued",
+    "es": "bloqueo impuesto",
+    "fr": "bannissement prononcé"
+  },
+  "audit.action.sperre_aufgehoben": {
+    "de": "Sperre aufgehoben",
+    "en": "ban lifted",
+    "es": "bloqueo levantado",
+    "fr": "bannissement levé"
+  },
+  "audit.action.getrennt": {
+    "de": "vom Server getrennt",
+    "en": "disconnected",
+    "es": "desconectado",
+    "fr": "déconnecté"
+  },
+  "audit.action.verschoben": {
+    "de": "verschoben",
+    "en": "moved",
+    "es": "movido",
+    "fr": "déplacé"
+  },
+  "audit.action.stummgeschaltet": {
+    "de": "stummgeschaltet",
+    "en": "muted",
+    "es": "silenciado",
+    "fr": "mis en sourdine"
+  },
+  "audit.action.taubgeschaltet": {
+    "de": "Ton stummgeschaltet",
+    "en": "deafened",
+    "es": "ensordecido",
+    "fr": "sourdine"
+  },
+  "audit.action.anmeldung": {
+    "de": "Anmeldung",
+    "en": "Sign-in",
+    "es": "Inicio de sesión",
+    "fr": "Connexion"
+  },
+  "audit.action.mitglied_umbenannt": {
+    "de": "Mitglied umbenannt",
+    "en": "Member renamed",
+    "es": "Miembro renombrado",
+    "fr": "Membre renommé"
+  },
+  "audit.action.text_gesendet": {
+    "de": "Nachricht geschrieben",
+    "en": "Message posted",
+    "es": "Mensaje escrito",
+    "fr": "Message publié"
+  },
+  "audit.action.nachricht_geloescht": {
+    "de": "Nachricht gelöscht",
+    "en": "Message deleted",
+    "es": "Mensaje eliminado",
+    "fr": "Message supprimé"
+  },
+  "app.quality_ok": {
+    "de": "keine Rahmen verloren",
+    "en": "no frames lost",
+    "es": "sin paquetes perdidos",
+    "fr": "aucune trame perdue"
+  },
+  "app.quality_loss": {
+    "de": "{} Rahmen verloren",
+    "en": "{} frames lost",
+    "es": "{} paquetes perdidos",
+    "fr": "{} trames perdues"
+  },
+  "app.bans": {
+    "de": "Sperren",
+    "en": "Bans",
+    "es": "Bloqueos",
+    "fr": "Bannissements"
+  },
+  "bans.title": {
+    "de": "Verhängte Sperren",
+    "en": "Bans in force",
+    "es": "Bloqueos vigentes",
+    "fr": "Bannissements en vigueur"
+  },
+  "bans.sub": {
+    "de": "Kennungen und Adressen, die nicht hereinkommen. Aufheben wirkt sofort.",
+    "en": "Keys and addresses that cannot get in. Lifting takes effect immediately.",
+    "es": "Claves y direcciones que no pueden entrar. Levantar el bloqueo surte efecto de inmediato.",
+    "fr": "Clés et adresses qui ne peuvent pas entrer. La levée prend effet immédiatement."
+  },
+  "bans.col.what": {
+    "de": "Gesperrt",
+    "en": "Banned",
+    "es": "Bloqueado",
+    "fr": "Banni"
+  },
+  "bans.col.kind": {
+    "de": "Art",
+    "en": "Kind",
+    "es": "Tipo",
+    "fr": "Type"
+  },
+  "bans.col.reason": {
+    "de": "Grund",
+    "en": "Reason",
+    "es": "Motivo",
+    "fr": "Motif"
+  },
+  "bans.col.by": {
+    "de": "Von",
+    "en": "By",
+    "es": "Por",
+    "fr": "Par"
+  },
+  "bans.kind_key": {
+    "de": "Kennung",
+    "en": "key",
+    "es": "clave",
+    "fr": "clé"
+  },
+  "bans.kind_address": {
+    "de": "Adresse",
+    "en": "address",
+    "es": "dirección",
+    "fr": "adresse"
+  },
+  "bans.lift": {
+    "de": "Aufheben",
+    "en": "Lift",
+    "es": "Levantar",
+    "fr": "Lever"
+  },
+  "bans.empty.title": {
+    "de": "Niemand gesperrt",
+    "en": "Nobody banned",
+    "es": "Nadie bloqueado",
+    "fr": "Personne n'est banni"
+  },
+  "bans.empty.desc": {
+    "de": "Wenn jemand gesperrt wird, steht er hier — mit Grund und einem Knopf zum Aufheben.",
+    "en": "When someone is banned, they appear here — with the reason and a button to lift it.",
+    "es": "Cuando alguien sea bloqueado, aparecerá aquí — con el motivo y un botón para levantarlo.",
+    "fr": "Lorsque quelqu'un est banni, il apparaît ici — avec le motif et un bouton pour lever le bannissement."
+  },
+  "bans.no_right": {
+    "de": "Nur Administratoren dürfen Sperren sehen und aufheben.",
+    "en": "Only administrators may see and lift bans.",
+    "es": "Solo los administradores pueden ver y levantar bloqueos.",
+    "fr": "Seuls les administrateurs peuvent voir et lever les bannissements."
+  },
+  "set.fact.server": {
+    "de": "Server",
+    "en": "Server",
+    "es": "Servidor",
+    "fr": "Serveur"
+  },
+  "set.fact.name": {
+    "de": "Name des Servers",
+    "en": "Server name",
+    "es": "Nombre del servidor",
+    "fr": "Nom du serveur"
+  },
+  "set.fact.me": {
+    "de": "Ich",
+    "en": "Me",
+    "es": "Yo",
+    "fr": "Moi"
+  },
+  "set.fact.role": {
+    "de": "Rolle",
+    "en": "Role",
+    "es": "Rol",
+    "fr": "Rôle"
+  },
+  "set.fact.key": {
+    "de": "Kennung (öffentlich)",
+    "en": "Key (public)",
+    "es": "Clave (pública)",
+    "fr": "Clé (publique)"
+  },
+  "set.key_hint": {
+    "de": "Diese Kennung ist deine Identität auf jedem Gerät. Sie ist öffentlich — sie weiterzugeben ist unbedenklich; die Schlüsseldatei daneben nicht.",
+    "en": "This key is your identity on every device. It is public — sharing it is harmless; the key file next to it is not.",
+    "es": "Esta clave es tu identidad en cualquier dispositivo. Es pública: compartirla es inofensivo, el archivo de clave no.",
+    "fr": "Cette clé est votre identité sur chaque appareil. Elle est publique — la partager est sans danger ; le fichier de clé, non."
+  },
+  "app.latency": {
+    "de": "Umlaufzeit zum Server",
+    "en": "Round-trip time to the server",
+    "es": "Tiempo de ida y vuelta al servidor",
+    "fr": "Temps aller-retour vers le serveur"
+  },
+  "member.ban.reason": {
+    "de": "Grund (erscheint im Prüfprotokoll)",
+    "en": "Reason (appears in the audit log)",
+    "es": "Motivo (aparece en el registro)",
+    "fr": "Motif (apparaît dans le journal)"
+  },
+  "room.key_missing": {
+    "de": "verschlüsselt · Schlüssel fehlt — du hörst nichts.",
+    "en": "encrypted · key missing — you hear nothing.",
+    "es": "cifrado · falta la clave: no oirás nada.",
+    "fr": "chiffré · clé manquante — vous n'entendez rien."
+  },
+  "room.key_request": {
+    "de": "Schlüssel anfordern",
+    "en": "Request key",
+    "es": "Solicitar clave",
+    "fr": "Demander la clé"
+  },
+  "time.now": {
+    "de": "gerade eben",
+    "en": "just now",
+    "es": "ahora mismo",
+    "fr": "à l'instant"
+  },
+  "time.minutes": {
+    "de": "vor {} Minuten",
+    "en": "{} minutes ago",
+    "es": "hace {} minutos",
+    "fr": "il y a {} minutes"
+  },
+  "time.hours": {
+    "de": "vor {} Stunden",
+    "en": "{} hours ago",
+    "es": "hace {} horas",
+    "fr": "il y a {} heures"
+  },
+  "time.days": {
+    "de": "vor {} Tagen",
+    "en": "{} days ago",
+    "es": "hace {} días",
+    "fr": "il y a {} jours"
+  },
+  "time.months": {
+    "de": "vor {} Monaten",
+    "en": "{} months ago",
+    "es": "hace {} meses",
+    "fr": "il y a {} mois"
+  },
+  "time.years": {
+    "de": "vor {} Jahren",
+    "en": "{} years ago",
+    "es": "hace {} años",
+    "fr": "il y a {} ans"
+  },
+  "room.encrypted_now": {
+    "de": "Sprache jetzt Ende zu Ende verschlüsselt — der Schlüssel wird ausgehandelt.",
+    "en": "Voice is now end-to-end encrypted — the key is being exchanged.",
+    "es": "Ahora la voz va cifrada de extremo a extremo: se está negociando la clave.",
+    "fr": "La voix est désormais chiffrée de bout en bout — la clé est en cours d'échange."
+  },
+  "room.unencrypted_now": {
+    "de": "Verschlüsselung aus — Sprache geht wieder lesbar über den Server.",
+    "en": "Encryption off — voice travels readable through the server again.",
+    "es": "Cifrado desactivado: la voz vuelve a pasar legible por el servidor.",
+    "fr": "Chiffrement désactivé — la voix repasse en clair par le serveur."
+  },
+  "admin.title": {
+    "de": "Verwaltung",
+    "en": "Administration",
+    "es": "Administración",
+    "fr": "Administration"
+  },
+  "admin.title_server": {
+    "de": "Verwaltung · {}",
+    "en": "Administration · {}",
+    "es": "Administración · {}",
+    "fr": "Administration · {}"
+  },
+  "admin.loading": {
+    "de": "Lädt …",
+    "en": "Loading …",
+    "es": "Cargando …",
+    "fr": "Chargement …"
+  },
+  "admin.logout": {
+    "de": "Abmelden",
+    "en": "Sign out",
+    "es": "Cerrar sesión",
+    "fr": "Se déconnecter"
+  },
+  "admin.close": {
+    "de": "Schließen",
+    "en": "Close",
+    "es": "Cerrar",
+    "fr": "Fermer"
+  },
+  "admin.theme": {
+    "de": "Darstellung",
+    "en": "Appearance",
+    "es": "Apariencia",
+    "fr": "Apparence"
+  },
+  "admin.theme.dark": {
+    "de": "Dunkel",
+    "en": "Dark",
+    "es": "Oscuro",
+    "fr": "Sombre"
+  },
+  "admin.theme.light": {
+    "de": "Hell",
+    "en": "Light",
+    "es": "Claro",
+    "fr": "Clair"
+  },
+  "admin.theme.mono": {
+    "de": "Mono",
+    "en": "Mono",
+    "es": "Mono",
+    "fr": "Mono"
+  },
+  "admin.login.title": {
+    "de": "Zugang zur Verwaltung",
+    "en": "Access the administration",
+    "es": "Acceso a la administración",
+    "fr": "Accès à l'administration"
+  },
+  "admin.login.desc": {
+    "de": "Den Zugangscode schreibt der Server beim Start ins Protokoll (Zeile „Verwaltung bereit“). Im Container: docker logs.",
+    "en": "The server writes the access code to its log at startup (line “Verwaltung bereit”). In a container: docker logs.",
+    "es": "El servidor escribe el código de acceso en su registro al arrancar (línea «Verwaltung bereit»). En un contenedor: docker logs.",
+    "fr": "Le serveur écrit le code d'accès dans son journal au démarrage (ligne « Verwaltung bereit »). Dans un conteneur : docker logs."
+  },
+  "admin.login.code": {
+    "de": "Zugangscode",
+    "en": "Access code",
+    "es": "Código de acceso",
+    "fr": "Code d'accès"
+  },
+  "admin.login.submit": {
+    "de": "Anmelden",
+    "en": "Sign in",
+    "es": "Entrar",
+    "fr": "Se connecter"
+  },
+  "admin.login.wrong": {
+    "de": "Der Code stimmt nicht.",
+    "en": "The code is wrong.",
+    "es": "El código no es correcto.",
+    "fr": "Le code est incorrect."
+  },
+  "admin.error.server": {
+    "de": "Server nicht erreichbar",
+    "en": "Server unreachable",
+    "es": "Servidor inaccesible",
+    "fr": "Serveur injoignable"
+  },
+  "admin.error.server_desc": {
+    "de": "Die Seite versucht es weiter, sobald der Server wieder läuft.",
+    "en": "The page keeps trying until the server is back.",
+    "es": "La página seguirá intentándolo hasta que el servidor vuelva.",
+    "fr": "La page réessaie jusqu'au retour du serveur."
+  },
+  "admin.first.title": {
+    "de": "Noch niemand da",
+    "en": "Nobody here yet",
+    "es": "Todavía no hay nadie",
+    "fr": "Personne pour l'instant"
+  },
+  "admin.first.desc": {
+    "de": "Wer sich als Erster mit der App verbindet, wird Administrator. Verbinde dich am besten jetzt selbst.",
+    "en": "Whoever connects first with the app becomes administrator. Best connect yourself now.",
+    "es": "Quien se conecte primero con la aplicación será administrador. Lo mejor es conectarte tú ahora.",
+    "fr": "La première personne qui se connecte avec l'application devient administrateur. Connecte-toi de préférence maintenant."
+  },
+  "admin.server.title": {
+    "de": "Server",
+    "en": "Server",
+    "es": "Servidor",
+    "fr": "Serveur"
+  },
+  "admin.server.name": {
+    "de": "Name",
+    "en": "Name",
+    "es": "Nombre",
+    "fr": "Nom"
+  },
+  "admin.server.address": {
+    "de": "Adresse",
+    "en": "Address",
+    "es": "Dirección",
+    "fr": "Adresse"
+  },
+  "admin.server.port_udp": {
+    "de": "Port {} (UDP)",
+    "en": "Port {} (UDP)",
+    "es": "Puerto {} (UDP)",
+    "fr": "Port {} (UDP)"
+  },
+  "admin.server.version": {
+    "de": "Version",
+    "en": "Version",
+    "es": "Versión",
+    "fr": "Version"
+  },
+  "admin.server.uptime": {
+    "de": "Läuft seit",
+    "en": "Uptime",
+    "es": "En marcha desde",
+    "fr": "En service depuis"
+  },
+  "admin.server.connected": {
+    "de": "Verbunden",
+    "en": "Connected",
+    "es": "Conectados",
+    "fr": "Connectés"
+  },
+  "admin.server.rooms": {
+    "de": "Räume",
+    "en": "Rooms",
+    "es": "Salas",
+    "fr": "Salons"
+  },
+  "admin.server.backup": {
+    "de": "Letzte Sicherung",
+    "en": "Last backup",
+    "es": "Última copia",
+    "fr": "Dernière sauvegarde"
+  },
+  "admin.server.backup_none": {
+    "de": "noch keine",
+    "en": "none yet",
+    "es": "ninguna todavía",
+    "fr": "aucune pour l'instant"
+  },
+  "admin.server.backup_off": {
+    "de": "aus",
+    "en": "off",
+    "es": "desactivada",
+    "fr": "désactivée"
+  },
+  "admin.server.fingerprint": {
+    "de": "Fingerabdruck des Zertifikats",
+    "en": "Certificate fingerprint",
+    "es": "Huella del certificado",
+    "fr": "Empreinte du certificat"
+  },
+  "admin.server.fingerprint_hint": {
+    "de": "Diesen Wert an die Mitglieder weitergeben: die App zeigt ihn beim ersten Verbinden zum Vergleich.",
+    "en": "Pass this value on to members: the app shows it for comparison on first connect.",
+    "es": "Comparte este valor con los miembros: la aplicación lo muestra para compararlo al conectarse por primera vez.",
+    "fr": "Transmets cette valeur aux membres : l'application l'affiche pour comparaison à la première connexion."
+  },
+  "admin.members.title": {
+    "de": "Mitglieder und Rollen",
+    "en": "Members and roles",
+    "es": "Miembros y roles",
+    "fr": "Membres et rôles"
+  },
+  "admin.members.hint": {
+    "de": "Administrator wirst du so: mit der App verbinden, dann hier bei deinem Namen die Rolle wählen.",
+    "en": "To become administrator: connect with the app, then pick the role next to your name here.",
+    "es": "Para ser administrador: conéctate con la aplicación y elige aquí el rol junto a tu nombre.",
+    "fr": "Pour devenir administrateur : connecte-toi avec l'application, puis choisis le rôle à côté de ton nom ici."
+  },
+  "admin.members.empty": {
+    "de": "Noch keine Mitglieder",
+    "en": "No members yet",
+    "es": "Todavía no hay miembros",
+    "fr": "Pas encore de membres"
+  },
+  "admin.members.empty_desc": {
+    "de": "Sobald sich jemand mit der App verbindet, steht er hier.",
+    "en": "As soon as someone connects with the app, they appear here.",
+    "es": "En cuanto alguien se conecte con la aplicación, aparecerá aquí.",
+    "fr": "Dès qu'une personne se connecte avec l'application, elle apparaît ici."
+  },
+  "admin.members.online": {
+    "de": "verbunden",
+    "en": "connected",
+    "es": "conectado",
+    "fr": "connecté"
+  },
+  "admin.members.in_room": {
+    "de": "in {}",
+    "en": "in {}",
+    "es": "en {}",
+    "fr": "dans {}"
+  },
+  "admin.members.role_for": {
+    "de": "Rolle von {}",
+    "en": "Role of {}",
+    "es": "Rol de {}",
+    "fr": "Rôle de {}"
+  },
+  "admin.role.set": {
+    "de": "Rolle von {} geändert.",
+    "en": "Role of {} changed.",
+    "es": "Rol de {} cambiado.",
+    "fr": "Rôle de {} modifié."
+  },
+  "admin.role.last": {
+    "de": "{} ist der letzte Administrator und bleibt es. Ernenne zuerst einen zweiten.",
+    "en": "{} is the last administrator and stays one. Appoint a second one first.",
+    "es": "{} es el último administrador y lo seguirá siendo. Nombra primero a otro.",
+    "fr": "{} est le dernier administrateur et le reste. Nomme d'abord un second."
+  },
+  "admin.role.failed": {
+    "de": "Rolle von {} nicht geändert.",
+    "en": "Role of {} not changed.",
+    "es": "No se cambió el rol de {}.",
+    "fr": "Rôle de {} non modifié."
+  },
+  "admin.log.title": {
+    "de": "Protokoll",
+    "en": "Log",
+    "es": "Registro",
+    "fr": "Journal"
+  },
+  "admin.log.hint": {
+    "de": "Dieselben Zeilen wie auf der Konsole bzw. in docker logs.",
+    "en": "The same lines as on the console or in docker logs.",
+    "es": "Las mismas líneas que en la consola o en docker logs.",
+    "fr": "Les mêmes lignes que dans la console ou dans docker logs."
+  },
+  "admin.log.empty": {
+    "de": "Noch keine Zeilen.",
+    "en": "No lines yet.",
+    "es": "Todavía no hay líneas.",
+    "fr": "Pas encore de lignes."
+  },
+  "admin.status.counts": {
+    "de": "{} verbunden · {} Mitglieder",
+    "en": "{} connected · {} members",
+    "es": "{} conectados · {} miembros",
+    "fr": "{} connectés · {} membres"
+  },
+  "chat.e2e": {
+    "de": "Ende zu Ende verschlüsselt — Text und Sprache. Der Server liest nicht mit.",
+    "en": "End-to-end encrypted — text and voice. The server cannot read along.",
+    "es": "Cifrado de extremo a extremo: texto y voz. El servidor no puede leerlos.",
+    "fr": "Chiffré de bout en bout — texte et voix. Le serveur ne peut pas lire."
+  },
+  "chat.waiting": {
+    "de": "Verschlüsselt — der Schlüssel fehlt noch.",
+    "en": "Encrypted — the key has not arrived yet.",
+    "es": "Cifrado: la clave aún no ha llegado.",
+    "fr": "Chiffré — la clé n’est pas encore arrivée."
+  },
+  "chat.unreadable": {
+    "de": "Nicht lesbar — verändert oder beschädigt.",
+    "en": "Unreadable — altered or damaged.",
+    "es": "Ilegible: alterado o dañado.",
+    "fr": "Illisible — modifié ou endommagé."
+  },
+  "chat.newer": {
+    "de": "„{}“ — dafür braucht es eine neuere Version.",
+    "en": "“{}” — this needs a newer version.",
+    "es": "«{}»: se necesita una versión más reciente.",
+    "fr": "« {} » — une version plus récente est nécessaire."
+  },
+  "chat.key_wait": {
+    "de": "Der Schlüssel für den Chat kommt von einem anderen Mitglied, sobald eines online ist, das ihn hat. Bis dahin kannst du nicht schreiben.",
+    "en": "The chat key comes from another member as soon as one who has it is online. Until then you cannot write.",
+    "es": "La clave del chat llega de otro miembro en cuanto uno que la tenga esté conectado. Hasta entonces no puedes escribir.",
+    "fr": "La clé du chat vient d’un autre membre dès qu’un membre qui la possède est en ligne. D’ici là, tu ne peux pas écrire."
+  },
+  "chat.actions": {
+    "de": "Aktionen zur Nachricht",
+    "en": "Message actions",
+    "es": "Acciones del mensaje",
+    "fr": "Actions du message"
+  },
+  "react.👍": {
+    "de": "Daumen hoch",
+    "en": "Thumbs up",
+    "es": "Pulgar arriba",
+    "fr": "Pouce levé"
+  },
+  "react.❤️": {
+    "de": "Herz",
+    "en": "Heart",
+    "es": "Corazón",
+    "fr": "Cœur"
+  },
+  "react.😂": {
+    "de": "Lachen",
+    "en": "Laughing",
+    "es": "Risa",
+    "fr": "Rire"
+  },
+  "react.😮": {
+    "de": "Staunen",
+    "en": "Surprised",
+    "es": "Sorpresa",
+    "fr": "Surprise"
+  },
+  "react.😢": {
+    "de": "Traurig",
+    "en": "Sad",
+    "es": "Triste",
+    "fr": "Triste"
+  },
+  "react.🎉": {
+    "de": "Feiern",
+    "en": "Celebrate",
+    "es": "Celebrar",
+    "fr": "Fête"
+  },
+  "react.count": {
+    "de": "{} — {} von {}",
+    "en": "{} — {} from {}",
+    "es": "{} — {} de {}",
+    "fr": "{} — {} de {}"
+  },
+  "preview.loading": {
+    "de": "Vorschau wird geladen …",
+    "en": "Loading preview …",
+    "es": "Cargando vista previa …",
+    "fr": "Chargement de l’aperçu …"
+  },
+  "preview.remove": {
+    "de": "Ohne Vorschau senden",
+    "en": "Send without preview",
+    "es": "Enviar sin vista previa",
+    "fr": "Envoyer sans aperçu"
+  },
+  "set.link_preview": {
+    "de": "Link-Vorschau erzeugen",
+    "en": "Generate link previews",
+    "es": "Generar vistas previas de enlaces",
+    "fr": "Générer des aperçus de liens"
+  },
+  "set.link_preview.hint": {
+    "de": "Schreibst du einen Link, ruft dieses Gerät die Seite ab und schickt Titel und Bild verschlüsselt mit. Die Seite sieht dabei deine Adresse — die anderen rufen nichts ab. Aus: Links bleiben anklickbar, nur ohne Vorschau.",
+    "en": "When you write a link, this device fetches the page and sends title and image along, encrypted. The site sees your address — the others fetch nothing. Off: links stay clickable, just without a preview.",
+    "es": "Al escribir un enlace, este dispositivo carga la página y envía título e imagen cifrados. La página ve tu dirección; los demás no cargan nada. Desactivado: los enlaces siguen siendo clicables, sin vista previa.",
+    "fr": "Quand tu écris un lien, cet appareil charge la page et envoie titre et image, chiffrés. Le site voit ton adresse — les autres ne chargent rien. Désactivé : les liens restent cliquables, sans aperçu."
+  },
+  "set.chat": {
+    "de": "Chat",
+    "en": "Chat",
+    "es": "Chat",
+    "fr": "Discussion"
+  },
+  "server.password": {
+    "de": "Serverpasswort",
+    "en": "Server password",
+    "es": "Contraseña del servidor",
+    "fr": "Mot de passe du serveur"
+  },
+  "chat.react": {
+    "de": "Reagieren",
+    "en": "React",
+    "es": "Reaccionar",
+    "fr": "Réagir"
+  },
+  "set.key.cancel": {
+    "de": "Abbrechen",
+    "en": "Cancel",
+    "es": "Cancelar",
+    "fr": "Annuler"
+  },
+  "dialog.cancel": {
+    "de": "Abbrechen",
+    "en": "Cancel",
+    "es": "Cancelar",
+    "fr": "Annuler"
+  },
+  "chat.copy": {
+    "de": "Text kopieren",
+    "en": "Copy text",
+    "es": "Copiar texto",
+    "fr": "Copier le texte"
+  },
+  "srv.title": {
+    "de": "Server",
+    "en": "Server",
+    "es": "Servidor",
+    "fr": "Serveur"
+  },
+  "srv.start": {
+    "de": "Server starten",
+    "en": "Start server",
+    "es": "Iniciar servidor",
+    "fr": "Démarrer le serveur"
+  },
+  "srv.stop": {
+    "de": "Server anhalten",
+    "en": "Stop server",
+    "es": "Detener servidor",
+    "fr": "Arrêter le serveur"
+  },
+  "srv.state.stopped": {
+    "de": "angehalten",
+    "en": "stopped",
+    "es": "detenido",
+    "fr": "arrêté"
+  },
+  "srv.state.starting": {
+    "de": "startet …",
+    "en": "starting …",
+    "es": "iniciando …",
+    "fr": "démarrage …"
+  },
+  "srv.state.running": {
+    "de": "läuft",
+    "en": "running",
+    "es": "en marcha",
+    "fr": "en marche"
+  },
+  "srv.overview": {
+    "de": "Übersicht",
+    "en": "Overview",
+    "es": "Resumen",
+    "fr": "Vue d’ensemble"
+  },
+  "srv.settings": {
+    "de": "Einstellungen",
+    "en": "Settings",
+    "es": "Ajustes",
+    "fr": "Réglages"
+  },
+  "srv.settings.sub": {
+    "de": "Gilt beim nächsten Start. Während der Server läuft, ist nichts änderbar.",
+    "en": "Applies on the next start. Nothing can be changed while the server is running.",
+    "es": "Se aplica en el próximo inicio. No se puede cambiar nada mientras el servidor está en marcha.",
+    "fr": "S’applique au prochain démarrage. Rien n’est modifiable pendant que le serveur tourne."
+  },
+  "srv.data": {
+    "de": "Datenverzeichnis",
+    "en": "Data directory",
+    "es": "Directorio de datos",
+    "fr": "Répertoire de données"
+  },
+  "srv.password": {
+    "de": "Serverpasswort (leer = offen)",
+    "en": "Server password (empty = open)",
+    "es": "Contraseña (vacía = abierto)",
+    "fr": "Mot de passe (vide = ouvert)"
+  },
+  "srv.default_role": {
+    "de": "Rolle neuer Mitglieder",
+    "en": "Role of new members",
+    "es": "Rol de nuevos miembros",
+    "fr": "Rôle des nouveaux membres"
+  },
+  "srv.not_running": {
+    "de": "Der Server läuft nicht. Starte ihn oben rechts.",
+    "en": "The server is not running. Start it at the top right.",
+    "es": "El servidor no está en marcha. Inícialo arriba a la derecha.",
+    "fr": "Le serveur ne tourne pas. Démarre-le en haut à droite."
+  },
+  "srv.copy": {
+    "de": "Kopieren",
+    "en": "Copy",
+    "es": "Copiar",
+    "fr": "Copier"
+  },
+  "srv.port_udp": {
+    "de": "Port (UDP)",
+    "en": "Port (UDP)",
+    "es": "Puerto (UDP)",
+    "fr": "Port (UDP)"
+  },
+  "room.join_hint": {
+    "de": "Doppelklick: betreten",
+    "en": "Double-click: join",
+    "es": "Doble clic: entrar",
+    "fr": "Double-clic : entrer"
+  },
+  "member.speaking": {
+    "de": "spricht",
+    "en": "speaking",
+    "es": "hablando",
+    "fr": "parle"
+  },
+  "server.connected": {
+    "de": "verbunden",
+    "en": "connected",
+    "es": "conectado",
+    "fr": "connecté"
+  },
+  "app.tree": {
+    "de": "Räume und Leute",
+    "en": "Rooms and people",
+    "es": "Salas y personas",
+    "fr": "Salons et personnes"
+  },
+  "srv.overview.sub": {
+    "de": "Was der Server gerade tut — und was Mitglieder zum Verbinden brauchen.",
+    "en": "What the server is doing — and what members need to connect.",
+    "es": "Qué hace el servidor y qué necesitan los miembros para conectarse.",
+    "fr": "Ce que fait le serveur — et ce dont les membres ont besoin pour se connecter."
+  },
+  "srv.share": {
+    "de": "Zum Weitergeben",
+    "en": "To share",
+    "es": "Para compartir",
+    "fr": "À partager"
+  }
+}

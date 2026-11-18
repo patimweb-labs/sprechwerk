@@ -9,18 +9,14 @@ sicherungen/
 # Eigene Umgebung: kann das Serverpasswort enthalten (.env.example ist die Vorlage)
 /.env
 
-# Oberfläche
-ui/node_modules/
-ui/dist/
-ui/dist-verwaltung/
-crates/desktop/target/
-crates/desktop/gen/
+# Pakete (packaging/*/paket.sh)
+/dist/
 
 # Erzeugte Auswertungen (Abhängigkeitsgraph), keine Quelle
 graph-out/
 
-# Pakete: Opus für Windows/macOS (in der CI gebaut, `pakete.yml`), das `.deb`
+# Pakete: Opus für Windows/macOS (in der CI gebaut, `pakete.yml`), das tar.gz
 # als Eingabe des Flatpaks und dessen Bauordner
-crates/desktop/opus/
-crates/desktop/packaging/flatpak/sprechwerk.deb
+packaging/opus/
+packaging/flatpak/sprechwerk.tar.gz
 .flatpak-builder/

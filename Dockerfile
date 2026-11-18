@@ -21,8 +21,8 @@ WORKDIR /src
 
 # Erst nur die Manifeste: dadurch bleibt die Abhängigkeitsschicht im Cache,
 # solange sich der Code nicht ändert. Die Liste muss zu den `members` in
-# `Cargo.toml` passen (ohne `crates/desktop`: Tauri hat eine eigene
-# Sperrdatei und gehört nicht in den Container).
+# `Cargo.toml` passen — auch die Fenster-Crates, sonst findet Cargo den
+# Arbeitsbereich nicht; gebaut werden sie hier nicht.
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates/domain/Cargo.toml crates/domain/
 COPY crates/protocol/Cargo.toml crates/protocol/
@@ -33,17 +33,19 @@ COPY crates/audio/Cargo.toml crates/audio/
 COPY crates/linkvorschau/Cargo.toml crates/linkvorschau/
 COPY crates/server/Cargo.toml crates/server/
 COPY crates/cli/Cargo.toml crates/cli/
-RUN for k in domain protocol store adapters ipc audio linkvorschau; do \
+COPY crates/client/Cargo.toml crates/client/
+COPY crates/oberflaeche/Cargo.toml crates/oberflaeche/
+COPY crates/fenster/Cargo.toml crates/fenster/
+COPY crates/server-fenster/Cargo.toml crates/server-fenster/
+RUN for k in domain protocol store adapters ipc audio linkvorschau client oberflaeche fenster server-fenster server; do \
       mkdir -p "crates/$k/src" && echo "" > "crates/$k/src/lib.rs"; \
     done \
  && echo "fn main() {}" > crates/server/src/main.rs \
+ && echo "fn main() {}" > crates/fenster/src/main.rs \
+ && echo "fn main() {}" > crates/server-fenster/src/main.rs \
  && echo "fn main() {}" > crates/cli/src/main.rs \
  && cargo build --release --locked -p sprechwerk-server -p sprechwerk-cli || true
 
-# Mit `COPY . .` kommt auch `ui/dist-verwaltung/` herein, falls gebaut
-# (`npm --prefix ui run verwaltung`; im Release liefert es `server.yml`).
-# `crates/server/build.rs` bettet sie ein — der Container braucht kein Node.
-# Fehlt sie, zeigt die Verwaltung eine Seite, die sagt, wie man sie baut.
 COPY . .
 # `touch` auf die Quellen: sonst hält Cargo die Platzhalter für aktuell.
 RUN touch crates/*/src/*.rs \
@@ -58,16 +60,13 @@ COPY --from=bauen /src/target/release/sprechwerk-cli /usr/local/bin/sprechwerk-c
 
 USER sprechwerk
 VOLUME ["/data"]
-# QUIC spricht UDP — das ist der einzige Port nach außen.
-# 7444/tcp ist die Verwaltung (ADR 0011): im Container auf allen Adressen,
-# damit Docker sie weiterreichen kann; `docker-compose.yml` bindet sie auf dem
-# Host nur an 127.0.0.1. Einen Browser gibt es im Container nicht.
-EXPOSE 7443/udp 7444/tcp
+# QUIC spricht UDP — das ist der einzige Port. Die Verwaltung (ADR 0013)
+# läuft nur innerhalb des Containers auf 127.0.0.1:7444 und wird nie
+# weitergereicht: `docker compose exec sprechwerk sprechwerk stand`.
+EXPOSE 7443/udp
 ENV SPRECHWERK_DATEN=/data \
     SPRECHWERK_BIND=0.0.0.0 \
-    SPRECHWERK_PORT=7443 \
-    SPRECHWERK_VERWALTUNG_BIND=0.0.0.0 \
-    SPRECHWERK_VERWALTUNG_BROWSER=0
+    SPRECHWERK_PORT=7443
 # Prüft das Lebenszeichen des Dienstes — **keine** Testverbindung: die würde
 # den Administratorplatz belegen (SPEC §7).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
