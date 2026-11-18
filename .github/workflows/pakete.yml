@@ -120,7 +120,7 @@ jobs:
           # und Inhalt stimmten — dieselbe Datei im selben Ubuntu lief ohne die
           # Schicht durch.
           flatpak-builder --user --install-deps-from=flathub --repo=repo --force-clean \
-            --disable-rofiles-fuse \
+            --disable-rofiles-fuse --keep-build-dirs \
             bau packaging/flatpak/de.weppelmann.Sprechwerk.yml
           flatpak build-bundle repo "Sprechwerk-${version}-x86_64.flatpak" de.weppelmann.Sprechwerk \
             --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
@@ -131,18 +131,24 @@ jobs:
       - name: Woran es lag
         if: failure()
         run: |
-          echo "flatpak:         $(flatpak --version)"
-          echo "flatpak-builder: $(flatpak-builder --version)"
-          echo "appstreamcli:    $(appstreamcli --version)"
-          echo "appstream-compose: $(ls /usr/libexec/appstreamcli-compose 2>/dev/null || echo fehlt)"
-          baum=$(ls -d .flatpak-builder/rofiles/rofiles-*/files 2>/dev/null | head -1)
+          echo "flatpak:           $(flatpak --version)"
+          echo "flatpak-builder:   $(flatpak-builder --version)"
+          echo "appstreamcli:      $(appstreamcli --version)"
+          echo "librsvg:           $(dpkg -l | grep -c librsvg)"
+          echo "AppStream-Katalog: $(ls /usr/share/swcatalog/xml 2>/dev/null | wc -l) Dateien"
+          echo "Metainfo im System: $(ls /usr/share/metainfo 2>/dev/null | wc -l)"
+          baum=$(ls -d bau/files 2>/dev/null | head -1)
           echo "Baum: ${baum:-keiner}"
-          [ -n "$baum" ] && find "$baum" -maxdepth 5 | sort | head -40
-          echo "--- compose noch einmal, ausführlich ---"
-          [ -n "$baum" ] && mkdir -p /tmp/aus && appstreamcli compose \
-            --origin=flatpak --prefix=/ \
-            --components=de.weppelmann.Sprechwerk,de.weppelmann.Sprechwerk.desktop \
-            --result-root=/tmp/aus --no-net -v "$baum" 2>&1 | tail -60 || true
+          if [ -n "$baum" ]; then
+            find "$baum" -maxdepth 5 | sort | head -40
+            echo "--- Dateirechte ---"
+            ls -la "$baum/share/metainfo" "$baum/share/icons/hicolor/scalable/apps" 2>&1
+            echo "--- compose noch einmal, ausführlich ---"
+            mkdir -p /tmp/aus
+            appstreamcli compose --origin=flatpak --prefix=/ \
+              --components=de.weppelmann.Sprechwerk,de.weppelmann.Sprechwerk.desktop \
+              --result-root=/tmp/aus --no-net -v --print-report=full "$baum" 2>&1 | tail -60 || true
+          fi
 
       - uses: actions/upload-artifact@v7
         with:
