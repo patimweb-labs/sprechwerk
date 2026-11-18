@@ -114,10 +114,35 @@ jobs:
         run: |
           version=$(packaging/version.sh)
           cp linux/sprechwerk-*-linux-x86_64.tar.gz packaging/flatpak/sprechwerk.tar.gz
+          # `--disable-rofiles-fuse`: ohne diese Schicht arbeitet flatpak-builder
+          # direkt im Bauverzeichnis. Mit ihr liest AppStream die Dateien über
+          # FUSE und brach auf den Läufern mit „file-read-error“ ab, obwohl Bau
+          # und Inhalt stimmten — dieselbe Datei im selben Ubuntu lief ohne die
+          # Schicht durch.
           flatpak-builder --user --install-deps-from=flathub --repo=repo --force-clean \
+            --disable-rofiles-fuse \
             bau packaging/flatpak/de.weppelmann.Sprechwerk.yml
           flatpak build-bundle repo "Sprechwerk-${version}-x86_64.flatpak" de.weppelmann.Sprechwerk \
             --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      # Nur wenn der Bau scheitert: sagen, woran es lag. Die Ausgabe von
+      # AppStream ist knapp („file-read-error“), ohne den Dateinamen aber
+      # nutzlos — deshalb der Baum und ein zweiter Lauf mit -v.
+      - name: Woran es lag
+        if: failure()
+        run: |
+          echo "flatpak:         $(flatpak --version)"
+          echo "flatpak-builder: $(flatpak-builder --version)"
+          echo "appstreamcli:    $(appstreamcli --version)"
+          echo "appstream-compose: $(ls /usr/libexec/appstreamcli-compose 2>/dev/null || echo fehlt)"
+          baum=$(ls -d .flatpak-builder/rofiles/rofiles-*/files 2>/dev/null | head -1)
+          echo "Baum: ${baum:-keiner}"
+          [ -n "$baum" ] && find "$baum" -maxdepth 5 | sort | head -40
+          echo "--- compose noch einmal, ausführlich ---"
+          [ -n "$baum" ] && mkdir -p /tmp/aus && appstreamcli compose \
+            --origin=flatpak --prefix=/ \
+            --components=de.weppelmann.Sprechwerk,de.weppelmann.Sprechwerk.desktop \
+            --result-root=/tmp/aus --no-net -v "$baum" 2>&1 | tail -60 || true
 
       - uses: actions/upload-artifact@v7
         with:
