@@ -7,6 +7,58 @@
 use crate::texte::{t, tf, Sprache};
 use sprechwerk_ipc::{Mitglied, Nachricht, NachrichtInhalt, Zustand};
 
+/// Emoji zum Einfügen und Reagieren, nach Gruppen (Schlüssel in
+/// `texte.json`). Eine feste Auswahl — dieselbe Schrift (Noto Emoji) auf
+/// jedem System, kein Zeichen, das irgendwo als Kästchen erscheint.
+pub const EMOJI: [(&str, &[&str]); 4] = [
+    (
+        "emoji.smileys",
+        &[
+            "😀", "😃", "😄", "😁", "😆", "😅", "😂", "😉", "😊", "😇", "😍", "😘", "😋", "😛",
+            "😜", "😐", "😑", "😶", "😏", "😬", "😌", "😴", "😷", "😎", "😕", "😟", "😮", "😲",
+            "😳", "😢", "😭", "😱", "😤", "😠", "😡",
+        ],
+    ),
+    (
+        "emoji.gesten",
+        &[
+            "👍", "👎", "👌", "✌️", "👏", "🙌", "👐", "🙏", "💪", "👋", "👀",
+        ],
+    ),
+    (
+        "emoji.herzen",
+        &[
+            "❤️", "💛", "💚", "💙", "💜", "💔", "💯", "🔥", "✨", "⭐", "🎉",
+        ],
+    ),
+    (
+        "emoji.dinge",
+        &[
+            "☕", "🍺", "🍕", "🎂", "🎮", "🎧", "🎤", "⚽", "🏆", "♟️", "🚀", "💡", "📌", "✅",
+            "❌", "⚠️", "❓", "❗",
+        ],
+    ),
+];
+
+/// Zum Anzeigen: ohne das unsichtbare Variantenzeichen U+FE0F („als Emoji
+/// zeigen"), das die eingebaute Schrift nicht kennt und sonst als Kästchen
+/// erschiene (❤️, ✌️ …). Gesendet wird weiter das Original.
+pub fn darstellbar(text: &str) -> String {
+    text.replace('\u{FE0F}', "")
+}
+
+/// Fügt `neu` an der Zeichenstelle `stelle` ein (Zeichen, nicht Bytes) und
+/// gibt die Stelle dahinter zurück — dort steht der Cursor danach.
+pub fn einfuegen(text: &mut String, stelle: usize, neu: &str) -> usize {
+    let stelle = stelle.min(text.chars().count());
+    let byte = text
+        .char_indices()
+        .nth(stelle)
+        .map_or(text.len(), |(b, _)| b);
+    text.insert_str(byte, neu);
+    stelle + neu.chars().count()
+}
+
 /// Die sechs Reaktionen, die das Fenster anbietet.
 pub const REAKTIONEN: [&str; 6] = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
@@ -14,7 +66,7 @@ pub const REAKTIONEN: [&str; 6] = ["👍", "❤️", "😂", "😮", "😢", "�
 pub fn kennung_gruppiert(kennung: &str, zeichen: usize) -> String {
     let roh: String = kennung.chars().filter(|c| c.is_ascii_hexdigit()).collect();
     if roh.is_empty() {
-        return "—".into();
+        return String::new();
     }
     let teil: String = roh.chars().take(zeichen).collect();
     let mut aus = gruppen(&teil);
@@ -32,7 +84,7 @@ pub fn fingerabdruck_gruppiert(fingerabdruck: &str) -> String {
         .map(|c| c.to_ascii_lowercase())
         .collect();
     if roh.is_empty() {
-        return "—".into();
+        return String::new();
     }
     gruppen(&roh)
 }
@@ -109,14 +161,16 @@ pub fn mindestbreite(chat_eingeklappt: bool) -> f32 {
     }
 }
 
-/// Neue Fensterbreite nach dem Ein- oder Ausklappen des Chats. Einklappen
-/// macht das Fenster kompakt; Ausklappen bringt die Breite von vorher zurück
-/// (mindestens so breit, dass Baum und Chat Platz haben).
-pub fn breite_nach_wechsel(eingeklappt: bool, vorher: Option<f32>) -> f32 {
+/// Neue Fensterbreite nach dem Ein- oder Ausklappen des Chats: jeweils die
+/// Breite, die das Fenster in diesem Zustand zuletzt hatte — beim ersten
+/// Mal eine sinnvolle Vorgabe, nie schmaler als nötig.
+pub fn breite_nach_wechsel(eingeklappt: bool, mit_chat: Option<f32>, kompakt: Option<f32>) -> f32 {
     if eingeklappt {
-        BREITE_KOMPAKT
+        kompakt.unwrap_or(BREITE_KOMPAKT).max(BREITE_KOMPAKT_MIN)
     } else {
-        vorher.unwrap_or(BREITE_MIT_CHAT * 1.5).max(BREITE_MIT_CHAT)
+        mit_chat
+            .unwrap_or(BREITE_MIT_CHAT * 1.5)
+            .max(BREITE_MIT_CHAT)
     }
 }
 
@@ -173,6 +227,21 @@ pub fn personenstatus(m: &Mitglied, spricht_selbst: Option<bool>) -> Personensta
     } else {
         Personenstatus::Still
     }
+}
+
+/// Dateigröße lesbar: „512 B", „3,4 KB", „1,2 MB", „2,0 GB".
+pub fn groesse_text(byte: u64) -> String {
+    const EINHEITEN: [&str; 4] = ["KB", "MB", "GB", "TB"];
+    if byte < 1024 {
+        return format!("{byte} B");
+    }
+    let mut wert = byte as f64 / 1024.0;
+    let mut i = 0;
+    while wert >= 1024.0 && i < EINHEITEN.len() - 1 {
+        wert /= 1024.0;
+        i += 1;
+    }
+    format!("{wert:.1} {}", EINHEITEN[i]).replace('.', ",")
 }
 
 /// Ein Stück Chattext: Text oder Link.
@@ -373,7 +442,7 @@ mod tests {
             "abab:abab:abab:abab…"
         );
         assert_eq!(kennung_gruppiert("ab12", 16), "ab12");
-        assert_eq!(kennung_gruppiert("", 16), "—");
+        assert_eq!(kennung_gruppiert("", 16), "");
     }
 
     #[test]
@@ -429,14 +498,23 @@ mod tests {
     #[test]
     fn fenster_wird_kompakt_und_wieder_breit() {
         assert!(mindestbreite(true) < mindestbreite(false));
-        assert_eq!(breite_nach_wechsel(true, Some(1100.0)), BREITE_KOMPAKT);
         assert_eq!(
-            breite_nach_wechsel(false, Some(1100.0)),
-            1100.0,
-            "alte Breite zurück"
+            breite_nach_wechsel(true, None, None),
+            BREITE_KOMPAKT,
+            "erstes Mal"
         );
         assert_eq!(
-            breite_nach_wechsel(false, Some(300.0)),
+            breite_nach_wechsel(true, None, Some(400.0)),
+            400.0,
+            "kompakte Breite von vorher"
+        );
+        assert_eq!(
+            breite_nach_wechsel(false, Some(1100.0), None),
+            1100.0,
+            "Breite mit Chat von vorher"
+        );
+        assert_eq!(
+            breite_nach_wechsel(false, Some(300.0), None),
             BREITE_MIT_CHAT,
             "nie schmaler als mit Chat nötig"
         );
@@ -505,6 +583,46 @@ mod tests {
             !ich_spreche(&a(0, false), 30, true, true),
             "Taste, aber kein Ton"
         );
+    }
+
+    #[test]
+    fn emoji_an_der_cursorstelle() {
+        let mut t = "Hallo Welt".to_string();
+        let danach = einfuegen(&mut t, 5, " 👋");
+        assert_eq!(t, "Hallo 👋 Welt");
+        assert_eq!(danach, 7);
+        let mut u = "Grüße".to_string();
+        assert_eq!(einfuegen(&mut u, 99, "!"), 6, "hinter dem Ende: angehängt");
+        assert_eq!(u, "Grüße!");
+    }
+
+    #[test]
+    fn variantenzeichen_fallen_beim_anzeigen_weg() {
+        assert_eq!(darstellbar("❤️ und ✌️"), "❤ und ✌");
+        assert_eq!(darstellbar("ohne"), "ohne");
+    }
+
+    #[test]
+    fn emoji_auswahl_ohne_doppelte() {
+        let mut alle: Vec<&str> = EMOJI.iter().flat_map(|(_, e)| e.iter().copied()).collect();
+        let n = alle.len();
+        alle.sort();
+        alle.dedup();
+        assert_eq!(alle.len(), n);
+        for r in REAKTIONEN {
+            assert!(
+                n > 0 && EMOJI.iter().any(|(_, e)| e.contains(&r)),
+                "{r} fehlt in der Auswahl"
+            );
+        }
+    }
+
+    #[test]
+    fn groessen_lesbar() {
+        assert_eq!(groesse_text(512), "512 B");
+        assert_eq!(groesse_text(3 * 1024 + 400), "3,4 KB");
+        assert_eq!(groesse_text(1_258_291), "1,2 MB");
+        assert_eq!(groesse_text(2 * 1024 * 1024 * 1024), "2,0 GB");
     }
 
     #[test]

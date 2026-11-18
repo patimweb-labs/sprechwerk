@@ -81,11 +81,11 @@ pub struct Mitgliedszeile {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[serde(tag = "art", rename_all = "snake_case")]
 pub enum Rollenfehler {
-    #[error("{name} ist der letzte Administrator und bleibt es — ernenne zuerst einen zweiten")]
+    #[error("{name} ist der letzte Administrator und bleibt es. Ernenne zuerst einen zweiten.")]
     LetzterAdministrator { name: String },
     #[error("niemand passt zu „{wer}“")]
     Unbekannt { wer: String },
-    #[error("„{wer}“ passt auf mehrere: {namen} — nimm die Kennung")]
+    #[error("„{wer}“ passt auf mehrere: {namen}. Nimm die Kennung.")]
     Mehrdeutig { wer: String, namen: String },
     #[error("{0}")]
     Anders(String),
@@ -387,7 +387,7 @@ pub fn fragen(daten: &Path, port: u16, auftrag: Auftrag) -> anyhow::Result<Antwo
     let pfad = schluesseldatei(daten);
     let schluessel = std::fs::read_to_string(&pfad).map_err(|f| {
         anyhow::anyhow!(
-            "{} nicht lesbar ({f}) — läuft der Server, und ist das sein Datenverzeichnis?",
+            "{} nicht lesbar ({f}). Läuft der Server, und ist das sein Datenverzeichnis?",
             pfad.display()
         )
     })?;
@@ -445,7 +445,7 @@ pub fn stand_als_text(s: &Stand) -> String {
             let status = match (&m.verbunden, &m.raum) {
                 (true, Some(r)) => format!("in {r}"),
                 (true, None) => "verbunden".into(),
-                (false, _) => "—".into(),
+                (false, _) => "getrennt".into(),
             };
             let _ = writeln!(
                 aus,
@@ -492,6 +492,7 @@ mod tests {
                 ..Default::default()
             },
             verwaltung: Default::default(),
+            anhaenge: Default::default(),
         };
         let mut kern = Kern::neu(konfig).unwrap();
         let (ada, _) = kern.anmelden(&schluessel(1), "Ada", "10.0.0.1").unwrap();

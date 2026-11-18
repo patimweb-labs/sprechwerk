@@ -150,7 +150,7 @@ pub enum Lesbar {
 /// Grund, warum nicht geschrieben werden kann.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SchreibFehler {
-    #[error("Der Schlüssel zum Schreiben fehlt noch — er kommt, sobald ein Mitglied online ist, das ihn hat.")]
+    #[error("Der Schlüssel zum Schreiben fehlt noch. Er kommt, sobald ein Mitglied online ist, das ihn hat.")]
     SchluesselFehlt,
     #[error("Nachricht ist zu lang (höchstens {max} Zeichen)", max = sprechwerk_domain::MAX_MESSAGE_LEN)]
     ZuLang,
@@ -380,6 +380,17 @@ impl Bund {
                     return Err(SchreibFehler::ZuLang);
                 }
             }
+            // Text darf fehlen, Dateien nicht.
+            Inhalt::Anhang { text, dateien } => {
+                if dateien.is_empty() {
+                    return Err(SchreibFehler::Leer);
+                }
+                if dateien.len() > sprechwerk_protocol::anhang::MAX_DATEIEN
+                    || text.chars().count() > sprechwerk_domain::MAX_MESSAGE_LEN
+                {
+                    return Err(SchreibFehler::ZuLang);
+                }
+            }
         }
         // Mit Vorschaubild kann der Umschlag wachsen — über der Grenze nähme
         // ihn der Server nicht an.
@@ -436,6 +447,7 @@ mod tests {
             text,
             zeit: 0,
             geloescht: false,
+            anhaenge: Vec::new(),
         }
     }
 

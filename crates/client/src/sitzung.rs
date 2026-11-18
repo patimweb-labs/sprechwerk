@@ -11,6 +11,7 @@
 
 use crate::anwendung::Anwendung;
 use crate::audio::{self, Geraeteliste};
+use crate::dateien::Dateiablage;
 use crate::einstellungen::Einstellungen;
 use crate::sprech::Sprechbetrieb;
 use crate::verschluesselung::Schluesselverwaltung;
@@ -51,6 +52,20 @@ pub enum Aktion {
     Testton { geraet: String },
     /// Einstellungen speichern und auf den laufenden Pfad anwenden.
     EinstellungenSpeichern(Box<Einstellungen>),
+    /// Dateien für den Entwurf wählen (Dialog des Systems).
+    AnhaengeWaehlen,
+    /// Eine Datei entschlüsselt speichern — wohin, fragt der Dialog.
+    DateiSpeichernUnter {
+        nachricht: sprechwerk_domain::MessageId,
+        datei: String,
+        name: String,
+    },
+    /// Eine Datei im Programm des Systems öffnen (Video, PDF, …).
+    DateiExtern {
+        nachricht: sprechwerk_domain::MessageId,
+        datei: String,
+        name: String,
+    },
 }
 
 impl Aktion {
@@ -69,6 +84,9 @@ impl Aktion {
             Aktion::Pegel { .. } => "pegel",
             Aktion::Testton { .. } => "testton",
             Aktion::EinstellungenSpeichern(_) => "einstellungen_speichern",
+            Aktion::AnhaengeWaehlen => "anhaenge_waehlen",
+            Aktion::DateiSpeichernUnter { .. } => "datei_speichern",
+            Aktion::DateiExtern { .. } => "datei_extern",
         }
     }
 }
@@ -117,7 +135,10 @@ pub struct Client {
     laufzeit: tokio::runtime::Runtime,
     anwendung: Arc<Anwendung>,
     sprech: Arc<Sprechbetrieb>,
+    ablage: Arc<Dateiablage>,
     einstellungen: PathBuf,
+    /// Hierhin werden Dateien zum Öffnen im System entschlüsselt.
+    geoeffnet: PathBuf,
     melde: Melder,
 }
 
@@ -128,11 +149,19 @@ static MESSUNG: std::sync::Mutex<()> = std::sync::Mutex::new(());
 impl Client {
     /// Startet den Client. `verzeichnis` hält Schlüssel und Einstellungen;
     /// `melde` bekommt jede [`Meldung`] (aus fremden Threads).
-    pub fn starten<F>(verzeichnis: &Path, melde: F) -> Self
+    ///
+    /// `zwischenspeicher` hält die Anhänge — als Geheimtext, so wie sie vom
+    /// Server kamen (ADR 0012 §3).
+    pub fn starten<F>(verzeichnis: &Path, zwischenspeicher: &Path, melde: F) -> Self
     where
         F: Fn(Meldung) + Send + Sync + 'static,
     {
         let _ = std::fs::create_dir_all(verzeichnis);
+        let ablage = Arc::new(Dateiablage::neu(zwischenspeicher.join("anhaenge")));
+        // Was zum Öffnen entschlüsselt wurde, bleibt nicht liegen: beim
+        // nächsten Start ist es weg.
+        let geoeffnet = zwischenspeicher.join("geoeffnet");
+        let _ = std::fs::remove_dir_all(&geoeffnet);
         let melde: Melder = Arc::new(melde);
         let sprech = Arc::new(Sprechbetrieb::neu());
         let verschluesselung = Arc::new(Schluesselverwaltung::neu());
@@ -141,6 +170,7 @@ impl Client {
             verzeichnis.join("schluessel"),
             sprech.clone(),
             verschluesselung,
+            ablage.clone(),
             move |zustand| an_zustand(Meldung::Zustand(Box::new(zustand))),
         );
         let laufzeit = tokio::runtime::Builder::new_multi_thread()
@@ -153,7 +183,9 @@ impl Client {
             laufzeit,
             anwendung: Arc::new(anwendung),
             sprech,
+            ablage,
             einstellungen: verzeichnis.join("einstellungen.json"),
+            geoeffnet,
             melde,
         }
     }
@@ -178,6 +210,14 @@ impl Client {
         }
     }
 
+    /// Eine Datei entschlüsselt im Speicher (für Vorschau und Betrachter).
+    /// `None`, solange sie nicht geladen ist. Auf die Platte kommt dabei kein
+    /// Klartext.
+    pub fn datei(&self, id: &str) -> Option<Vec<u8>> {
+        let h = self.ablage.antwort(&format!("/{id}"), None);
+        (h.status == 200).then_some(h.inhalt)
+    }
+
     /// Führt eine Aktion aus, ohne den Aufrufer zu blockieren. Das Ergebnis
     /// kommt als [`Meldung::Rueck`].
     pub fn ausfuehren(&self, aktion: Aktion) {
@@ -185,9 +225,23 @@ impl Client {
         let anwendung = self.anwendung.clone();
         let sprech = self.sprech.clone();
         let pfad = self.einstellungen.clone();
+        let geoeffnet = self.geoeffnet.clone();
         let melde = self.melde.clone();
         self.laufzeit.spawn(async move {
-            let ergebnis = ausfuehren(aktion, &anwendung, &sprech, &pfad).await;
+            let ergebnis = match aktion {
+                Aktion::AnhaengeWaehlen => anhaenge_waehlen(&anwendung).await,
+                Aktion::DateiSpeichernUnter {
+                    nachricht,
+                    datei,
+                    name,
+                } => speichern_unter(&anwendung, nachricht, datei, name).await,
+                Aktion::DateiExtern {
+                    nachricht,
+                    datei,
+                    name,
+                } => extern_oeffnen(&anwendung, &geoeffnet, nachricht, datei, name).await,
+                andere => ausfuehren(andere, &anwendung, &sprech, &pfad).await,
+            };
             melde(Meldung::Rueck {
                 aktion: name,
                 ergebnis,
@@ -272,6 +326,11 @@ async fn ausfuehren(
             })
             .await
         }
+        Aktion::AnhaengeWaehlen
+        | Aktion::DateiSpeichernUnter { .. }
+        | Aktion::DateiExtern { .. } => {
+            unreachable!("in Client::ausfuehren behandelt")
+        }
         Aktion::EinstellungenSpeichern(einstellungen) => {
             einstellungen.speichern(pfad)?;
             if sprech.laeuft() {
@@ -285,6 +344,88 @@ async fn ausfuehren(
             Ok(Ergebnis::Erledigt)
         }
     }
+}
+
+fn befehl_ergebnis(antwort: Antwort) -> Result<Ergebnis, String> {
+    match antwort {
+        Antwort::Fehler { text } => Err(text),
+        _ => Ok(Ergebnis::Erledigt),
+    }
+}
+
+/// Dateien wählen (Dialog des Systems) und an den Entwurf hängen. Abbrechen
+/// ist kein Fehler.
+async fn anhaenge_waehlen(anwendung: &Anwendung) -> Result<Ergebnis, String> {
+    let Some(gewaehlt) = rfd::AsyncFileDialog::new().pick_files().await else {
+        return Ok(Ergebnis::Erledigt);
+    };
+    let pfade = gewaehlt
+        .iter()
+        .map(|d| d.path().display().to_string())
+        .collect();
+    befehl_ergebnis(
+        anwendung
+            .befehl(Befehl::AnhaengeHinzufuegen { pfade })
+            .await,
+    )
+}
+
+/// Erst fragt der Dialog wohin (Name aus dem Umschlag als Vorschlag), dann
+/// lädt und entschlüsselt der Verbindungsteil.
+async fn speichern_unter(
+    anwendung: &Anwendung,
+    nachricht: sprechwerk_domain::MessageId,
+    datei: String,
+    name: String,
+) -> Result<Ergebnis, String> {
+    let Some(ziel) = rfd::AsyncFileDialog::new()
+        .set_file_name(&name)
+        .save_file()
+        .await
+    else {
+        return Ok(Ergebnis::Erledigt);
+    };
+    befehl_ergebnis(
+        anwendung
+            .befehl(Befehl::DateiSpeichern {
+                nachricht,
+                datei,
+                ziel: ziel.path().display().to_string(),
+            })
+            .await,
+    )
+}
+
+/// Entschlüsselt die Datei in einen eigenen Ordner und öffnet sie im
+/// Programm des Systems (Video-Player, PDF-Betrachter …). Der Ordner wird
+/// beim nächsten Start geleert.
+async fn extern_oeffnen(
+    anwendung: &Anwendung,
+    geoeffnet: &Path,
+    nachricht: sprechwerk_domain::MessageId,
+    datei: String,
+    name: String,
+) -> Result<Ergebnis, String> {
+    let ordner = geoeffnet.join(&datei);
+    std::fs::create_dir_all(&ordner).map_err(|f| f.to_string())?;
+    // Nur der letzte Teil des Namens — er kommt von einem anderen Mitglied.
+    let sicher = Path::new(&name)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "datei".into());
+    let ziel = ordner.join(sicher);
+    befehl_ergebnis(
+        anwendung
+            .befehl(Befehl::DateiSpeichern {
+                nachricht,
+                datei,
+                ziel: ziel.display().to_string(),
+            })
+            .await,
+    )?;
+    open::that_detached(&ziel).map_err(|f| f.to_string())?;
+    Ok(Ergebnis::Erledigt)
 }
 
 /// Verbindet mit TOFU (ADR 0002 §3): **vorher** den angehefteten
@@ -375,7 +516,7 @@ mod tests {
     #[test]
     fn neuer_client_ist_getrennt() {
         let d = verzeichnis("neu");
-        let client = Client::starten(&d, |_| {});
+        let client = Client::starten(&d, &d.join("zwischen"), |_| {});
         assert_eq!(
             client.zustand().verbindung,
             Some(sprechwerk_ipc::Verbindung::Getrennt)
@@ -388,7 +529,7 @@ mod tests {
         let d = verzeichnis("ohne");
         let (tx, rx) = mpsc::channel();
         let tx = std::sync::Mutex::new(tx);
-        let client = Client::starten(&d, move |m| {
+        let client = Client::starten(&d, &d.join("zwischen"), move |m| {
             let _ = tx.lock().unwrap().send(m);
         });
         client.ausfuehren(Aktion::Befehl(Befehl::Ping));
@@ -402,7 +543,7 @@ mod tests {
         let d = verzeichnis("einst");
         let (tx, rx) = mpsc::channel();
         let tx = std::sync::Mutex::new(tx);
-        let client = Client::starten(&d, move |m| {
+        let client = Client::starten(&d, &d.join("zwischen"), move |m| {
             let _ = tx.lock().unwrap().send(m);
         });
         let mut e = client.einstellungen();
@@ -425,7 +566,7 @@ mod tests {
         e.speichern(&pfad).unwrap();
         let (tx, rx) = mpsc::channel();
         let tx = std::sync::Mutex::new(tx);
-        let client = Client::starten(&d, move |m| {
+        let client = Client::starten(&d, &d.join("zwischen"), move |m| {
             let _ = tx.lock().unwrap().send(m);
         });
         assert!(client.einstellungen().vertrauen_fuer("a:1").is_some());

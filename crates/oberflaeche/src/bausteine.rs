@@ -72,6 +72,158 @@ pub fn pegelbalken(ui: &mut egui::Ui, f: &Farben, pegel: u8, marke: Option<u8>, 
     });
 }
 
+/// Wert 0–100 aus einer waagerechten Position im Balken (rein, für Tests).
+pub fn wert_aus_position(x: f32, links: f32, breite: f32) -> u8 {
+    if breite <= 0.0 {
+        return 0;
+    }
+    (((x - links) / breite).clamp(0.0, 1.0) * 100.0).round() as u8
+}
+
+/// Pegel und Sprechschwelle in einem: der Balken zeigt den Pegel live, die
+/// Marke ist die Schwelle — ziehen oder klicken setzt sie, die Pfeiltasten
+/// auch. Unter der Schwelle ist der Balken blass, darüber in der
+/// Akzentfarbe: man sieht sofort, ob die Stimme durchkommt. Ohne Schwelle
+/// (`None`, Push-to-Talk) ist es nur ein Pegel.
+pub fn pegelregler(
+    ui: &mut egui::Ui,
+    f: &Farben,
+    pegel: u8,
+    schwelle: Option<&mut u8>,
+    breite: f32,
+    name: &str,
+) -> egui::Response {
+    let hoehe = thema::SPACE_4;
+    let sinn = if schwelle.is_some() {
+        Sense::click_and_drag()
+    } else {
+        Sense::hover()
+    };
+    let (rect, mut antwort) = ui.allocate_exact_size(egui::vec2(breite, hoehe), sinn);
+    let mut marke = None;
+    if let Some(s) = schwelle {
+        if let Some(pos) = antwort.interact_pointer_pos() {
+            let neu = wert_aus_position(pos.x, rect.left(), rect.width());
+            if neu != *s {
+                *s = neu;
+                antwort.mark_changed();
+            }
+        }
+        if antwort.has_focus() {
+            let (links, rechts) = ui.input(|i| {
+                (
+                    i.key_pressed(egui::Key::ArrowLeft),
+                    i.key_pressed(egui::Key::ArrowRight),
+                )
+            });
+            if links && *s > 0 {
+                *s -= 1;
+                antwort.mark_changed();
+            }
+            if rechts && *s < 100 {
+                *s += 1;
+                antwort.mark_changed();
+            }
+        }
+        marke = Some(*s);
+    }
+    let p = ui.painter();
+    p.rect_filled(rect, 0.0, f.bg_input);
+    p.rect_stroke(
+        rect,
+        0.0,
+        Stroke::new(thema::SIZE_BORDER, f.border_subtle),
+        egui::StrokeKind::Inside,
+    );
+    let mut voll = rect.shrink(thema::SIZE_BORDER);
+    voll.set_width(voll.width() * pegel.min(100) as f32 / 100.0);
+    let farbe = match marke {
+        Some(m) if pegel < m => f.text_faint,
+        _ => f.accent_default,
+    };
+    p.rect_filled(voll, 0.0, farbe);
+    if let Some(m) = marke {
+        let x = rect.left() + rect.width() * m.min(100) as f32 / 100.0;
+        let linie = if antwort.hovered() || antwort.dragged() || antwort.has_focus() {
+            thema::SIZE_FOCUS
+        } else {
+            thema::SIZE_BORDER
+        };
+        p.line_segment(
+            [
+                egui::pos2(x, rect.top() - thema::SPACE_1),
+                egui::pos2(x, rect.bottom() + thema::SPACE_1),
+            ],
+            Stroke::new(linie, f.text_default),
+        );
+        if antwort.has_focus() {
+            p.rect_stroke(
+                rect.expand(thema::SIZE_FOCUS),
+                0.0,
+                Stroke::new(thema::SIZE_FOCUS, f.focus_ring),
+                egui::StrokeKind::Outside,
+            );
+        }
+    }
+    let name = name.to_string();
+    match marke {
+        Some(m) => antwort.widget_info(|| egui::WidgetInfo::slider(true, m as f64, &name)),
+        None => antwort.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::Role::ProgressIndicator,
+                true,
+                format!("{name}: {pegel} %"),
+            )
+        }),
+    }
+    if marke.is_some() {
+        antwort = antwort.on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+    }
+    antwort
+}
+
+/// Farben des Rollenabzeichens (Fläche, Schrift). Mitglieder — die Regel —
+/// haben keins: so fällt auf, wer mehr (oder weniger) darf.
+pub fn rollenfarben(f: &Farben, rolle: sprechwerk_domain::Role) -> Option<(Color32, Color32)> {
+    use sprechwerk_domain::Role;
+    match rolle {
+        Role::Administrator => Some((f.accent_default, f.text_on_accent)),
+        Role::Moderator => Some((f.status_ok, f.text_on_accent)),
+        Role::Gast => Some((f.bg_selected, f.text_muted)),
+        Role::Mitglied => None,
+    }
+}
+
+/// Seitenlänge eines Rollenabzeichens.
+pub const ABZEICHEN: f32 = thema::SPACE_4;
+
+/// Quadratisches Abzeichen mit dem Anfangsbuchstaben der Rolle (A, M, G).
+/// Nimmt immer denselben Platz ein — auch ohne Abzeichen —, damit die
+/// Spalten im Baum bündig bleiben. `name` ist Hinweis und zugänglicher Name.
+pub fn rollenabzeichen(
+    ui: &mut egui::Ui,
+    f: &Farben,
+    rolle: sprechwerk_domain::Role,
+    kurz: &str,
+    name: &str,
+) -> egui::Response {
+    let (rect, antwort) = ui.allocate_exact_size(egui::vec2(ABZEICHEN, ABZEICHEN), Sense::hover());
+    let Some((flaeche, schrift)) = rollenfarben(f, rolle) else {
+        return antwort;
+    };
+    ui.painter().rect_filled(rect, 0.0, flaeche);
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        kurz,
+        egui::FontId::new(thema::FONT_SIZE_XS, fett()),
+        schrift,
+    );
+    let name = name.to_string();
+    antwort.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &name));
+    antwort.on_hover_text(name)
+}
+
 /// Hauptschaltfläche (Akzent).
 pub fn hauptknopf(ui: &mut egui::Ui, f: &Farben, beschriftung: &str) -> egui::Response {
     ui.add(
@@ -83,11 +235,27 @@ pub fn hauptknopf(ui: &mut egui::Ui, f: &Farben, beschriftung: &str) -> egui::Re
 
 /// Eine leere Fläche mit Titel und Erklärung.
 pub fn leer(ui: &mut egui::Ui, f: &Farben, titel: &str, erklaerung: &str) {
-    ui.vertical_centered(|ui| {
-        ui.add_space(thema::SPACE_7);
-        ui.label(RichText::new(titel).font(egui::FontId::new(thema::FONT_SIZE_LG, fett())));
-        ui.label(text(f, erklaerung, Ton::Leise));
+    // Linksbündig wie die Karten der Seite — nicht mittig in einer Fläche,
+    // in der alles andere links steht.
+    kasten(ui, f, |ui| {
+        ui.label(RichText::new(titel).font(egui::FontId::new(thema::FONT_SIZE_MD, fett())));
+        if !erklaerung.is_empty() {
+            ui.add(egui::Label::new(text(f, erklaerung, Ton::Leise)).wrap());
+        }
     });
+}
+
+/// Ein Kasten wie eine Karte, ohne Titel (Listen, leere Ansichten).
+pub fn kasten<R>(ui: &mut egui::Ui, f: &Farben, inhalt: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    egui::Frame::new()
+        .fill(f.bg_panel)
+        .stroke(Stroke::new(thema::SIZE_BORDER, f.border_subtle))
+        .inner_margin(egui::Margin::same(thema::SPACE_4 as i8))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            inhalt(ui)
+        })
+        .inner
 }
 
 /// Kürzel-Quadrat (Avatar): Akzent für mich, sonst neutral; grüner Rand, wenn
@@ -157,6 +325,12 @@ pub enum Icon {
     Stopp,
     Senden,
     Warnung,
+    Anhang,
+    Datei,
+    Film,
+    Herunterladen,
+    Extern,
+    Smiley,
 }
 
 impl Icon {
@@ -190,6 +364,12 @@ impl Icon {
             Icon::Stopp => egui::include_image!("../icons/stop.svg"),
             Icon::Senden => egui::include_image!("../icons/send.svg"),
             Icon::Warnung => egui::include_image!("../icons/warning.svg"),
+            Icon::Anhang => egui::include_image!("../icons/anhang.svg"),
+            Icon::Datei => egui::include_image!("../icons/datei.svg"),
+            Icon::Film => egui::include_image!("../icons/film.svg"),
+            Icon::Herunterladen => egui::include_image!("../icons/herunterladen.svg"),
+            Icon::Extern => egui::include_image!("../icons/external.svg"),
+            Icon::Smiley => egui::include_image!("../icons/smiley.svg"),
         }
     }
 
@@ -276,7 +456,9 @@ pub fn hauptknopf_mit(ui: &mut egui::Ui, f: &Farben, icon: Icon, text: &str) -> 
 // ---- Seiten und Formulare: einheitlich in beiden Fenstern ----------------
 
 /// Größte Breite des Inhalts einer Seite — lange Zeilen lesen sich schlecht.
-pub const SEITENBREITE: f32 = thema::SPACE_8 * 12.0;
+/// Größte Breite eines Eingabefelds — lange Felder lesen sich schlecht,
+/// und alle Felder einer Seite sind gleich breit.
+pub const FELDBREITE_MAX: f32 = thema::SPACE_8 * 10.0;
 /// Ab dieser Breite steht die Beschriftung links neben dem Feld, darunter
 /// darüber.
 const FORMULAR_NEBENEINANDER: f32 = thema::SPACE_8 * 8.0;
@@ -286,16 +468,18 @@ const BESCHRIFTUNG: f32 = thema::SPACE_8 * 3.0;
 /// Abstand des Inhalts zum Fensterrand.
 pub const SEITENRAND: f32 = thema::SPACE_5;
 
-/// Eine Seite: senkrecht scrollbar, nie breiter als [`SEITENBREITE`], nie
-/// breiter als das Fenster. Der Rand liegt **innen**: der Scrollbalken sitzt
-/// am Fensterrand, nur der Inhalt hält Abstand.
+/// Eine Seite: senkrecht scrollbar, so breit wie das Fenster — die Karten
+/// füllen die Fläche, statt mit leerem Rand daneben zu hängen. Der Rand liegt
+/// **innen**: der Scrollbalken sitzt am Fensterrand, nur der Inhalt hält
+/// Abstand.
 pub fn seite<R>(ui: &mut egui::Ui, inhalt: impl FnOnce(&mut egui::Ui) -> R) -> R {
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
             rand(ui, |ui| {
-                let breite = ui.available_width().min(SEITENBREITE);
-                ui.set_max_width(breite);
+                // Nie breiter als das Fenster — sonst wüchse der Inhalt mit
+                // dem längsten Element über den Rand.
+                ui.set_max_width(ui.available_width());
                 ui.add_space(thema::SPACE_2);
                 let r = inhalt(ui);
                 ui.add_space(thema::SPACE_6);
@@ -323,12 +507,43 @@ pub fn feld(
     hinweis: Option<&str>,
     inhalt: impl FnOnce(&mut egui::Ui) -> egui::Response,
 ) -> egui::Response {
+    formularzeile(ui, f, beschriftung, hinweis, true, inhalt)
+}
+
+/// Wie [`feld`], aber die Beschriftung wird **nicht** zum Namen des
+/// Elements — für Knöpfe und Regler, die einen eigenen Namen tragen
+/// („Sprechtest starten" statt „Sprechtest").
+pub fn zeile(
+    ui: &mut egui::Ui,
+    f: &Farben,
+    beschriftung: &str,
+    hinweis: Option<&str>,
+    inhalt: impl FnOnce(&mut egui::Ui) -> egui::Response,
+) -> egui::Response {
+    formularzeile(ui, f, beschriftung, hinweis, false, inhalt)
+}
+
+fn formularzeile(
+    ui: &mut egui::Ui,
+    f: &Farben,
+    beschriftung: &str,
+    hinweis: Option<&str>,
+    benennt: bool,
+    inhalt: impl FnOnce(&mut egui::Ui) -> egui::Response,
+) -> egui::Response {
     let nebeneinander = ui.available_width() >= FORMULAR_NEBENEINANDER;
+    let verknuepfen = |a: egui::Response, l: &egui::Response| {
+        if benennt {
+            a.labelled_by(l.id)
+        } else {
+            a
+        }
+    };
     let antwort = if nebeneinander {
         ui.horizontal(|ui| {
             let l = beschriftungsspalte(ui, f, beschriftung, thema::SIZE_CONTROL_SM);
             ui.vertical(|ui| {
-                let a = inhalt(ui).labelled_by(l.id);
+                let a = verknuepfen(inhalt(ui), &l);
                 if let Some(h) = hinweis {
                     ui.add(egui::Label::new(text(f, h, Ton::Blass).small()).wrap());
                 }
@@ -340,7 +555,7 @@ pub fn feld(
     } else {
         ui.vertical(|ui| {
             let l = ui.label(text(f, beschriftung, Ton::Leise));
-            let a = inhalt(ui).labelled_by(l.id);
+            let a = verknuepfen(inhalt(ui), &l);
             if let Some(h) = hinweis {
                 ui.add(egui::Label::new(text(f, h, Ton::Blass).small()).wrap());
             }
@@ -372,7 +587,7 @@ fn beschriftungsspalte(
 
 /// Breite für Eingabefelder: so breit wie Platz ist, höchstens eine Spalte.
 pub fn feldbreite(ui: &egui::Ui) -> f32 {
-    ui.available_width().min(thema::SPACE_8 * 6.0)
+    ui.available_width().min(FELDBREITE_MAX)
 }
 
 /// Fakten (Beschriftung → Wert), Werte brechen um statt aus dem Rand zu
@@ -454,4 +669,19 @@ pub fn kopierbar(ui: &mut egui::Ui, f: &Farben, wert: &str, kopieren: &str) {
         }
         ui.add(egui::Label::new(RichText::new(wert).monospace()).wrap());
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn schwelle_aus_der_position_im_balken() {
+        assert_eq!(wert_aus_position(10.0, 10.0, 200.0), 0);
+        assert_eq!(wert_aus_position(110.0, 10.0, 200.0), 50);
+        assert_eq!(wert_aus_position(210.0, 10.0, 200.0), 100);
+        assert_eq!(wert_aus_position(-50.0, 10.0, 200.0), 0, "links daneben");
+        assert_eq!(wert_aus_position(999.0, 10.0, 200.0), 100, "rechts daneben");
+        assert_eq!(wert_aus_position(5.0, 0.0, 0.0), 0, "ohne Breite");
+    }
 }

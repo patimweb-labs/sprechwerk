@@ -191,3 +191,168 @@ async fn beitrittszeit_bis_zum_ersten_rahmen() {
     println!("  max  {:>6} µs\n", *zeiten.iter().max().unwrap());
     assert!(p95 < 500_000, "p95 {p95} µs — Beitritt dauert über 500 ms");
 }
+
+/// Eine gedrosselte Strecke wie ein Heimanschluss: was der Client sendet, geht
+/// mit höchstens `rate` Byte/s durch einen Puffer von `puffer` Byte (voll:
+/// verworfen, wie im Router). Die Gegenrichtung ist frei. Ein Client.
+async fn engpass(ziel: SocketAddr, rate: f64, puffer: usize) -> SocketAddr {
+    use std::collections::VecDeque;
+    use std::sync::{Arc, Mutex};
+    use tokio::net::UdpSocket;
+    let vorne = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+    let hinten = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+    hinten.connect(ziel).await.unwrap();
+    let adresse = vorne.local_addr().unwrap();
+    let client: Arc<Mutex<Option<SocketAddr>>> = Arc::new(Mutex::new(None));
+    let schlange: Arc<Mutex<(VecDeque<Vec<u8>>, usize)>> = Arc::default();
+
+    // Client → Schlange.
+    {
+        let (vorne, client, schlange) = (vorne.clone(), client.clone(), schlange.clone());
+        tokio::spawn(async move {
+            let mut b = vec![0u8; 2048];
+            while let Ok((n, von)) = vorne.recv_from(&mut b).await {
+                *client.lock().unwrap() = Some(von);
+                let mut s = schlange.lock().unwrap();
+                if s.1 + n <= puffer {
+                    s.1 += n;
+                    s.0.push_back(b[..n].to_vec());
+                }
+            }
+        });
+    }
+    // Schlange → Server, im Takt der Rate (eigener Faden: feiner als 1 ms).
+    {
+        let (hinten, schlange) = (hinten.clone(), schlange.clone());
+        let rt = tokio::runtime::Handle::current();
+        std::thread::spawn(move || {
+            let mut guthaben = 0.0f64;
+            let mut zuletzt = Instant::now();
+            loop {
+                let jetzt = Instant::now();
+                guthaben =
+                    (guthaben + jetzt.duration_since(zuletzt).as_secs_f64() * rate).min(3000.0);
+                zuletzt = jetzt;
+                loop {
+                    let paket = {
+                        let mut s = schlange.lock().unwrap();
+                        match s.0.front() {
+                            Some(p) if (p.len() as f64) <= guthaben => {
+                                let p = s.0.pop_front().unwrap();
+                                s.1 -= p.len();
+                                Some(p)
+                            }
+                            _ => None,
+                        }
+                    };
+                    let Some(p) = paket else { break };
+                    guthaben -= p.len() as f64;
+                    let h = hinten.clone();
+                    rt.spawn(async move {
+                        let _ = h.send(&p).await;
+                    });
+                }
+                std::thread::sleep(Duration::from_micros(100));
+            }
+        });
+    }
+    // Server → Client, frei.
+    tokio::spawn(async move {
+        let mut b = vec![0u8; 2048];
+        while let Ok(n) = hinten.recv(&mut b).await {
+            let an = *client.lock().unwrap();
+            if let Some(an) = an {
+                let _ = vorne.send_to(&b[..n], an).await;
+            }
+        }
+    });
+    adresse
+}
+
+/// Misst `anzahl` Sprachrahmen im 20-ms-Takt von `a` nach `b`.
+async fn takt_messen(a: &Verbindung, b: &Verbindung, anzahl: u16) -> Vec<u128> {
+    let mut zeiten = Vec::new();
+    for folge in 0..anzahl {
+        let daten = Sprachkopf::neu(folge).schreiben(&[0u8; 80]);
+        let start = Instant::now();
+        a.sprache_senden(bytes::Bytes::from(daten)).unwrap();
+        match tokio::time::timeout(Duration::from_millis(1000), b.sprache_empfangen()).await {
+            Ok(Ok(_)) => zeiten.push(start.elapsed().as_micros()),
+            _ => zeiten.push(1_000_000),
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    zeiten
+}
+
+fn ausgeben(titel: &str, zeiten: &[u128]) {
+    let verloren = zeiten.iter().filter(|z| **z >= 1_000_000).count();
+    println!("{titel}, {} Rahmen im 20-ms-Takt:", zeiten.len());
+    println!(
+        "  p50 {:>7} µs   p95 {:>7} µs   p99 {:>7} µs   max {:>7} µs   verloren {verloren}",
+        prozent(zeiten, 0.50),
+        prozent(zeiten, 0.95),
+        prozent(zeiten, 0.99),
+        zeiten.iter().max().unwrap()
+    );
+}
+
+/// Sprache **während** eine Datei auf derselben Verbindung hochlädt (ADR 0012
+/// §3): Datenstrom und Sprach-Datagramme teilen sich Staukontrolle und den
+/// Engpass davor. Gemessen über eine Strecke wie ein Heimanschluss (20 Mbit/s
+/// hinauf, 256 KiB Routerpuffer ≈ 100 ms) im Takt echter Sprache.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "Latenzmessung: nur mit --ignored --nocapture aufrufen"]
+async fn sprachlatenz_waehrend_einer_uebertragung() {
+    use sprechwerk_adapters::anhang::{self, Dateischluessel};
+    use tokio::io::AsyncReadExt;
+    let server = starten(&[]);
+    let strecke = engpass(server.adresse, 2_500_000.0, 256 * 1024).await;
+    let mut ada = Verbindung::oeffnen(strecke, &Schluessel::neu(), "Ada", None)
+        .await
+        .unwrap();
+    let mut bosse = Verbindung::oeffnen(server.adresse, &Schluessel::neu(), "Bosse", None)
+        .await
+        .unwrap();
+    let raum = ada.raeume.first().unwrap().id;
+    ada.sende(ClientFrame::Betreten { raum }).await.unwrap();
+    warte_auf(&mut ada, |f| matches!(f, ServerFrame::Betreten { .. })).await;
+    bosse.sende(ClientFrame::Betreten { raum }).await.unwrap();
+    warte_auf(&mut bosse, |f| matches!(f, ServerFrame::Betreten { .. })).await;
+
+    let ruhig = takt_messen(&ada, &bosse, 100).await;
+
+    // Eine große Datei — sie läuft, solange gemessen wird.
+    const GROESSE: u64 = 1024 * 1024 * 1024;
+    let leitung = ada.leitung();
+    let gesendet = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let zaehler = gesendet.clone();
+    let hoch = tokio::spawn(async move {
+        let quelle = tokio::io::repeat(0).take(GROESSE);
+        let _ = anhang::hochladen(
+            &leitung,
+            &anhang::neue_id(),
+            &Dateischluessel::neu(),
+            quelle,
+            GROESSE,
+            move |n| zaehler.store(n, std::sync::atomic::Ordering::Relaxed),
+        )
+        .await;
+    });
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let start = Instant::now();
+    let vorher = gesendet.load(std::sync::atomic::Ordering::Relaxed);
+    let unter_last = takt_messen(&ada, &bosse, 250).await;
+    let rate = (gesendet.load(std::sync::atomic::Ordering::Relaxed) - vorher) as f64
+        / start.elapsed().as_secs_f64()
+        / 1_000_000.0;
+    hoch.abort();
+
+    println!("\nStrecke: 20 Mbit/s hinauf, 256 KiB Puffer (Heimanschluss)");
+    ausgeben("Sprache ohne Upload", &ruhig);
+    ausgeben(
+        &format!("Sprache während Upload ({rate:.1} MB/s)"),
+        &unter_last,
+    );
+    println!();
+}

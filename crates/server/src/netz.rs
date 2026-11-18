@@ -26,6 +26,12 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::kern::Kern;
 
+/// So viele Datenströme (Anhänge) darf ein Client gleichzeitig offen haben.
+const DATENSTROEME: u8 = 4;
+
+/// So lange darf die Anfrage auf einem Datenstrom auf sich warten lassen.
+const ANFRAGE_FRIST: Duration = Duration::from_secs(10);
+
 /// Zufall als Hexadezimaltext.
 pub fn zufall_hex(anzahl: usize) -> String {
     let mut roh = vec![0u8; anzahl];
@@ -80,6 +86,10 @@ pub async fn lauschen(kern: Arc<Mutex<Kern>>, zert: crate::tls::Zertifikat) -> a
     transport.datagram_send_buffer_size(sprachpuffer);
     transport.max_idle_timeout(Some(Duration::from_secs(30).try_into()?));
     transport.keep_alive_interval(Some(Duration::from_secs(10)));
+    // Datenströme für Anhänge (ADR 0012 §3): wenige gleichzeitig je Verbindung.
+    // Der Steuerstrom öffnet der Server selbst, er zählt hier nicht.
+    transport.max_concurrent_bidi_streams(DATENSTROEME.into());
+    transport.max_concurrent_uni_streams(0u8.into());
     // Staukontrolle: BBR schätzt die Bandbreite, statt bei Verlust zu halbieren.
     if staukontrolle == "bbr" {
         transport.congestion_controller_factory(Arc::new(quinn::congestion::BbrConfig::default()));
@@ -326,7 +336,7 @@ async fn bediene(verbindung: quinn::Connection, kern: Arc<Mutex<Kern>>) -> anyho
                                 mitglied = %ich,
                                 grenze = drossel.grenze,
                                 abgewiesen = drossel.abgewiesen,
-                                "Rahmengrenze überschritten — Verbindung wird getrennt"
+                                "Rahmengrenze überschritten, Verbindung wird getrennt"
                             );
                             let k = kern.lock().expect("Sperre");
                             k.senden(ich, Kern::fehler(Fehlercode::Spaeter));
@@ -360,6 +370,21 @@ async fn bediene(verbindung: quinn::Connection, kern: Arc<Mutex<Kern>>) -> anyho
                     Err(fehler) => break Err(fehler),
                 }
             }
+            strom = verbindung.accept_bi() => {
+                match strom {
+                    // Ein Datenstrom: eigene Aufgabe, damit eine große Datei
+                    // weder Text noch Sprache aufhält.
+                    Ok((send, recv)) => {
+                        let kern = kern.clone();
+                        tokio::spawn(async move {
+                            if let Err(fehler) = daten_bedienen(kern, ich, send, recv).await {
+                                tracing::debug!(mitglied = %ich, fehler = %fehler, "Datenstrom beendet");
+                            }
+                        });
+                    }
+                    Err(_) => break Ok(()),
+                }
+            }
             datagramm = verbindung.read_datagram() => {
                 match datagramm {
                     Ok(d) => {
@@ -381,6 +406,123 @@ async fn bediene(verbindung: quinn::Connection, kern: Arc<Mutex<Kern>>) -> anyho
     schreiber.abort();
     let _ = verbindung.closed().await;
     ergebnis
+}
+
+/// Bedient einen Datenstrom: eine Datei hinauf oder hinunter (ADR 0012 §3).
+///
+/// Die Sperre wird nur für die Prüfung gehalten, nie über das Kopieren —
+/// eine Datei von einem Gigabyte darf den Server nicht anhalten.
+async fn daten_bedienen(
+    kern: Arc<Mutex<Kern>>,
+    ich: MemberId,
+    mut send: quinn::SendStream,
+    mut recv: quinn::RecvStream,
+) -> anyhow::Result<()> {
+    use sprechwerk_protocol::anhang::{Datenanfrage, Datenantwort};
+    use tokio::io::AsyncReadExt;
+
+    async fn antworten(send: &mut quinn::SendStream, a: &Datenantwort) -> anyhow::Result<()> {
+        let bytes = sprechwerk_protocol::schreibe_rahmen(a)?;
+        send.write_all(&bytes).await?;
+        Ok(())
+    }
+    fn abweisung((code, text): crate::kern::Abweisung) -> Datenantwort {
+        Datenantwort::Fehler {
+            code,
+            text: text.to_string(),
+        }
+    }
+
+    // Die Anfrage: ein Rahmen, klein. Byte für Byte, damit nichts vom
+    // Geheimtext dahinter im Puffer verschwindet.
+    let anfrage = tokio::time::timeout(ANFRAGE_FRIST, async {
+        let mut laenge = [0u8; 4];
+        recv.read_exact(&mut laenge).await?;
+        let laenge = u32::from_be_bytes(laenge) as usize;
+        anyhow::ensure!(laenge <= 4096, "Anfrage zu groß");
+        let mut json = vec![0u8; laenge];
+        recv.read_exact(&mut json).await?;
+        Ok(serde_json::from_slice::<Datenanfrage>(&json)?)
+    })
+    .await??;
+
+    match anfrage {
+        Datenanfrage::Hochladen { id, groesse } => {
+            // Erst prüfen, dann warten: die Sperre darf über kein `await`.
+            let geprueft = kern
+                .lock()
+                .expect("Sperre")
+                .hochladen_beginnen(ich, &id, groesse);
+            let pfad = match geprueft {
+                Ok(p) => p,
+                Err(a) => {
+                    antworten(&mut send, &abweisung(a)).await?;
+                    send.finish()?;
+                    let _ = recv.stop(1u32.into());
+                    return Ok(());
+                }
+            };
+            let ergebnis: anyhow::Result<()> = async {
+                let mut datei = datei_anlegen(&pfad).await?;
+                // Eins mehr lesen als angekündigt: wer mehr schickt, lügt.
+                let mut begrenzt = (&mut recv).take(groesse + 1);
+                let kopiert = tokio::io::copy(&mut begrenzt, &mut datei).await?;
+                anyhow::ensure!(kopiert == groesse, "{kopiert} statt {groesse} Byte");
+                datei.sync_all().await?;
+                Ok(())
+            }
+            .await;
+            let abgelegt =
+                kern.lock()
+                    .expect("Sperre")
+                    .hochladen_beenden(ich, &id, ergebnis.is_ok());
+            let antwort = match (&ergebnis, abgelegt) {
+                (Ok(()), true) => Datenantwort::Fertig,
+                (Err(f), _) => Datenantwort::Fehler {
+                    code: Fehlercode::UngueltigeEingabe,
+                    text: f.to_string(),
+                },
+                (Ok(()), false) => Datenantwort::Fehler {
+                    code: Fehlercode::Spaeter,
+                    text: "nicht abgelegt".into(),
+                },
+            };
+            if abgelegt {
+                tracing::info!(mitglied = %ich, groesse, "Anhang abgelegt");
+            }
+            antworten(&mut send, &antwort).await?;
+            send.finish()?;
+            // Auf das Ende warten, sonst bricht das Schließen die Antwort ab.
+            let _ = send.stopped().await;
+        }
+        Datenanfrage::Herunterladen { id } => {
+            let pfad = kern.lock().expect("Sperre").herunterladen_pruefen(ich, &id);
+            let pfad = match pfad {
+                Ok(p) => p,
+                Err(a) => {
+                    antworten(&mut send, &abweisung(a)).await?;
+                    send.finish()?;
+                    return Ok(());
+                }
+            };
+            let mut datei = tokio::fs::File::open(&pfad).await?;
+            let groesse = datei.metadata().await?.len();
+            antworten(&mut send, &Datenantwort::Daten { groesse }).await?;
+            tokio::io::copy(&mut datei, &mut send).await?;
+            send.finish()?;
+            let _ = send.stopped().await;
+        }
+    }
+    Ok(())
+}
+
+/// Neue Datei, nur für den Eigentümer lesbar.
+async fn datei_anlegen(pfad: &std::path::Path) -> std::io::Result<tokio::fs::File> {
+    let mut optionen = tokio::fs::OpenOptions::new();
+    optionen.write(true).create_new(true);
+    #[cfg(unix)]
+    optionen.mode(0o600);
+    optionen.open(pfad).await
 }
 
 /// Prüft die Signatur über den Nonce.

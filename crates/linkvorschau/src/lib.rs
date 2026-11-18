@@ -163,6 +163,11 @@ impl Holer {
     }
 }
 
+/// Bytes als Base64 (so steht ein Bild im Umschlag).
+pub fn base64(bytes: &[u8]) -> String {
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
 fn host(url: &Url) -> String {
     url.host_str().unwrap_or_default().to_string()
 }

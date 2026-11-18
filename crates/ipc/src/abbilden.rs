@@ -137,6 +137,8 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
             anwesend,
         } => {
             zustand.aktueller_raum = Some(raum);
+            // Der Betrachter gehört zum Raum, in dem er geöffnet wurde.
+            zustand.betrachter = None;
             zustand.nachrichten = verlauf
                 .iter()
                 .map(|n| nachricht_abbilden(n, zustand))
@@ -273,6 +275,9 @@ pub fn getrennt(zustand: &mut Zustand, grund: Option<String>) {
     });
     zustand.aktueller_raum = None;
     zustand.entwurf = crate::Linkentwurf::Keiner;
+    // Hochgeladenes gehört zur Verbindung; ohne sie ist der Entwurf hinfällig.
+    zustand.anhaenge.clear();
+    zustand.betrachter = None;
     zustand.mitglieder.clear();
     zustand.raeume.clear();
     // Der Fingerabdruck gehört zur Verbindung: ohne Verbindung kein Wert.
@@ -392,7 +397,115 @@ pub fn inhalt_abbilden(inhalt: sprechwerk_protocol::inhalt::Inhalt) -> crate::Na
                 _ => crate::NachrichtInhalt::Unlesbar,
             }
         }
+        Inhalt::Anhang { text, dateien } => {
+            let dateien: Vec<_> = dateien
+                .into_iter()
+                .take(sprechwerk_protocol::anhang::MAX_DATEIEN)
+                .filter_map(datei_pruefen)
+                .collect();
+            if dateien.is_empty() {
+                return crate::NachrichtInhalt::Unlesbar;
+            }
+            crate::NachrichtInhalt::Anhang { text, dateien }
+        }
     }
+}
+
+/// Höchstlänge eines Dateinamens (Zeichen).
+pub const MAX_DATEINAME: usize = 120;
+/// Höchstlänge eines Vorschaubilds einer Datei (Base64-Zeichen).
+pub const MAX_DATEIVORSCHAU: usize = 64_000;
+
+/// Was das Fenster aus dem Typ des Absenders macht: nur was auf der Liste
+/// steht, wird als Bild oder Video gezeigt. Ein `image/svg+xml` etwa kann
+/// Skript tragen — es bleibt eine Datei zum Herunterladen.
+pub fn art_und_typ(typ: &str) -> (crate::Dateiart, &'static str) {
+    use crate::Dateiart::*;
+    match typ.trim().to_ascii_lowercase().as_str() {
+        "image/jpeg" => (Bild, "image/jpeg"),
+        "image/png" => (Bild, "image/png"),
+        "image/gif" => (Bild, "image/gif"),
+        "image/webp" => (Bild, "image/webp"),
+        "video/mp4" => (Video, "video/mp4"),
+        "video/webm" => (Video, "video/webm"),
+        "video/ogg" => (Video, "video/ogg"),
+        _ => (Datei, "application/octet-stream"),
+    }
+}
+
+/// Ein Dateiname, wie er gezeigt und als Vorschlag beim Speichern genommen
+/// wird: kein Pfad (`../`), keine Steuerzeichen, nicht leer.
+pub fn dateiname(name: &str) -> String {
+    let letzter = name.rsplit(['/', '\\']).next().unwrap_or_default();
+    let sauber = kuerzen(letzter, MAX_DATEINAME);
+    let sauber = sauber.trim_start_matches('.').trim();
+    if sauber.is_empty() {
+        "datei".to_string()
+    } else {
+        sauber.to_string()
+    }
+}
+
+fn ist_base64(b: &str) -> bool {
+    b.bytes()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'+' | b'/' | b'='))
+}
+
+fn datei_pruefen(d: sprechwerk_protocol::inhalt::Datei) -> Option<crate::Dateiansicht> {
+    // Ohne gültige Kennung und Schlüssel ist die Datei nicht zu laden.
+    let schluessel_ok =
+        d.schluessel.len() == 64 && d.schluessel.bytes().all(|c| c.is_ascii_hexdigit());
+    if !sprechwerk_protocol::anhang::ist_id(&d.id) || !schluessel_ok {
+        return None;
+    }
+    let (art, typ) = art_und_typ(&d.typ);
+    let vorschau = d
+        .vorschau
+        .filter(|b| !b.is_empty() && b.len() <= MAX_DATEIVORSCHAU && ist_base64(b));
+    let mass = |w: Option<u32>| w.filter(|w| (1..=100_000).contains(w));
+    Some(crate::Dateiansicht {
+        id: d.id,
+        name: dateiname(&d.name),
+        art,
+        typ: typ.to_string(),
+        groesse: d.groesse,
+        vorschau,
+        breite: mass(d.breite),
+        hoehe: mass(d.hoehe),
+        stand: crate::Ladestand::Keiner,
+    })
+}
+
+/// Trägt den Ladestand jeder Datei ein — im Verlauf und im Betrachter.
+pub fn ladestaende(zustand: &mut Zustand, stand: impl Fn(&str) -> crate::Ladestand) {
+    for n in zustand.nachrichten.iter_mut() {
+        if let crate::NachrichtInhalt::Anhang { dateien, .. } = &mut n.inhalt {
+            for d in dateien.iter_mut() {
+                d.stand = stand(&d.id);
+            }
+        }
+    }
+    if let Some(b) = zustand.betrachter.as_mut() {
+        b.datei.stand = stand(&b.datei.id);
+    }
+}
+
+/// Die Datei `datei` an Nachricht `nachricht`, wie sie im Verlauf steht.
+pub fn datei_finden(
+    zustand: &Zustand,
+    nachricht: sprechwerk_domain::MessageId,
+    datei: &str,
+) -> Option<crate::Dateiansicht> {
+    zustand
+        .nachrichten
+        .iter()
+        .find(|n| n.id == nachricht)
+        .and_then(|n| match &n.inhalt {
+            crate::NachrichtInhalt::Anhang { dateien, .. } => {
+                dateien.iter().find(|d| d.id == datei).cloned()
+            }
+            _ => None,
+        })
 }
 
 /// Ist das eine Adresse, die man im Browser öffnen darf? Nur `http` und
@@ -432,12 +545,9 @@ fn vorschau_pruefen(
         .beschreibung
         .map(|b| kuerzen(&b, MAX_BESCHREIBUNG))
         .filter(|b| !b.is_empty());
-    let bild = v.bild.filter(|b| {
-        !b.is_empty()
-            && b.len() <= MAX_BILD
-            && b.bytes()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'+' | b'/' | b'='))
-    });
+    let bild = v
+        .bild
+        .filter(|b| !b.is_empty() && b.len() <= MAX_BILD && ist_base64(b));
     if titel.is_empty() && bild.is_none() {
         return None;
     }
@@ -581,6 +691,7 @@ mod tests {
             text: text.into(),
             zeit: 1_000,
             geloescht: false,
+            anhaenge: Vec::new(),
         }
     }
 
@@ -938,5 +1049,111 @@ mod tests {
         ] {
             assert!(!ist_weblink(nein), "{nein}");
         }
+    }
+
+    fn datei(id: &str, name: &str, typ: &str) -> sprechwerk_protocol::inhalt::Datei {
+        sprechwerk_protocol::inhalt::Datei {
+            id: id.into(),
+            name: name.into(),
+            typ: typ.into(),
+            groesse: 10,
+            schluessel: "ab".repeat(32),
+            vorschau: Some("AAAA".into()),
+            breite: Some(800),
+            hoehe: Some(0),
+        }
+    }
+
+    /// Was ein Mitglied als Datei schickt, wird geprüft wie ein Link: kein
+    /// Pfad im Namen, kein Bild aus einem fremden Typ, keine kaputte Kennung.
+    #[test]
+    fn anhaenge_werden_geprueft() {
+        use crate::{Dateiart, NachrichtInhalt};
+        use sprechwerk_protocol::inhalt::Inhalt;
+        let gut = "0a".repeat(16);
+        let inhalt = Inhalt::Anhang {
+            text: "Fotos".into(),
+            dateien: vec![
+                datei(&gut, "../../.bashrc", "image/JPEG"),
+                datei(&"0b".repeat(16), "bild.svg", "image/svg+xml"),
+                datei(&"0c".repeat(16), "film.webm", "video/webm"),
+                datei("../weg", "x.png", "image/png"),
+                sprechwerk_protocol::inhalt::Datei {
+                    schluessel: "kurz".into(),
+                    ..datei(&"0d".repeat(16), "x.png", "image/png")
+                },
+                sprechwerk_protocol::inhalt::Datei {
+                    vorschau: Some("<script>".into()),
+                    ..datei(&"0e".repeat(16), "\u{0007}", "image/png")
+                },
+            ],
+        };
+        let NachrichtInhalt::Anhang { text, dateien } = inhalt_abbilden(inhalt) else {
+            panic!("kein Anhang");
+        };
+        assert_eq!(text, "Fotos");
+        let kurz: Vec<_> = dateien
+            .iter()
+            .map(|d| (d.name.as_str(), d.art, d.typ.as_str()))
+            .collect();
+        assert_eq!(
+            kurz,
+            [
+                ("bashrc", Dateiart::Bild, "image/jpeg"),
+                ("bild.svg", Dateiart::Datei, "application/octet-stream"),
+                ("film.webm", Dateiart::Video, "video/webm"),
+                ("datei", Dateiart::Bild, "image/png"),
+            ]
+        );
+        assert_eq!(dateien[0].breite, Some(800));
+        assert_eq!(dateien[0].hoehe, None, "0 ist kein Maß");
+        assert_eq!(dateien[3].vorschau, None, "kein Base64");
+
+        // Bleibt keine Datei übrig, ist die Nachricht unlesbar.
+        let leer = Inhalt::Anhang {
+            text: "x".into(),
+            dateien: vec![datei("kaputt", "a", "b")],
+        };
+        assert_eq!(inhalt_abbilden(leer), NachrichtInhalt::Unlesbar);
+    }
+
+    #[test]
+    fn ladestand_steht_an_jeder_datei() {
+        use crate::{Ladestand, NachrichtInhalt};
+        let mut z = verbunden(Role::Mitglied);
+        let id = "0a".repeat(16);
+        let mut n = nachricht_abbilden(&nachricht(1, 1, "e1.x", RoomId::aus_roh(1)), &z);
+        n.inhalt = inhalt_abbilden(sprechwerk_protocol::inhalt::Inhalt::Anhang {
+            text: String::new(),
+            dateien: vec![datei(&id, "a.png", "image/png")],
+        });
+        let nid = n.id;
+        z.nachrichten.push(n);
+        let d = datei_finden(&z, nid, &id).expect("Datei");
+        z.betrachter = Some(crate::Betrachter {
+            nachricht: nid,
+            datei: d,
+        });
+        ladestaende(&mut z, |i| {
+            if i == id {
+                Ladestand::Laedt { prozent: 40 }
+            } else {
+                Ladestand::Keiner
+            }
+        });
+        let NachrichtInhalt::Anhang { dateien, .. } = &z.nachrichten[0].inhalt else {
+            panic!();
+        };
+        assert_eq!(dateien[0].stand, Ladestand::Laedt { prozent: 40 });
+        assert_eq!(
+            z.betrachter.as_ref().unwrap().datei.stand,
+            Ladestand::Laedt { prozent: 40 }
+        );
+        assert!(datei_finden(&z, nid, "fehlt").is_none());
+
+        // Getrennt: Entwurf und Betrachter sind weg.
+        getrennt(&mut z, None);
+        assert!(z.betrachter.is_none());
+        assert!(z.anhaenge.is_empty());
     }
 }

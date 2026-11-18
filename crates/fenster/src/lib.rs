@@ -30,3 +30,15 @@ pub fn profil() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
         .join("de.weppelmann.Sprechwerk")
 }
+
+/// Zwischenspeicher der Anhänge (Geheimtext, wie vom Server). Liegt im
+/// Cache-Ordner des Systems; mit `SPRECHWERK_PROFIL` im Profil, damit zwei
+/// Fenster auf einem Rechner sich nicht in die Quere kommen.
+pub fn zwischenspeicher() -> PathBuf {
+    if let Some(eigen) = std::env::var_os("SPRECHWERK_PROFIL") {
+        return PathBuf::from(eigen).join("zwischenspeicher");
+    }
+    dirs::cache_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("de.weppelmann.Sprechwerk")
+}

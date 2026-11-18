@@ -84,7 +84,10 @@ impl Sitzung {
             .bund
             .verschluesseln(raum, self.verbindung.ich, &Inhalt::text(text))?;
         self.verbindung
-            .sende(ClientFrame::Text { text: geheim })
+            .sende(ClientFrame::Text {
+                text: geheim,
+                anhaenge: Vec::new(),
+            })
             .await
     }
 
@@ -351,7 +354,7 @@ fn zeige(frame: &ServerFrame, bund: &Bund) {
                     .clone()
                     .or_else(|| b.adresse.clone())
                     .unwrap_or_else(|| "?".into());
-                println!("  {wer} — {} ({})", b.grund, b.handelnder_name);
+                println!("  {wer}: {} ({})", b.grund, b.handelnder_name);
             }
         }
         ServerFrame::Zaehler {
@@ -455,7 +458,17 @@ fn lesbar(l: Lesbar) -> String {
                 if weg { "nimmt zurück:" } else { "reagiert" }
             )
         }
-        Lesbar::Unbekannt { art } => format!("(„{art}“ — neuere Version nötig)"),
+        // Der Referenzclient lädt keine Dateien; er sagt, dass welche da sind.
+        Lesbar::Inhalt(Inhalt::Anhang { text, dateien }) => {
+            let namen: Vec<String> = dateien
+                .iter()
+                .map(|d| format!("{} ({} Byte)", d.name, d.groesse))
+                .collect();
+            format!("{text} [Dateien: {}]", namen.join(", "))
+                .trim()
+                .to_string()
+        }
+        Lesbar::Unbekannt { art } => format!("(„{art}“: neuere Version nötig)"),
         Lesbar::SchluesselFehlt => "(verschlüsselt — Schlüssel fehlt noch)".into(),
         Lesbar::Unlesbar => "(unlesbar — verändert oder beschädigt)".into(),
         Lesbar::Leer => "(gelöscht)".into(),

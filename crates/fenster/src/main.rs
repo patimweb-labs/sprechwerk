@@ -8,7 +8,7 @@ use eframe::egui;
 use sprechwerk_client::Client;
 use sprechwerk_fenster::app::Fenster;
 use sprechwerk_fenster::modell::Oberflaeche;
-use sprechwerk_fenster::profil;
+use sprechwerk_fenster::{profil, zwischenspeicher};
 use std::sync::{mpsc, Arc, Mutex};
 
 fn main() -> eframe::Result {
@@ -36,7 +36,7 @@ fn main() -> eframe::Result {
             let tx = Mutex::new(tx);
             let ctx = cc.egui_ctx.clone();
             // Jede Meldung des Clients weckt das Fenster: neues Bild, neues Modell.
-            let client = Client::starten(&profil(), move |m| {
+            let client = Client::starten(&profil(), &zwischenspeicher(), move |m| {
                 if let Ok(tx) = tx.lock() {
                     let _ = tx.send(m);
                 }

@@ -102,7 +102,8 @@ pub struct Oberflaeche {
     /// Zuletzt an den Client gemeldeter Link des Entwurfs.
     pub entwurf_link: Option<String>,
     pub geraete: Laden<Geraeteliste>,
-    pub pegeltest: Laden<u8>,
+    /// Läuft der Sprechtest (Aufnahme ohne Verbindung, nur für den Pegel)?
+    pub sprechtest: bool,
     pub audio: AudioStand,
     /// Wartet die Einstellungsseite auf die neue Sprechtaste?
     pub taste_aufnehmen: bool,
@@ -168,7 +169,7 @@ impl Oberflaeche {
                 Err(text) => {
                     match aktion {
                         "geraete" => self.geraete = Laden::Fehler(text.clone()),
-                        "pegel" => self.pegeltest = Laden::Fehler(text.clone()),
+                        "audio_starten" => self.sprechtest = false,
                         _ => {}
                     }
                     self.hinweis = Some(Hinweis::Fehler(text));
@@ -178,7 +179,7 @@ impl Oberflaeche {
                     self.hinweis = audio.map(Hinweis::Fehler);
                 }
                 Ok(Ergebnis::Geraete(liste)) => self.geraete = Laden::Fertig(liste),
-                Ok(Ergebnis::Pegel(p)) => self.pegeltest = Laden::Fertig(p),
+                Ok(Ergebnis::Pegel(_)) => {}
                 Ok(Ergebnis::Erledigt) => match aktion {
                     "testton" => self.hinweis = Some(Hinweis::Info(t(sprache, "set.speaker.done"))),
                     "zertifikat_vergessen" => {
@@ -194,6 +195,32 @@ impl Oberflaeche {
                 },
             },
         }
+    }
+
+    /// Sprechtest an oder aus. Mit Verbindung läuft die Aufnahme ohnehin —
+    /// dann gibt es nichts zu tun.
+    pub fn sprechtest(&mut self, an: bool) -> Option<Aktion> {
+        if self.verbunden() || self.sprechtest == an {
+            return None;
+        }
+        self.sprechtest = an;
+        Some(if an {
+            Aktion::AudioStarten
+        } else {
+            Aktion::AudioStoppen
+        })
+    }
+
+    /// Wer die Einstellungen verlässt, beendet den Sprechtest: ohne
+    /// Verbindung soll das Mikrofon nicht offen bleiben.
+    pub fn sprechtest_aufraeumen(&mut self) -> Option<Aktion> {
+        if self.sprechtest && (self.ansicht != Ansicht::Einstellungen || self.verbunden()) {
+            self.sprechtest = false;
+            if !self.verbunden() {
+                return Some(Aktion::AudioStoppen);
+            }
+        }
+        None
     }
 
     /// Eine Ansicht öffnen. Was sie zeigt, wird dabei angefordert — die
@@ -225,7 +252,8 @@ impl Oberflaeche {
     /// Den Entwurf abschicken. `None`, wenn nichts zu senden ist.
     pub fn senden(&mut self) -> Option<Aktion> {
         let text = self.entwurf.trim().to_string();
-        if text.is_empty() {
+        // Nur Dateien, ohne Text, ist auch eine Nachricht.
+        if text.is_empty() && self.zustand.anhaenge.is_empty() {
             return None;
         }
         self.entwurf.clear();
@@ -362,6 +390,27 @@ mod tests {
         assert_eq!(o.oeffnen(Ansicht::Einstellungen), None, "Geräte nur einmal");
         assert_eq!(o.oeffnen(Ansicht::Server), None);
         assert_eq!(o.ansicht, Ansicht::Server);
+    }
+
+    #[test]
+    fn sprechtest_oeffnet_und_schliesst_das_mikrofon() {
+        let mut o = Oberflaeche {
+            ansicht: Ansicht::Einstellungen,
+            ..Default::default()
+        };
+        assert_eq!(o.sprechtest(true), Some(Aktion::AudioStarten));
+        assert_eq!(o.sprechtest(true), None, "läuft schon");
+        assert_eq!(o.sprechtest_aufraeumen(), None, "noch in den Einstellungen");
+        o.ansicht = Ansicht::Server;
+        assert_eq!(
+            o.sprechtest_aufraeumen(),
+            Some(Aktion::AudioStoppen),
+            "verlassen"
+        );
+        assert!(!o.sprechtest);
+        // Mit Verbindung läuft die Aufnahme sowieso: kein Start, kein Stopp.
+        o.zustand = verbunden();
+        assert_eq!(o.sprechtest(true), None);
     }
 
     #[test]

@@ -9,6 +9,11 @@
 //! Kennung ein Besitznachweis. Wer die Schlüsseldatei kopiert, ist derselbe
 //! Mensch; das ist die bewusst gewählte Schwäche („Kennung ist mitnehmbar").
 
+pub mod anhang;
+
+/// Eine QUIC-Verbindung — für Datenströme ([`anhang`]), ohne dass ein
+/// Aufrufer `quinn` selbst kennen muss.
+pub type Leitung = quinn::Connection;
 pub mod echo;
 pub mod klang;
 pub mod serverschluessel;
@@ -328,6 +333,11 @@ impl Verbindung {
         let mut transport = quinn::TransportConfig::default();
         transport.datagram_receive_buffer_size(Some(1 << 20));
         transport.keep_alive_interval(Some(std::time::Duration::from_secs(10)));
+        // BBR statt Cubic, wie im Server: Cubic füllt beim Hochladen eines
+        // Anhangs den Puffer des Routers, und die eigene Sprache steht dann
+        // dahinter an (gemessen: +90 ms an 20 Mbit/s, `tests/latenz.rs`,
+        // `sprachlatenz_waehrend_einer_uebertragung`).
+        transport.congestion_controller_factory(Arc::new(quinn::congestion::BbrConfig::default()));
         client_config.transport_config(Arc::new(transport));
 
         let mut endpunkt = quinn::Endpoint::client("0.0.0.0:0".parse()?)?;
@@ -471,6 +481,12 @@ impl Verbindung {
     /// Steuerstrom zu lesen. Zwei Leser auf demselben Strom wären ein Fehler;
     /// Datagramme dagegen haben ihren eigenen Pfad.
     pub fn datagramm_quelle(&self) -> quinn::Connection {
+        self.conn.clone()
+    }
+
+    /// Die QUIC-Verbindung für Datenströme (Anhänge, [`anhang`]). Ein
+    /// Datenstrom ist ein **eigener** Strom — er stört den Steuerstrom nicht.
+    pub fn leitung(&self) -> quinn::Connection {
         self.conn.clone()
     }
 

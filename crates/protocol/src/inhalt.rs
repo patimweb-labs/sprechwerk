@@ -12,7 +12,7 @@ pub const INHALT_VERSION: u32 = 1;
 
 /// Arten, die dieser Client kennt. Scheitert eine davon beim Lesen, ist sie
 /// kaputt — nicht „neuer".
-const BEKANNT: &[&str] = &["text", "reaktion"];
+const BEKANNT: &[&str] = &["text", "reaktion", "anhang"];
 
 /// Höchstlänge eines Reaktionszeichens in Bytes (ein Emoji mit Hautton und
 /// Verbindern passt; ein Satz nicht).
@@ -49,6 +49,41 @@ pub enum Inhalt {
         #[serde(default, skip_serializing_if = "ist_falsch")]
         weg: bool,
     },
+    /// Dateien (Bilder, Videos, alles andere), wahlweise mit Text.
+    ///
+    /// Eine eigene Art, kein Feld am Text: ein Client der Stufe 2 könnte die
+    /// Dateien weder zeigen noch laden — er soll „neuere Version nötig" sagen,
+    /// statt nur den Text zu zeigen und die Dateien zu verschweigen.
+    Anhang {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        text: String,
+        dateien: Vec<Datei>,
+    },
+}
+
+/// Eine Datei im Umschlag: alles, was der Server **nicht** sehen soll.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Datei {
+    /// Kennung auf dem Server ([`crate::anhang::ist_id`]).
+    pub id: String,
+    /// Dateiname, wie ihn der Absender hatte.
+    pub name: String,
+    /// Medientyp, vom Absender aus der Endung bestimmt (`image/png`, …).
+    /// Ein Empfänger traut ihm nicht blind: gezeigt wird nur, was auf seiner
+    /// Liste steht.
+    pub typ: String,
+    /// Größe im Klartext (Byte).
+    pub groesse: u64,
+    /// Dateischlüssel (32 Byte, Hex) — für jede Datei ein eigener.
+    pub schluessel: String,
+    /// Vorschaubild als JPEG, Base64 — klein gerechnet vom Absender.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vorschau: Option<String>,
+    /// Abmessungen des Originals (Bild), damit der Platz vor dem Laden stimmt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub breite: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hoehe: Option<u32>,
 }
 
 fn ist_falsch(b: &bool) -> bool {
@@ -183,12 +218,38 @@ mod tests {
 
     #[test]
     fn neue_art_ist_unbekannt_nicht_kaputt() {
-        let neu = br#"{"v":1,"art":"anhang","dateien":[]}"#;
+        let neu = br#"{"v":1,"art":"umfrage","fragen":[]}"#;
         assert_eq!(
             Inhalt::lesen(neu),
             Gelesen::Unbekannt {
-                art: "anhang".into()
+                art: "umfrage".into()
             }
+        );
+    }
+
+    #[test]
+    fn anhang_ist_umkehrbar() {
+        let i = Inhalt::Anhang {
+            text: String::new(),
+            dateien: vec![Datei {
+                id: "0a".repeat(16),
+                name: "Sommerfest.jpg".into(),
+                typ: "image/jpeg".into(),
+                groesse: 1234,
+                schluessel: "ff".repeat(32),
+                vorschau: Some("AAAA".into()),
+                breite: Some(4000),
+                hoehe: Some(3000),
+            }],
+        };
+        let bytes = i.schreiben();
+        // Ohne Text steht das Feld nicht da.
+        assert!(!std::str::from_utf8(&bytes).unwrap().contains(r#""text""#));
+        assert_eq!(Inhalt::lesen(&bytes), Gelesen::Inhalt(i));
+        // Eine Datei ohne Schlüssel ist kaputt, nicht „neuer".
+        assert_eq!(
+            Inhalt::lesen(br#"{"v":1,"art":"anhang","dateien":[{"id":"x","name":"a","typ":"b","groesse":1}]}"#),
+            Gelesen::Kaputt
         );
     }
 

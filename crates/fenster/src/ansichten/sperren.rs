@@ -13,8 +13,13 @@ use sprechwerk_client::sitzung::Aktion;
 use sprechwerk_ipc::Befehl;
 
 pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) {
+    // Die ganze Seite im Seitenrahmen — Überschrift und leere Ansicht
+    // eingeschlossen, sonst kleben sie ohne Rand an der Kante.
+    sprechwerk_oberflaeche::bausteine::seite(ui, |ui| inhalt(ui, o, aktionen));
+}
+
+fn inhalt(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) {
     let s = o.sprache();
-    ui.add_space(thema::SPACE_2);
     seitenkopf(ui, o, &t(s, "bans.title"), &t(s, "bans.sub"));
     if !logik::darf_sperren(&o.zustand) {
         ui.label(text(o, t(s, "bans.no_right"), Ton::Warnung));
@@ -26,7 +31,7 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
     }
     let f = *o.thema().farben();
     let sperren = o.zustand.sperren.clone();
-    sprechwerk_oberflaeche::bausteine::seite(ui, |ui| {
+    sprechwerk_oberflaeche::bausteine::kasten(ui, &f, |ui| {
         for (i, sp) in sperren.iter().enumerate() {
             if i > 0 {
                 ui.separator();
@@ -34,7 +39,7 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
             let (was, art) = match (&sp.kennung, &sp.adresse) {
                 (Some(k), _) => (logik::kennung_gruppiert(k, 16), t(s, "bans.kind_key")),
                 (None, Some(a)) => (a.clone(), t(s, "bans.kind_address")),
-                (None, None) => ("—".into(), String::new()),
+                (None, None) => (String::new(), String::new()),
             };
             let mut aufheben = false;
             egui::Sides::new()
