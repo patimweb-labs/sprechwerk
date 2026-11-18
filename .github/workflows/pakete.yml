@@ -114,11 +114,10 @@ jobs:
         run: |
           version=$(packaging/version.sh)
           cp linux/sprechwerk-*-linux-x86_64.tar.gz packaging/flatpak/sprechwerk.tar.gz
-          # `--disable-rofiles-fuse`: ohne diese Schicht arbeitet flatpak-builder
-          # direkt im Bauverzeichnis. Mit ihr liest AppStream die Dateien über
-          # FUSE und brach auf den Läufern mit „file-read-error“ ab, obwohl Bau
-          # und Inhalt stimmten — dieselbe Datei im selben Ubuntu lief ohne die
-          # Schicht durch.
+          # `--disable-rofiles-fuse` und `--keep-build-dirs` sind für den
+          # Fehlerfall da: AppStream liest den Baum dann direkt statt über
+          # FUSE, und `bau/files` bleibt nach einem Abbruch stehen, damit der
+          # Diagnoseschritt unten hineinschauen kann.
           flatpak-builder --user --install-deps-from=flathub --repo=repo --force-clean \
             --disable-rofiles-fuse --keep-build-dirs \
             bau packaging/flatpak/de.weppelmann.Sprechwerk.yml
@@ -126,28 +125,24 @@ jobs:
             --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
 
       # Nur wenn der Bau scheitert: sagen, woran es lag. Die Ausgabe von
-      # AppStream ist knapp („file-read-error“), ohne den Dateinamen aber
-      # nutzlos — deshalb der Baum und ein zweiter Lauf mit -v.
+      # AppStream ist knapp — sie nennt den Dateinamen nur mit `-v`, und die
+      # Schicht darüber schreibt es gar nicht erst ins Protokoll.
       - name: Woran es lag
         if: failure()
         run: |
           echo "flatpak:           $(flatpak --version)"
           echo "flatpak-builder:   $(flatpak-builder --version)"
           echo "appstreamcli:      $(appstreamcli --version)"
-          echo "librsvg:           $(dpkg -l | grep -c librsvg)"
-          echo "AppStream-Katalog: $(ls /usr/share/swcatalog/xml 2>/dev/null | wc -l) Dateien"
-          echo "Metainfo im System: $(ls /usr/share/metainfo 2>/dev/null | wc -l)"
+          echo "librsvg:           $(dpkg -l | grep librsvg | awk '{print $2}' | tr '\n' ' ')"
           baum=$(ls -d bau/files 2>/dev/null | head -1)
           echo "Baum: ${baum:-keiner}"
           if [ -n "$baum" ]; then
             find "$baum" -maxdepth 5 | sort | head -40
-            echo "--- Dateirechte ---"
-            ls -la "$baum/share/metainfo" "$baum/share/icons/hicolor/scalable/apps" 2>&1
             echo "--- compose noch einmal, ausführlich ---"
             mkdir -p /tmp/aus
             appstreamcli compose --origin=flatpak --prefix=/ \
               --components=de.weppelmann.Sprechwerk,de.weppelmann.Sprechwerk.desktop \
-              --result-root=/tmp/aus --no-net -v --print-report=full "$baum" 2>&1 | tail -60 || true
+              --result-root=/tmp/aus --no-net -v --print-report=full "$baum" 2>&1 | tail -40 || true
           fi
 
       - uses: actions/upload-artifact@v7

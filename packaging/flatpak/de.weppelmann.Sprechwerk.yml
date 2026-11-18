@@ -28,3 +28,8 @@ modules:
       - install -Dm755 usr/bin/sprechwerk-fenster /app/bin/sprechwerk-fenster
       - install -Dm755 usr/bin/sprechwerk-server-fenster /app/bin/sprechwerk-server-fenster
       - cp -a usr/share /app/
+      # AppStream 1.0, das `flatpak-builder` beim Bau aufruft, kann SVG nicht
+      # lesen: Es geht alle Symbole im hicolor-Baum durch und bricht an der
+      # .svg mit „Unrecognized image file format“ ab — der ganze Lauf fällt.
+      # Die PNGs von 32 bis 512 decken die Skalierung ab.
+      - rm -rf /app/share/icons/hicolor/scalable
