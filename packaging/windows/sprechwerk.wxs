@@ -1,0 +1,40 @@
+<!-- Windows-Installer (WiX v5): Fenster, Server mit Fenster, Konsolenprogramme,
+     opus.dll daneben (crates/audio sucht sie neben der .exe). Pro Rechner;
+     Startmenü-Einträge für beide Fenster. Aufruf über paket.ps1. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Sprechwerk" Manufacturer="Weppelmann" Version="$(Version)"
+           UpgradeCode="7d2b0f4e-5f3a-4c11-9a43-2b8c6f1e9d70" Scope="perMachine">
+    <MajorUpgrade DowngradeErrorMessage="Eine neuere Version von Sprechwerk ist schon installiert." />
+    <MediaTemplate EmbedCab="yes" />
+    <Icon Id="sprechwerk.ico" SourceFile="packaging\icons\icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="sprechwerk.ico" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Sprechwerk">
+        <Component Id="Programme" Guid="*">
+          <File Source="target\release\sprechwerk-fenster.exe" KeyPath="yes" />
+          <File Source="target\release\sprechwerk-server-fenster.exe" />
+          <File Source="target\release\sprechwerk.exe" />
+          <File Source="target\release\sprechwerk-cli.exe" />
+          <File Source="packaging\opus\opus.dll" />
+          <File Source="LICENSE" Name="LICENSE.txt" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="Startmenue" Guid="*">
+        <Shortcut Id="FensterVerknuepfung" Name="Sprechwerk" Target="[INSTALLFOLDER]sprechwerk-fenster.exe"
+                  WorkingDirectory="INSTALLFOLDER" Icon="sprechwerk.ico" />
+        <Shortcut Id="ServerVerknuepfung" Name="Sprechwerk Server" Target="[INSTALLFOLDER]sprechwerk-server-fenster.exe"
+                  WorkingDirectory="INSTALLFOLDER" Icon="sprechwerk.ico" />
+        <RegistryValue Root="HKLM" Key="Software\Weppelmann\Sprechwerk" Name="installiert" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <Feature Id="Alles">
+      <ComponentRef Id="Programme" />
+      <ComponentRef Id="Startmenue" />
+    </Feature>
+  </Package>
+</Wix>

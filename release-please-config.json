@@ -61,37 +61,7 @@
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name.value == 'sprechwerk-domain' || @.name.value == 'sprechwerk-protocol' || @.name.value == 'sprechwerk-store' || @.name.value == 'sprechwerk-adapters' || @.name.value == 'sprechwerk-ipc' || @.name.value == 'sprechwerk-server' || @.name.value == 'sprechwerk-cli' || @.name.value == 'sprechwerk-audio' || @.name.value == 'sprechwerk-linkvorschau')].version"
-        },
-        {
-          "type": "toml",
-          "path": "crates/desktop/Cargo.toml",
-          "jsonpath": "$.package.version"
-        },
-        {
-          "type": "toml",
-          "path": "crates/desktop/Cargo.lock",
-          "jsonpath": "$.package[?(@.name.value == 'sprechwerk-domain' || @.name.value == 'sprechwerk-protocol' || @.name.value == 'sprechwerk-adapters' || @.name.value == 'sprechwerk-ipc' || @.name.value == 'sprechwerk-audio' || @.name.value == 'sprechwerk-linkvorschau' || @.name.value == 'sprechwerk-desktop')].version"
-        },
-        {
-          "type": "json",
-          "path": "crates/desktop/tauri.conf.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "ui/package.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "ui/package-lock.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "ui/package-lock.json",
-          "jsonpath": "$.packages[''].version"
+          "jsonpath": "$.package[?(@.name.value == 'sprechwerk-domain' || @.name.value == 'sprechwerk-protocol' || @.name.value == 'sprechwerk-store' || @.name.value == 'sprechwerk-adapters' || @.name.value == 'sprechwerk-ipc' || @.name.value == 'sprechwerk-server' || @.name.value == 'sprechwerk-cli' || @.name.value == 'sprechwerk-audio' || @.name.value == 'sprechwerk-linkvorschau' || @.name.value == 'sprechwerk-client' || @.name.value == 'sprechwerk-oberflaeche' || @.name.value == 'sprechwerk-fenster' || @.name.value == 'sprechwerk-server-fenster')].version"
         }
       ]
     }

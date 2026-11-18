@@ -153,7 +153,8 @@ impl eframe::App for App {
 fn main() -> eframe::Result {
     let mitschrift = dienst::protokoll_einrichten();
     let symbol =
-        eframe::icon_data::from_png_bytes(include_bytes!("../icon-256.png")).unwrap_or_default();
+        eframe::icon_data::from_png_bytes(include_bytes!("../../../packaging/icons/icon-256.png"))
+            .unwrap_or_default();
     let optionen = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Sprechwerk Server")

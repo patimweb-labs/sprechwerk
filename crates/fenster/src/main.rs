@@ -12,8 +12,9 @@ use sprechwerk_fenster::{profil, thema};
 use std::sync::{mpsc, Arc, Mutex};
 
 fn main() -> eframe::Result {
-    let symbol = eframe::icon_data::from_png_bytes(include_bytes!("../icons/icon-256.png"))
-        .unwrap_or_default();
+    let symbol =
+        eframe::icon_data::from_png_bytes(include_bytes!("../../../packaging/icons/icon-256.png"))
+            .unwrap_or_default();
     let optionen = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Sprechwerk")

@@ -1,0 +1,30 @@
+# deb und rpm aus denselben Dateien (nfpm, https://nfpm.goreleaser.com).
+# Aufruf über packaging/linux/paket.sh, das VERSION, ARCH und STAGE setzt.
+name: sprechwerk
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+section: net
+priority: optional
+maintainer: Patrick Weppelmann
+description: |
+  Sprach- und Texträume für Vereine, selbst gehostet.
+  Fenster (sprechwerk-fenster), Server mit Fenster (sprechwerk-server-fenster),
+  Server für die Konsole (sprechwerk) und Referenzclient (sprechwerk-cli).
+vendor: Weppelmann
+homepage: https://gitea.weppelmann.ddnss.de/patrickweppelmann/sprechwerk
+license: MIT
+# Ton über PipeWire/PulseAudio, Opus zur Laufzeit (docs/AUDIO.md).
+recommends:
+  - pulseaudio-utils
+overrides:
+  deb:
+    depends:
+      - libopus0
+  rpm:
+    depends:
+      - opus
+contents:
+  - src: ${STAGE}/usr/
+    dst: /usr/
+    type: tree

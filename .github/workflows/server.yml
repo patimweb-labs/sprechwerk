@@ -5,14 +5,11 @@
 #     auffällt. Die Archive liegen danach als Artefakte am Lauf.
 #   * `release.yml` mit dem Tag — dort hängen dieselben Archive am Release.
 #
-# **Verwaltungsoberfläche** (SPEC §2, Nachtrag 2026-11-17; ADR 0011): wird
-# einmal gebaut (`verwaltung`, Node) und in jedes Programm eingebettet
-# (`crates/server/build.rs`). Das Artefakt `verwaltung` braucht auch der
-# Container-Bau in `release.yml`.
+# **Verwaltung** (ADR 0013): auf der Konsole (`sprechwerk stand`,
+# `sprechwerk rolle …`) — reines Rust, kein Node. Wer ein Fenster will, nimmt
+# `sprechwerk-server-fenster` aus den Fensterpaketen (`pakete.yml`).
 #
-# Der Server unter Windows und macOS ist ein Programm mit Konsolenfenster: ein
-# Doppelklick startet ihn, das Fenster zeigt das Protokoll, der Browser öffnet
-# die Verwaltung. Daten liegen in `daten/` neben dem Programm.
+# Daten liegen in `daten/` neben dem Programm.
 #
 # **Unsigniert** wie die Fensterpakete (siehe `pakete.yml`).
 
@@ -41,47 +38,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  verwaltung:
-    name: Verwaltungsoberfläche
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-
-      # Dieselben Komponenten wie das Fenster — die Verwaltung sieht aus wie
-      # ein Teil der App.
-      - name: Komponentenbibliothek holen
-        env:
-          TOKEN: ${{ secrets.WEPPELMANN_UI_TOKEN }}
-        run: |
-          ziel="$(pwd)/../weppelmann-ui"
-          url="https://github.com/Smotherer007/weppelmann-ui.git"
-          if [ -n "$TOKEN" ]; then
-            url="https://x-access-token:${TOKEN}@github.com/Smotherer007/weppelmann-ui.git"
-          fi
-          git clone --depth 1 "$url" "$ziel"
-          cd "$ziel" && npm ci --no-audit --no-fund && npm run -s tokens
-
-      - name: Bauen
-        run: |
-          cd ui
-          npm ci --no-audit --no-fund
-          npm run --silent verwaltung
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: verwaltung
-          if-no-files-found: error
-          path: ui/dist-verwaltung/
-
   programm:
     name: Server ${{ matrix.name }}
-    needs: verwaltung
     strategy:
       fail-fast: false
       matrix:
@@ -103,11 +61,6 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: verwaltung
-          path: ui/dist-verwaltung
 
       - name: Version
         id: v

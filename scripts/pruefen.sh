@@ -4,13 +4,11 @@
 #
 # Alles prüfen — mit einem Aufruf.
 #
-# Warum es dieses Skript gibt: `cargo test` im Wurzelverzeichnis sammelt die
-# Tests von `crates/desktop` **nicht** ein (Tauri hat eine eigene Sperrdatei,
-# das Crate steht außerhalb des Arbeitsbereichs). Diese Prüfung lief deshalb
-# jahrelang niemand — und die Oberfläche ist genau der Teil, den der Nutzer
-# beurteilt.
+# Seit ADR 0013 ist alles ein Arbeitsbereich in Rust: Server, Client-Kern und
+# beide Fenster samt Oberflächentests (egui_kittest) laufen mit einem
+# `cargo test --workspace`.
 #
-#   scripts/pruefen.sh              Tests + Ansichten + Sprachproben
+#   scripts/pruefen.sh              Tests + Bilder + Sprachproben
 #   scripts/pruefen.sh --mit-audio  zusätzlich der echte Gerätepfad
 #   scripts/pruefen.sh --nur-tests  schnell: nur kompilieren und testen
 #
@@ -53,43 +51,16 @@ cargo fmt --all --check >/dev/null 2>&1
 berichte "cargo fmt --check" "$?"
 cargo clippy --all-targets --quiet -- -D warnings >/tmp/sprechwerk-pruefung-clippy.log 2>&1
 berichte "cargo clippy -D warnings" "$?"
-cargo test --quiet 2>&1 | tail -3
+cargo test --workspace --quiet 2>&1 | tail -3
 berichte "cargo test (Arbeitsbereich)" "${PIPESTATUS[0]}"
 
 echo
-echo "== Fenster: Form, Werkzeuge, Tests (eigenes Crate, eigene Sperrdatei)"
-if [[ -d crates/desktop ]]; then
-  ( cd crates/desktop && cargo fmt --check >/dev/null 2>&1 )
-  berichte "cargo fmt --check (desktop)" "$?"
-  ( cd crates/desktop && cargo clippy --all-targets --quiet -- -D warnings \
-      >/tmp/sprechwerk-pruefung-clippy-desktop.log 2>&1 )
-  berichte "cargo clippy (desktop)" "$?"
-  ( cd crates/desktop && cargo test --quiet 2>&1 | tail -3 )
-  berichte "cargo test (crates/desktop)" "$?"
-else
-  echo "  crates/desktop fehlt"
-  berichte "cargo test (crates/desktop)" 1
-fi
-
-echo
-echo "== Oberfläche: Typen und Ansichten"
-if [[ -d ui/node_modules ]]; then
-  ( cd ui && npm run --silent typecheck >/dev/null 2>&1 )
-  berichte "vue-tsc (ui)" "$?"
-  ( cd ui && npm test --silent >/tmp/sprechwerk-pruefung-ui.log 2>&1 )
-  berichte "vitest (ui, Ansichten)" "$?"
-  # Verwaltung im Browser (ADR 0011): bauen, damit der Server sie einbettet.
-  ( cd ui && npm run --silent verwaltung >/tmp/sprechwerk-pruefung-verwaltung.log 2>&1 )
-  berichte "Verwaltung bauen (ui)" "$?"
-  if [[ "$NUR_TESTS" -eq 0 ]]; then
-    # Echter Browser: Stile, Sichtbarkeit, alle drei Themes (docs/bilder/).
-    ( cd ui && npm run --silent bilder >/tmp/sprechwerk-pruefung-bilder.log 2>&1 )
-    berichte "Ansichten im Browser (3 Themes)" "$?"
-  fi
-else
-  echo "  ui/node_modules fehlt — nicht geprüft (vorher 'npm install' in ui/)"
-  berichte "vue-tsc (ui) [nicht geprüft]" 1
-  berichte "vitest (ui) [nicht geprüft]" 1
+if [[ "$NUR_TESTS" -eq 0 ]]; then
+  echo
+  echo "== Ansichten: Bilder in drei Themes (docs/bilder/)"
+  SPRECHWERK_BILDER="$WURZEL/docs/bilder" cargo test --quiet -p sprechwerk-fenster \
+    -p sprechwerk-server-fenster --test oberflaeche >/tmp/sprechwerk-pruefung-bilder.log 2>&1
+  berichte "Bilder (egui_kittest, wgpu)" "$?"
 fi
 
 if [[ "$NUR_TESTS" -eq 1 ]]; then
