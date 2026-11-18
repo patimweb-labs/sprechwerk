@@ -133,6 +133,9 @@ pub fn anwenden(ctx: &egui::Context, thema: Thema) {
     v.selection.bg_fill = f.bg_selected;
     v.selection.stroke = Stroke::new(SIZE_BORDER, f.accent_default);
     v.text_cursor.stroke = Stroke::new(SIZE_FOCUS, f.focus_ring);
+    // Hand über allem, was man anklicken kann — Knöpfe, Häkchen, Reiter,
+    // Links (wie in der alten Oberfläche; egui zeigt sonst den Pfeil).
+    v.interact_cursor = Some(egui::CursorIcon::PointingHand);
 
     let w = &mut v.widgets;
     for (zustand, flaeche, linie, schrift) in [

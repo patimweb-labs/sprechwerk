@@ -21,7 +21,10 @@ fn main() -> eframe::Result {
             .with_app_id("de.weppelmann.Sprechwerk")
             .with_icon(Arc::new(symbol))
             .with_inner_size([1100.0, 720.0])
-            .with_min_inner_size([720.0, 480.0]),
+            .with_min_inner_size([
+                sprechwerk_fenster::logik::BREITE_KOMPAKT_MIN,
+                sprechwerk_fenster::logik::HOEHE_MIN,
+            ]),
         ..Default::default()
     };
     eframe::run_native(

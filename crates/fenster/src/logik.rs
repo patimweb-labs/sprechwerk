@@ -91,6 +91,35 @@ pub fn uhrzeit(ms: i64, versatz_sekunden: i64) -> String {
     format!("{:02}:{:02}", tag / 3600, (tag % 3600) / 60)
 }
 
+/// Mindestbreite mit offenem Chat: Baum und Chat nebeneinander.
+pub const BREITE_MIT_CHAT: f32 = sprechwerk_oberflaeche::thema::SPACE_8 * 9.0;
+/// Mindestbreite kompakt (Chat eingeklappt): nur der Kanalbaum.
+pub const BREITE_KOMPAKT_MIN: f32 = sprechwerk_oberflaeche::thema::SPACE_8 * 5.0;
+/// Breite, auf die das Fenster beim Einklappen schrumpft.
+pub const BREITE_KOMPAKT: f32 = sprechwerk_oberflaeche::thema::SPACE_8 * 5.5;
+/// Mindesthöhe in beiden Fällen.
+pub const HOEHE_MIN: f32 = sprechwerk_oberflaeche::thema::SPACE_8 * 6.0;
+
+/// Wie schmal das Fenster werden darf.
+pub fn mindestbreite(chat_eingeklappt: bool) -> f32 {
+    if chat_eingeklappt {
+        BREITE_KOMPAKT_MIN
+    } else {
+        BREITE_MIT_CHAT
+    }
+}
+
+/// Neue Fensterbreite nach dem Ein- oder Ausklappen des Chats. Einklappen
+/// macht das Fenster kompakt; Ausklappen bringt die Breite von vorher zurück
+/// (mindestens so breit, dass Baum und Chat Platz haben).
+pub fn breite_nach_wechsel(eingeklappt: bool, vorher: Option<f32>) -> f32 {
+    if eingeklappt {
+        BREITE_KOMPAKT
+    } else {
+        vorher.unwrap_or(BREITE_MIT_CHAT * 1.5).max(BREITE_MIT_CHAT)
+    }
+}
+
 /// Abstand, ab dem eine Nachricht derselben Person einen neuen Block beginnt.
 const BLOCKPAUSE_MS: i64 = 5 * 60_000;
 
@@ -375,6 +404,23 @@ mod tests {
             loeschbar: false,
             reaktionen: vec![],
         }
+    }
+
+    #[test]
+    fn fenster_wird_kompakt_und_wieder_breit() {
+        assert!(mindestbreite(true) < mindestbreite(false));
+        assert_eq!(breite_nach_wechsel(true, Some(1100.0)), BREITE_KOMPAKT);
+        assert_eq!(
+            breite_nach_wechsel(false, Some(1100.0)),
+            1100.0,
+            "alte Breite zurück"
+        );
+        assert_eq!(
+            breite_nach_wechsel(false, Some(300.0)),
+            BREITE_MIT_CHAT,
+            "nie schmaler als mit Chat nötig"
+        );
+        const { assert!(BREITE_KOMPAKT >= BREITE_KOMPAKT_MIN) };
     }
 
     #[test]

@@ -66,10 +66,16 @@ impl Entwurf {
         Self {
             name: "Sprechwerk".into(),
             port: 7443,
-            daten: dirs::data_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join("de.weppelmann.Sprechwerk")
-                .join("server"),
+            // `SPRECHWERK_DATEN` wie beim Konsolen-Server: so nimmt das Fenster
+            // dasselbe Verzeichnis (und dasselbe Zertifikat), wenn man umsteigt.
+            daten: std::env::var_os("SPRECHWERK_DATEN")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| {
+                    dirs::data_dir()
+                        .unwrap_or_else(|| PathBuf::from("."))
+                        .join("de.weppelmann.Sprechwerk")
+                        .join("server")
+                }),
             passwort: String::new(),
             standard_rolle: Role::Mitglied,
         }

@@ -7,133 +7,63 @@
 use super::{hauptknopf_mit, karte, knopf, leer, seitenkopf, text, Icon};
 use crate::logik;
 use crate::modell::{Dialog, Oberflaeche};
-use crate::texte::t;
+use crate::texte::{t, tf};
 use crate::thema::{self, Ton};
 use eframe::egui::{self, RichText};
+use sprechwerk_client::einstellungen::Favorit;
 use sprechwerk_client::sitzung::Aktion;
 use sprechwerk_ipc::Verbindung;
+use sprechwerk_oberflaeche::bausteine::{feld, feldbreite, kopierbar, seite, status};
 
 pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) {
     let s = o.sprache();
     let f = *o.thema().farben();
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        ui.set_max_width(thema::SPACE_8 * 12.0);
-        ui.add_space(thema::SPACE_2);
+    seite(ui, |ui| {
         seitenkopf(ui, o, &t(s, "server.title"), &t(s, "server.sub"));
 
-        let verbindet = matches!(o.zustand.verbindung, Some(Verbindung::Verbindet { .. }));
         let aktuell = match &o.zustand.verbindung {
             Some(Verbindung::Verbunden { server, .. }) => Some(server.clone()),
             _ => None,
         };
 
-        karte(
-            ui,
-            &f,
-            &t(s, "set.me"),
-            Some(&t(s, "set.name.hint")),
-            |ui| {
-                egui::Grid::new("ich")
-                    .num_columns(2)
-                    .spacing([thema::SPACE_4, thema::SPACE_2])
-                    .show(ui, |ui| {
-                        let beschriftung = ui.label(t(s, "set.name"));
-                        let name = ui
-                            .add(
-                                egui::TextEdit::singleline(&mut o.einstellungen.name)
-                                    .hint_text(t(s, "set.name.placeholder"))
-                                    .desired_width(thema::SPACE_8 * 4.0),
-                            )
-                            .labelled_by(beschriftung.id);
-                        if name.lost_focus() {
-                            aktionen.push(o.speichern());
-                        }
-                        ui.end_row();
-                        let beschriftung = ui.label(t(s, "server.password"));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut o.einstellungen.passwort)
-                                .password(true)
-                                .desired_width(thema::SPACE_8 * 4.0),
-                        )
-                        .labelled_by(beschriftung.id);
-                        ui.end_row();
-                    });
-            },
-        );
+        karte(ui, &f, &t(s, "set.me"), None, |ui| {
+            let name = feld(
+                ui,
+                &f,
+                &t(s, "set.name"),
+                Some(&t(s, "set.name.hint")),
+                |ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut o.einstellungen.name)
+                            .hint_text(t(s, "set.name.placeholder"))
+                            .desired_width(feldbreite(ui)),
+                    )
+                },
+            );
+            if name.lost_focus() {
+                aktionen.push(o.speichern());
+            }
+            feld(ui, &f, &t(s, "server.password"), None, |ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut o.einstellungen.passwort)
+                        .password(true)
+                        .desired_width(feldbreite(ui)),
+                )
+            });
+        });
         ui.add_space(thema::SPACE_4);
 
-        let name_fehlt = o.einstellungen.name.trim().is_empty();
         let favoriten = o.einstellungen.favoriten.clone();
         karte(ui, &f, &t(s, "app.menu_servers"), None, |ui| {
             if favoriten.is_empty() {
                 leer(ui, o, &t(s, "server.add"), &t(s, "server.empty"));
             }
-            egui::Grid::new("favoriten")
-                .num_columns(4)
-                .striped(true)
-                .spacing([thema::SPACE_4, thema::SPACE_2])
-                .show(ui, |ui| {
-                    for fav in &favoriten {
-                        ui.label(
-                            RichText::new(&fav.name)
-                                .font(egui::FontId::new(thema::FONT_SIZE_MD, thema::fett())),
-                        );
-                        ui.label(RichText::new(&fav.server).monospace());
-                        let jetzt = jetzt_ms();
-                        ui.label(text(
-                            o,
-                            logik::zuletzt_text(s, fav.zuletzt, jetzt).unwrap_or_default(),
-                            Ton::Blass,
-                        ));
-                        ui.horizontal(|ui| {
-                            let hier = aktuell.as_deref() == Some(fav.server.as_str());
-                            let knopf = if verbindet {
-                                t(s, "server.connecting")
-                            } else {
-                                t(s, "server.connect")
-                            };
-                            let frei = !verbindet && !name_fehlt;
-                            if hier {
-                                // Schon da: kein ausgegrauter Knopf, sondern der Stand.
-                                ui.add(Icon::Stecker.bild(thema::FONT_SIZE_MD, f.status_ok));
-                                ui.label(text(o, t(s, "server.connected"), Ton::Gut));
-                            } else if ui
-                                .add_enabled_ui(frei, |ui| {
-                                    hauptknopf_mit(ui, &f, Icon::Stecker, &knopf)
-                                })
-                                .inner
-                                .on_disabled_hover_text(t(s, "set.name.hint"))
-                                .clicked()
-                            {
-                                aktionen.push(o.verbinden(&fav.server));
-                            }
-                            ui.menu_image_button(
-                                Icon::Mehr.bild(thema::FONT_SIZE_LG, f.text_muted),
-                                |ui| {
-                                    if ui.button(t(s, "server.remove")).clicked() {
-                                        o.dialog = Dialog::ServerEntfernen {
-                                            server: fav.server.clone(),
-                                            name: fav.name.clone(),
-                                        };
-                                        ui.close();
-                                    }
-                                    if o.einstellungen.vertrauen_fuer(&fav.server).is_some()
-                                        && ui.button(t(s, "server.certificate_forget")).clicked()
-                                    {
-                                        aktionen.push(Aktion::ZertifikatVergessen {
-                                            server: fav.server.clone(),
-                                        });
-                                        o.einstellungen.vergiss_vertrauen(&fav.server);
-                                        ui.close();
-                                    }
-                                },
-                            )
-                            .response
-                            .on_hover_text(crate::texte::tf(s, "server.menu_for", &[&fav.name]));
-                        });
-                        ui.end_row();
-                    }
-                });
+            for (i, fav) in favoriten.iter().enumerate() {
+                if i > 0 {
+                    ui.separator();
+                }
+                eintrag(ui, o, fav, aktuell.as_deref(), aktionen);
+            }
             ui.add_space(thema::SPACE_2);
             if knopf(ui, &f, Icon::Plus, &t(s, "server.add")).clicked() {
                 o.dialog = Dialog::ServerHinzufuegen {
@@ -151,13 +81,107 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
                 &t(s, "server.certificate"),
                 Some(&t(s, "server.certificate_hint")),
                 |ui| {
-                    ui.label(RichText::new(logik::fingerabdruck_gruppiert(&fp)).monospace());
+                    kopierbar(
+                        ui,
+                        &f,
+                        &logik::fingerabdruck_gruppiert(&fp),
+                        &t(s, "srv.copy"),
+                    )
                 },
             );
         }
         ui.add_space(thema::SPACE_4);
-        ui.label(text(o, t(s, "server.footnote"), Ton::Blass));
+        ui.add(egui::Label::new(text(o, t(s, "server.footnote"), Ton::Blass)).wrap());
     });
+}
+
+/// Ein gemerkter Server: links Name, Adresse, zuletzt (gekürzt, wenn der
+/// Platz fehlt), rechts Verbinden bzw. der Stand und das Menü.
+fn eintrag(
+    ui: &mut egui::Ui,
+    o: &mut Oberflaeche,
+    fav: &Favorit,
+    aktuell: Option<&str>,
+    aktionen: &mut Vec<Aktion>,
+) {
+    let s = o.sprache();
+    let f = *o.thema().farben();
+    let verbindet = matches!(o.zustand.verbindung, Some(Verbindung::Verbindet { .. }));
+    let hier = aktuell == Some(fav.server.as_str());
+    let frei = !verbindet && !o.einstellungen.name.trim().is_empty();
+    let zuletzt = logik::zuletzt_text(s, fav.zuletzt, jetzt_ms()).unwrap_or_default();
+    let mut verbinden = false;
+    let mut entfernen = false;
+    let mut vergessen = false;
+    let angeheftet = o.einstellungen.vertrauen_fuer(&fav.server).is_some();
+    egui::Sides::new()
+        .height(thema::SIZE_CONTROL_LG)
+        .shrink_left()
+        .truncate()
+        .show(
+            ui,
+            |ui| {
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    ui.label(
+                        RichText::new(&fav.name)
+                            .font(egui::FontId::new(thema::FONT_SIZE_MD, thema::fett())),
+                    );
+                    let unter = if zuletzt.is_empty() {
+                        fav.server.clone()
+                    } else {
+                        format!("{} · {zuletzt}", fav.server)
+                    };
+                    ui.label(text(o, unter, Ton::Blass).small());
+                });
+            },
+            |ui| {
+                ui.menu_image_button(Icon::Mehr.bild(thema::FONT_SIZE_LG, f.text_muted), |ui| {
+                    if ui.button(t(s, "server.remove")).clicked() {
+                        entfernen = true;
+                        ui.close();
+                    }
+                    if angeheftet && ui.button(t(s, "server.certificate_forget")).clicked() {
+                        vergessen = true;
+                        ui.close();
+                    }
+                })
+                .response
+                .on_hover_text(tf(s, "server.menu_for", &[&fav.name]));
+                if hier {
+                    // Schon da: kein ausgegrauter Knopf, sondern der Stand.
+                    status(ui, &f, Ton::Gut, &t(s, "server.connected"));
+                } else {
+                    let beschriftung = if verbindet {
+                        t(s, "server.connecting")
+                    } else {
+                        t(s, "server.connect")
+                    };
+                    verbinden = ui
+                        .add_enabled_ui(frei, |ui| {
+                            hauptknopf_mit(ui, &f, Icon::Stecker, &beschriftung)
+                        })
+                        .inner
+                        .on_disabled_hover_text(t(s, "set.name.hint"))
+                        .clicked();
+                }
+            },
+        );
+    if verbinden {
+        aktionen.push(o.verbinden(&fav.server));
+    }
+    if entfernen {
+        o.dialog = Dialog::ServerEntfernen {
+            server: fav.server.clone(),
+            name: fav.name.clone(),
+        };
+    }
+    if vergessen {
+        aktionen.push(Aktion::ZertifikatVergessen {
+            server: fav.server.clone(),
+        });
+        o.einstellungen.vergiss_vertrauen(&fav.server);
+    }
 }
 
 fn jetzt_ms() -> i64 {

@@ -5,7 +5,7 @@
 //! Aktionen abgeben. Jedes Bild ist `render(modell)` (AGENTS.md §2.1).
 
 use crate::ansichten;
-use crate::logik::Sprechtaste;
+use crate::logik::{self, Sprechtaste};
 use crate::modell::{Ansicht, Oberflaeche};
 use crate::thema::{self, Thema};
 use eframe::egui::{self, PointerButton};
@@ -46,6 +46,10 @@ pub struct Fenster<K: Kern> {
     angewandt: Option<Thema>,
     takt: Option<Instant>,
     speicher: Zwischenspeicher,
+    /// Stand des Chats beim letzten Bild — ein Wechsel ändert die Fenstergröße.
+    eingeklappt_zuletzt: Option<bool>,
+    /// Breite vor dem Einklappen (kommt beim Ausklappen zurück).
+    breite_vorher: Option<f32>,
 }
 
 /// Abstand zwischen zwei Abfragen von Betriebszahlen und Umlaufzeit.
@@ -60,6 +64,8 @@ impl<K: Kern> Fenster<K> {
             angewandt: None,
             takt: None,
             speicher: Zwischenspeicher::default(),
+            eingeklappt_zuletzt: None,
+            breite_vorher: None,
         }
     }
 
@@ -73,6 +79,8 @@ impl<K: Kern> Fenster<K> {
             thema::anwenden(ctx, self.o.thema());
             self.angewandt = Some(self.o.thema());
         }
+
+        self.fenstergroesse(ctx);
 
         let mut aktionen = Vec::new();
         if self.o.verbunden() {
@@ -119,6 +127,30 @@ impl<K: Kern> Fenster<K> {
         for aktion in aktionen {
             self.kern.ausfuehren(aktion);
         }
+    }
+
+    /// Chat eingeklappt: das Fenster darf kompakt werden und wird es beim
+    /// Einklappen auch; ausgeklappt kommt die alte Breite zurück.
+    fn fenstergroesse(&mut self, ctx: &egui::Context) {
+        let eingeklappt = self.o.einstellungen.chat_eingeklappt;
+        if self.eingeklappt_zuletzt == Some(eingeklappt) {
+            return;
+        }
+        ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
+            logik::mindestbreite(eingeklappt),
+            logik::HOEHE_MIN,
+        )));
+        // Beim ersten Bild nur die Grenze setzen — die Größe hat der Nutzer.
+        if self.eingeklappt_zuletzt.is_some() {
+            let jetzt = ctx.input(|i| i.viewport().inner_rect);
+            if eingeklappt {
+                self.breite_vorher = jetzt.map(|r| r.width());
+            }
+            let breite = logik::breite_nach_wechsel(eingeklappt, self.breite_vorher);
+            let hoehe = jetzt.map_or(logik::HOEHE_MIN, |r| r.height());
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(breite, hoehe)));
+        }
+        self.eingeklappt_zuletzt = Some(eingeklappt);
     }
 
     /// Push-to-Talk: Taste oder Maus 4/5, nur solange das Fenster den Fokus

@@ -38,6 +38,9 @@ pub fn leer(ui: &mut egui::Ui, o: &Oberflaeche, titel: &str, erklaerung: &str) {
     bausteine::leer(ui, o.thema().farben(), titel, erklaerung)
 }
 
+/// Unter dieser Breite ist die Kopfleiste kompakt (Werkzeuge im Menü).
+pub const KOMPAKT: f32 = thema::SPACE_8 * 9.0;
+
 /// Kopfleiste wie die Werkzeugleiste von TeamSpeak: links der Server, auf
 /// dem man ist (ein Klick führt zum Kanalbaum, der Hauptansicht), rechts die
 /// Werkzeuge — eigenes Mikrofon und Ton, dann Protokoll und Sperren (nur mit
@@ -71,6 +74,25 @@ pub fn kopf(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) 
             let mut wahl_links: Option<Ansicht> = None;
             let mut wahl: Option<Ansicht> = None;
             let mut rechts = Vec::new();
+            // Schmal: die Werkzeuge in ein Menü, die Marke weg — Mikrofon und
+            // Ton bleiben immer direkt erreichbar.
+            let kompakt = ui.available_width() < KOMPAKT;
+            let werkzeuge = [
+                (
+                    Ansicht::Protokoll,
+                    Icon::Protokoll,
+                    "app.audit",
+                    darf_protokoll,
+                ),
+                (Ansicht::Sperren, Icon::Sperre, "app.bans", darf_sperren),
+                (Ansicht::Server, Icon::Leute, "app.menu_servers", true),
+                (
+                    Ansicht::Einstellungen,
+                    Icon::Einstellungen,
+                    "app.settings",
+                    true,
+                ),
+            ];
             egui::Sides::new()
                 .height(thema::SIZE_CONTROL_SM)
                 .shrink_left()
@@ -78,13 +100,15 @@ pub fn kopf(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) 
                 .show(
                     ui,
                     |ui| {
-                        ui.label(
-                            RichText::new("sprechwerk")
-                                .font(egui::FontId::new(thema::FONT_SIZE_LG, fett()))
-                                .color(f.accent_default),
-                        );
-                        if let Some(name) = &servername {
+                        if !kompakt || servername.is_none() {
+                            ui.label(
+                                RichText::new("sprechwerk")
+                                    .font(egui::FontId::new(thema::FONT_SIZE_LG, fett()))
+                                    .color(f.accent_default),
+                            );
                             ui.add_space(thema::SPACE_3);
+                        }
+                        if let Some(name) = &servername {
                             if icon_text_knopf(
                                 ui,
                                 &f,
@@ -100,41 +124,79 @@ pub fn kopf(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) 
                         }
                     },
                     |ui| {
-                        // Von rechts nach links: Trennen steht ganz außen.
-                        if verbunden
-                            && icon_knopf(ui, &f, Icon::Trennen, &t(s, "app.disconnect"), false)
-                                .clicked()
-                        {
-                            rechts.push(Aktion::Befehl(Befehl::Trennen));
-                            rechts.push(Aktion::AudioStoppen);
-                        }
-                        for (ziel, bild, schluessel, sichtbar) in [
-                            (
-                                Ansicht::Einstellungen,
-                                Icon::Einstellungen,
-                                "app.settings",
-                                true,
-                            ),
-                            (Ansicht::Server, Icon::Leute, "app.menu_servers", true),
-                            (Ansicht::Sperren, Icon::Sperre, "app.bans", darf_sperren),
-                            (
-                                Ansicht::Protokoll,
-                                Icon::Protokoll,
-                                "app.audit",
-                                darf_protokoll,
-                            ),
-                        ] {
-                            if sichtbar
-                                && icon_knopf(ui, &f, bild, &t(s, schluessel), ansicht == ziel)
+                        // Von rechts nach links.
+                        if kompakt {
+                            let menue = ui
+                                .menu_image_button(
+                                    Icon::Mehr.bild(thema::FONT_SIZE_LG, f.text_muted),
+                                    |ui| {
+                                        for (ziel, bild, schluessel, sichtbar) in werkzeuge {
+                                            if sichtbar
+                                                && ui
+                                                    .add(egui::Button::image_and_text(
+                                                        bild.bild(
+                                                            thema::FONT_SIZE_MD,
+                                                            f.text_muted,
+                                                        ),
+                                                        t(s, schluessel),
+                                                    ))
+                                                    .clicked()
+                                            {
+                                                wahl = Some(ziel);
+                                                ui.close();
+                                            }
+                                        }
+                                        if verbunden {
+                                            ui.separator();
+                                            if ui
+                                                .add(egui::Button::image_and_text(
+                                                    Icon::Trennen
+                                                        .bild(thema::FONT_SIZE_MD, f.status_error),
+                                                    t(s, "app.disconnect"),
+                                                ))
+                                                .clicked()
+                                            {
+                                                rechts.push(Aktion::Befehl(Befehl::Trennen));
+                                                rechts.push(Aktion::AudioStoppen);
+                                                ui.close();
+                                            }
+                                        }
+                                    },
+                                )
+                                .response;
+                            let name = t(s, "app.menu");
+                            menue.widget_info(|| {
+                                egui::WidgetInfo::labeled(egui::Role::Button, true, &name)
+                            });
+                        } else {
+                            if verbunden
+                                && icon_knopf(ui, &f, Icon::Trennen, &t(s, "app.disconnect"), false)
                                     .clicked()
                             {
-                                wahl = Some(ziel);
+                                rechts.push(Aktion::Befehl(Befehl::Trennen));
+                                rechts.push(Aktion::AudioStoppen);
+                            }
+                            for (ziel, bild, schluessel, sichtbar) in werkzeuge.iter().rev() {
+                                if *sichtbar
+                                    && icon_knopf(
+                                        ui,
+                                        &f,
+                                        *bild,
+                                        &t(s, schluessel),
+                                        ansicht == *ziel,
+                                    )
+                                    .clicked()
+                                {
+                                    wahl = Some(*ziel);
+                                }
                             }
                         }
                         if !verbunden {
                             return;
                         }
-                        ui.separator();
+                        if !kompakt {
+                            ui.separator();
+                        }
                         let (bild, name) = if audio.taub {
                             (Icon::KopfhoererAus, "app.sound_unmute")
                         } else {
@@ -152,7 +214,12 @@ pub fn kopf(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) 
                             rechts.push(Aktion::MikrofonStumm(!audio.stumm));
                         }
                         let pegel = if audio.stumm { 0 } else { audio.pegel };
-                        pegelbalken(ui, &f, pegel, None, thema::SPACE_7);
+                        let breite = if kompakt {
+                            thema::SPACE_6
+                        } else {
+                            thema::SPACE_7
+                        };
+                        pegelbalken(ui, &f, pegel, None, breite);
                     },
                 );
             if let Some(ziel) = wahl_links.or(wahl) {
@@ -177,40 +244,53 @@ pub fn fuss(ui: &mut egui::Ui, o: &Oberflaeche) {
                 )),
         )
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
-                let (stand, farbe) = match &o.zustand.verbindung {
-                    Some(Verbindung::Verbunden {
-                        server_name,
-                        server,
-                        ..
-                    }) => (format!("{server_name} · {server}"), f.status_ok),
-                    Some(Verbindung::Verbindet { server }) => {
-                        (tf(s, "app.connecting", &[server]), f.status_warn)
-                    }
-                    Some(Verbindung::Fehler { text }) => (text.clone(), f.status_error),
-                    _ => (t(s, "app.not_connected"), f.text_faint),
-                };
-                ui.label(RichText::new(stand).color(farbe));
-                if let Some(l) = logik::latenz_text(o.zustand.latenz_ms) {
-                    ui.label(RichText::new(format!("· {l}")).color(f.text_muted))
+            // Eine Zeile, die kürzt statt überzulaufen: links der Stand,
+            // rechts eine Meldung — beide mit „…", wenn der Platz fehlt.
+            ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
+            let (stand, farbe) = match &o.zustand.verbindung {
+                Some(Verbindung::Verbunden {
+                    server_name,
+                    server,
+                    ..
+                }) => (format!("{server_name} · {server}"), f.status_ok),
+                Some(Verbindung::Verbindet { server }) => {
+                    (tf(s, "app.connecting", &[server]), f.status_warn)
+                }
+                Some(Verbindung::Fehler { text }) => (text.clone(), f.status_error),
+                _ => (t(s, "app.not_connected"), f.text_faint),
+            };
+            let mut zeile = egui::text::LayoutJob::default();
+            let format = |farbe| egui::TextFormat {
+                font_id: egui::FontId::proportional(thema::FONT_SIZE_SM),
+                color: farbe,
+                ..Default::default()
+            };
+            zeile.append(&stand, 0.0, format(farbe));
+            if let Some(l) = logik::latenz_text(o.zustand.latenz_ms) {
+                zeile.append(&format!(" · {l}"), 0.0, format(f.text_muted));
+            }
+            if let Some((q, gut)) = logik::qualitaet(s, &o.zustand) {
+                let c = if gut { f.status_ok } else { f.status_warn };
+                zeile.append(&format!(" · {q}"), 0.0, format(c));
+            }
+            let meldung = match (&o.hinweis, &o.zustand.meldung) {
+                (Some(Hinweis::Fehler(x)), _) => Some((x.clone(), f.status_error)),
+                (Some(Hinweis::Info(x)), _) => Some((x.clone(), f.text_muted)),
+                (None, Some(x)) => Some((x.clone(), f.status_warn)),
+                (None, None) => None,
+            };
+            egui::Sides::new().shrink_right().truncate().show(
+                ui,
+                |ui| {
+                    ui.add(egui::Label::new(zeile).truncate())
                         .on_hover_text(t(s, "app.latency"));
-                }
-                if let Some((q, gut)) = logik::qualitaet(s, &o.zustand) {
-                    let c = if gut { f.status_ok } else { f.status_warn };
-                    ui.label(RichText::new(format!("· {q}")).color(c));
-                }
-                let meldung = match (&o.hinweis, &o.zustand.meldung) {
-                    (Some(Hinweis::Fehler(x)), _) => Some((x.clone(), f.status_error)),
-                    (Some(Hinweis::Info(x)), _) => Some((x.clone(), f.text_muted)),
-                    (None, Some(x)) => Some((x.clone(), f.status_warn)),
-                    (None, None) => None,
-                };
-                if let Some((m, c)) = meldung {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new(m).color(c));
-                    });
-                }
-            });
+                },
+                |ui| {
+                    if let Some((m, c)) = meldung {
+                        ui.add(egui::Label::new(RichText::new(&m).color(c)).truncate())
+                            .on_hover_text(m);
+                    }
+                },
+            );
         });
 }

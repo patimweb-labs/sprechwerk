@@ -14,22 +14,28 @@ use eframe::egui::{self, PointerButton, RichText};
 use sprechwerk_client::audio::Geraet;
 use sprechwerk_client::sitzung::Aktion;
 use sprechwerk_ipc::Verbindung;
+use sprechwerk_oberflaeche::bausteine::{auswahl, fakten, feld, feldbreite, kopierbar, seite};
 
 pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) {
     let s = o.sprache();
     let f = *o.thema().farben();
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        ui.set_max_width(thema::SPACE_8 * 12.0);
-        ui.add_space(thema::SPACE_2);
+    seite(ui, |ui| {
         seitenkopf(ui, o, &t(s, "set.title"), &t(s, "set.sub"));
 
         karte(ui, &f, &t(s, "set.me"), Some(&t(s, "set.me.sub")), |ui| {
-            ui.label(t(s, "set.name"));
-            ui.add(
-                egui::TextEdit::singleline(&mut o.einstellungen.name)
-                    .hint_text(t(s, "set.name.placeholder")),
+            feld(
+                ui,
+                &f,
+                &t(s, "set.name"),
+                Some(&t(s, "set.name.hint")),
+                |ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut o.einstellungen.name)
+                            .hint_text(t(s, "set.name.placeholder"))
+                            .desired_width(feldbreite(ui)),
+                    )
+                },
             );
-            ui.label(text(o, t(s, "set.name.hint"), Ton::Blass).small());
             if let Some(Verbindung::Verbunden {
                 server,
                 server_name,
@@ -40,22 +46,33 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
             }) = o.zustand.verbindung.clone()
             {
                 ui.add_space(thema::SPACE_2);
-                egui::Grid::new("fakten").num_columns(2).show(ui, |ui| {
-                    for (k, v) in [
-                        ("set.fact.server", server),
-                        ("set.fact.name", server_name),
-                        ("set.fact.me", name),
-                        ("set.fact.role", rolle(s, r)),
-                    ] {
-                        ui.label(text(o, t(s, k), Ton::Leise));
-                        ui.label(v);
-                        ui.end_row();
-                    }
-                    ui.label(text(o, t(s, "set.fact.key"), Ton::Leise));
-                    ui.label(RichText::new(logik::kennung_gruppiert(&kennung, 64)).monospace())
-                        .on_hover_text(t(s, "set.key_hint"));
-                    ui.end_row();
-                });
+                fakten(
+                    ui,
+                    &f,
+                    &[
+                        (t(s, "set.fact.server"), server, true),
+                        (t(s, "set.fact.name"), server_name, false),
+                        (t(s, "set.fact.me"), name, false),
+                        (t(s, "set.fact.role"), rolle(s, r), false),
+                    ],
+                );
+                feld(
+                    ui,
+                    &f,
+                    &t(s, "set.fact.key"),
+                    Some(&t(s, "set.key_hint")),
+                    |ui| {
+                        ui.horizontal_top(|ui| {
+                            kopierbar(
+                                ui,
+                                &f,
+                                &logik::kennung_gruppiert(&kennung, 64),
+                                &t(s, "srv.copy"),
+                            )
+                        })
+                        .response
+                    },
+                );
             }
         });
         ui.add_space(thema::SPACE_4);
@@ -68,44 +85,60 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
             };
             geraetewahl(
                 ui,
+                &f,
                 s,
                 "mikrofon",
                 &mut o.einstellungen.mikrofon,
                 &liste,
                 &geraete,
             );
-            ui.horizontal(|ui| {
-                if knopf(ui, &f, Icon::Mikrofon, &t(s, "set.mic_test")).clicked() {
-                    o.pegeltest = Laden::Laedt;
-                    aktionen.push(Aktion::Pegel {
-                        geraet: o.einstellungen.mikrofon.clone(),
-                        millisekunden: 1500,
-                    });
-                }
-                let pegel = match o.pegeltest {
-                    Laden::Fertig(p) => p,
-                    _ if o.audio.laeuft => o.audio.pegel,
-                    _ => 0,
-                };
-                ui.label(text(o, t(s, "set.level"), Ton::Leise));
-                pegelbalken(
-                    ui,
-                    &f,
-                    pegel,
-                    Some(o.einstellungen.schwelle),
-                    thema::SPACE_8 * 3.0,
-                );
-            });
-            ui.label(text(o, t(s, "set.mic.hint"), Ton::Blass).small());
-            umschalter(ui, o, "set.denoise", "set.denoise.hint", |e| {
-                &mut e.rauschunterdrueckung
-            });
-            umschalter(ui, o, "set.noisegate", "set.noisegate.hint", |e| {
-                &mut e.noisegate
-            });
-            umschalter(ui, o, "set.aec", "set.aec.hint", |e| {
-                &mut e.echounterdrueckung
-            });
+            feld(
+                ui,
+                &f,
+                &t(s, "set.level"),
+                Some(&t(s, "set.mic.hint")),
+                |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        if knopf(ui, &f, Icon::Mikrofon, &t(s, "set.mic_test")).clicked() {
+                            o.pegeltest = Laden::Laedt;
+                            aktionen.push(Aktion::Pegel {
+                                geraet: o.einstellungen.mikrofon.clone(),
+                                millisekunden: 1500,
+                            });
+                        }
+                        let pegel = match o.pegeltest {
+                            Laden::Fertig(p) => p,
+                            _ if o.audio.laeuft => o.audio.pegel,
+                            _ => 0,
+                        };
+                        let breite = (ui.available_width() - thema::SPACE_2)
+                            .clamp(thema::SPACE_8, thema::SPACE_8 * 3.0);
+                        pegelbalken(ui, &f, pegel, Some(o.einstellungen.schwelle), breite);
+                    })
+                    .response
+                },
+            );
+            schalter(
+                ui,
+                &f,
+                &mut o.einstellungen.rauschunterdrueckung,
+                &t(s, "set.denoise"),
+                &t(s, "set.denoise.hint"),
+            );
+            schalter(
+                ui,
+                &f,
+                &mut o.einstellungen.noisegate,
+                &t(s, "set.noisegate"),
+                &t(s, "set.noisegate.hint"),
+            );
+            schalter(
+                ui,
+                &f,
+                &mut o.einstellungen.echounterdrueckung,
+                &t(s, "set.aec"),
+                &t(s, "set.aec.hint"),
+            );
         });
         ui.add_space(thema::SPACE_4);
 
@@ -121,6 +154,7 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
                 };
                 geraetewahl(
                     ui,
+                    &f,
                     s,
                     "lautsprecher",
                     &mut o.einstellungen.lautsprecher,
@@ -142,97 +176,126 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
             &t(s, "set.talk"),
             Some(&t(s, "set.talk.sub")),
             |ui| {
-                ui.checkbox(&mut o.einstellungen.push_to_talk, t(s, "set.ptt"));
+                schalter(
+                    ui,
+                    &f,
+                    &mut o.einstellungen.push_to_talk,
+                    &t(s, "set.ptt"),
+                    "",
+                );
                 if o.einstellungen.push_to_talk {
-                    ui.horizontal(|ui| {
-                        ui.label(t(s, "set.key"));
-                        if o.taste_aufnehmen {
-                            ui.label(text(o, t(s, "set.key.press"), Ton::Akzent));
-                            if let Some(neu) = gedrueckte_taste(ui) {
-                                o.einstellungen.ptt_taste = neu.name();
-                                o.taste_aufnehmen = false;
-                            }
-                            if ui.button(t(s, "set.key.cancel")).clicked() {
-                                o.taste_aufnehmen = false;
-                            }
-                        } else {
-                            ui.label(RichText::new(&o.einstellungen.ptt_taste).monospace());
-                            if ui.button(t(s, "set.key.change")).clicked() {
-                                o.taste_aufnehmen = true;
-                            }
-                        }
-                    });
-                    ui.label(text(o, t(s, "set.key.hint"), Ton::Blass).small());
-                    if o.einstellungen.ptt_taste == "Leertaste" {
-                        ui.label(text(o, t(s, "set.key.space_warn"), Ton::Warnung).small());
+                    let warnung = (o.einstellungen.ptt_taste == "Leertaste")
+                        .then(|| t(s, "set.key.space_warn"));
+                    feld(
+                        ui,
+                        &f,
+                        &t(s, "set.key"),
+                        Some(&t(s, "set.key.hint")),
+                        |ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                if o.taste_aufnehmen {
+                                    ui.label(text(o, t(s, "set.key.press"), Ton::Akzent));
+                                    if let Some(neu) = gedrueckte_taste(ui) {
+                                        o.einstellungen.ptt_taste = neu.name();
+                                        o.taste_aufnehmen = false;
+                                    }
+                                    if ui.button(t(s, "set.key.cancel")).clicked() {
+                                        o.taste_aufnehmen = false;
+                                    }
+                                } else {
+                                    ui.label(RichText::new(&o.einstellungen.ptt_taste).monospace());
+                                    if ui.button(t(s, "set.key.change")).clicked() {
+                                        o.taste_aufnehmen = true;
+                                    }
+                                }
+                            })
+                            .response
+                        },
+                    );
+                    if let Some(w) = warnung {
+                        ui.add(egui::Label::new(text(o, w, Ton::Warnung).small()).wrap());
                     }
                 } else {
-                    ui.add(
-                        egui::Slider::new(&mut o.einstellungen.schwelle, 0..=100)
-                            .text(t(s, "set.threshold")),
-                    );
+                    feld(ui, &f, &t(s, "set.threshold"), None, |ui| {
+                        ui.add(egui::Slider::new(&mut o.einstellungen.schwelle, 0..=100))
+                    });
                 }
-                ui.add(
-                    egui::Slider::new(&mut o.einstellungen.vorlauf_ms, 0..=500)
-                        .suffix(" ms")
-                        .text(t(s, "set.lead")),
+                feld(
+                    ui,
+                    &f,
+                    &t(s, "set.lead"),
+                    Some(&t(s, "set.lead.hint")),
+                    |ui| {
+                        ui.add(
+                            egui::Slider::new(&mut o.einstellungen.vorlauf_ms, 0..=500)
+                                .suffix(" ms"),
+                        )
+                    },
                 );
-                ui.label(text(o, t(s, "set.lead.hint"), Ton::Blass).small());
             },
         );
         ui.add_space(thema::SPACE_4);
 
         karte(ui, &f, &t(s, "set.chat"), None, |ui| {
-            umschalter(ui, o, "set.link_preview", "set.link_preview.hint", |e| {
-                &mut e.link_vorschau
-            });
+            schalter(
+                ui,
+                &f,
+                &mut o.einstellungen.link_vorschau,
+                &t(s, "set.link_preview"),
+                &t(s, "set.link_preview.hint"),
+            );
         });
         ui.add_space(thema::SPACE_4);
 
         karte(ui, &f, &t(s, "set.appearance"), None, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(t(s, "set.scheme"));
-                for th in Thema::ALLE {
-                    if ui
-                        .selectable_label(o.thema() == th, t(s, th.text_schluessel()))
-                        .clicked()
-                    {
-                        o.einstellungen.thema = th.name().into();
-                    }
-                }
+            let mut thema_wahl = o.thema();
+            feld(ui, &f, &t(s, "set.scheme"), None, |ui| {
+                let moeglich: Vec<(Thema, String)> = Thema::ALLE
+                    .iter()
+                    .map(|th| (*th, t(s, th.text_schluessel())))
+                    .collect();
+                ui.horizontal_wrapped(|ui| auswahl(ui, &mut thema_wahl, &moeglich))
+                    .response
             });
-            ui.horizontal(|ui| {
-                ui.label(t(s, "set.language"));
-                for sp in Sprache::ALLE {
-                    if ui.selectable_label(s == sp, sp.anzeige()).clicked() {
-                        o.einstellungen.sprache = sp.code().into();
-                    }
-                }
+            o.einstellungen.thema = thema_wahl.name().into();
+            let mut sprache = s;
+            feld(ui, &f, &t(s, "set.language"), None, |ui| {
+                let moeglich: Vec<(Sprache, String)> = Sprache::ALLE
+                    .iter()
+                    .map(|sp| (*sp, sp.anzeige().to_string()))
+                    .collect();
+                ui.horizontal_wrapped(|ui| auswahl(ui, &mut sprache, &moeglich))
+                    .response
             });
+            o.einstellungen.sprache = sprache.code().into();
         });
         ui.add_space(thema::SPACE_4);
         if hauptknopf(ui, &f, &t(s, "set.save")).clicked() {
             aktionen.push(o.speichern());
         }
-        ui.add_space(thema::SPACE_6);
     });
 }
 
-fn umschalter(
-    ui: &mut egui::Ui,
-    o: &mut Oberflaeche,
-    titel: &str,
-    hinweis: &str,
-    feld: impl FnOnce(&mut sprechwerk_client::einstellungen::Einstellungen) -> &mut bool,
-) {
-    let s = o.sprache();
-    let h = text(o, t(s, hinweis), Ton::Blass).small();
-    ui.checkbox(feld(&mut o.einstellungen), t(s, titel));
-    ui.label(h);
+/// Häkchen mit Erklärung darunter (umbrechend).
+fn schalter(ui: &mut egui::Ui, f: &thema::Farben, wert: &mut bool, titel: &str, hinweis: &str) {
+    ui.checkbox(wert, titel);
+    if !hinweis.is_empty() {
+        ui.horizontal_top(|ui| {
+            ui.add_space(thema::SPACE_5);
+            ui.add(
+                egui::Label::new(
+                    sprechwerk_oberflaeche::bausteine::text(f, hinweis, Ton::Blass).small(),
+                )
+                .wrap(),
+            );
+        });
+    }
+    ui.add_space(thema::SPACE_1);
 }
 
 fn geraetewahl(
     ui: &mut egui::Ui,
+    f: &thema::Farben,
     s: Sprache,
     id: &str,
     wahl: &mut String,
@@ -255,28 +318,30 @@ fn geraetewahl(
             .map(anzeige)
             .unwrap_or_else(|| tf(s, "set.device_missing", &[wahl]))
     };
-    ui.horizontal(|ui| {
-        let beschriftung = ui.label(t(s, "set.device"));
-        egui::ComboBox::from_id_salt(id)
-            .selected_text(gewaehlt)
-            .width(thema::SPACE_8 * 5.0)
-            .show_ui(ui, |ui| {
-                ui.selectable_value(wahl, String::new(), t(s, "set.default_device"));
-                for g in liste {
-                    ui.selectable_value(wahl, g.id.clone(), anzeige(g));
-                }
-            })
-            .response
-            .labelled_by(beschriftung.id);
-        match laden {
-            Laden::Laedt => {
+    let fehler = match laden {
+        Laden::Fehler(x) => Some(x.clone()),
+        _ => None,
+    };
+    feld(ui, f, &t(s, "set.device"), fehler.as_deref(), |ui| {
+        ui.horizontal(|ui| {
+            let breite = feldbreite(ui) - thema::SPACE_6;
+            let a = egui::ComboBox::from_id_salt(id)
+                .selected_text(gewaehlt)
+                .truncate()
+                .width(breite)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(wahl, String::new(), t(s, "set.default_device"));
+                    for g in liste {
+                        ui.selectable_value(wahl, g.id.clone(), anzeige(g));
+                    }
+                })
+                .response;
+            if matches!(laden, Laden::Laedt) {
                 ui.spinner();
             }
-            Laden::Fehler(x) => {
-                ui.label(RichText::new(x).small());
-            }
-            _ => {}
-        }
+            a
+        })
+        .inner
     });
 }
 

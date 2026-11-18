@@ -440,3 +440,50 @@ fn alle_ansichten_in_allen_themes() {
         }
     }
 }
+
+/// Alle Bedienelemente liegen waagerecht im Fenster — beim Verkleinern
+/// verschwindet nichts über den Rand. (Senkrecht darf gescrollt werden.)
+fn alles_im_fenster(h: &Harness<'static, Stand>, breite: f32, wo: &str) {
+    use egui::accesskit::Role;
+    for rolle in [
+        Role::Button,
+        Role::TextInput,
+        Role::MultilineTextInput,
+        Role::PasswordInput,
+        Role::ComboBox,
+        Role::CheckBox,
+        Role::Slider,
+    ] {
+        for knoten in h.query_all(egui_kittest::kittest::By::new().role(rolle)) {
+            let r = knoten.rect();
+            assert!(
+                r.left() >= -0.5 && r.right() <= breite + 0.5,
+                "{wo} bei {breite} px: {rolle:?} „{}“ reicht von {} bis {}",
+                egui_kittest::kittest::NodeT::accesskit_node(&knoten)
+                    .label()
+                    .unwrap_or_default(),
+                r.left(),
+                r.right()
+            );
+        }
+    }
+}
+
+#[test]
+fn verkleinern_laesst_nichts_verschwinden() {
+    for breite in [360.0, 560.0, 800.0] {
+        for (name, ansicht, eingeklappt) in [
+            ("server", Ansicht::Server, false),
+            ("raeume", Ansicht::Raeume, true),
+            ("einstellungen", Ansicht::Einstellungen, false),
+            ("protokoll", Ansicht::Protokoll, false),
+            ("sperren", Ansicht::Sperren, false),
+        ] {
+            let mut o = verbunden(Role::Administrator, ansicht);
+            o.einstellungen.chat_eingeklappt = eingeklappt;
+            let (mut h, _) = fenster(o, (breite, 700.0));
+            h.run();
+            alles_im_fenster(&h, breite, name);
+        }
+    }
+}

@@ -94,40 +94,125 @@ fn systemliste(mikrofon: bool) -> Result<Vec<Geraet>, Fehler> {
         .collect())
 }
 
-/// Liest die Geräteliste von `pactl`.
+/// Liest die Geräteliste von `pactl` — mit den Namen, die auch die
+/// Systemeinstellungen zeigen (`description` von PipeWire/PulseAudio, in der
+/// Sprache des Systems), nicht mit der technischen Kennung.
+///
+/// Zwei Wege, weil `pactl` sich je Fassung unterscheidet:
+/// 1. `pactl -f json list <art>` (ab 16) — in der Sprache des Systems. **Nicht**
+///    unter `LC_ALL=C`: dort bricht die JSON-Ausgabe bei Umlauten ab.
+/// 2. `LC_ALL=C pactl list <art>` — Feldnamen englisch, also lesbar.
+///
+/// Erst wenn beides keine Beschreibung liefert, wird aus der Kennung geraten.
 fn liste(art: &str) -> Result<Vec<Geraet>, Fehler> {
     if !werkzeug("pactl") {
         return Err(Fehler::Werkzeug);
     }
-    // `pactl list short <art>`: Nummer, Name, Treiber, Format, Zustand.
+    let paare = match pactl_json(art) {
+        // `pactl` verwirft im JSON einzelne Eigenschaften mit Zeichen, die es
+        // nicht mag — fehlt eine Beschreibung, ergänzt sie die Textausgabe.
+        Some(json) if json.iter().any(|(_, b)| b.is_none()) => {
+            ergaenzt(json, pactl_text(art).unwrap_or_default())
+        }
+        Some(json) => json,
+        None => pactl_text(art).ok_or_else(|| Fehler::Messung("pactl list".into()))?,
+    };
+    Ok(geraete_aus(art, paare))
+}
+
+/// (Kennung, Beschreibung) aus `pactl -f json list <art>`.
+fn pactl_json(art: &str) -> Option<Vec<(String, Option<String>)>> {
     let ausgabe = Command::new("pactl")
-        .args(["list", "short", art])
+        .args(["-f", "json", "list", art])
         .output()
-        .map_err(|_| Fehler::Werkzeug)?;
+        .ok()?;
     if !ausgabe.status.success() {
-        return Err(Fehler::Messung("pactl list".into()));
+        return None;
     }
-    let text = String::from_utf8_lossy(&ausgabe.stdout);
-    let mut geraete = Vec::new();
+    json_paare(&String::from_utf8_lossy(&ausgabe.stdout))
+}
+
+/// (Kennung, Beschreibung) aus `LC_ALL=C pactl list <art>`.
+fn pactl_text(art: &str) -> Option<Vec<(String, Option<String>)>> {
+    let ausgabe = Command::new("pactl")
+        .env("LC_ALL", "C")
+        .args(["list", art])
+        .output()
+        .ok()?;
+    if !ausgabe.status.success() {
+        return None;
+    }
+    Some(text_paare(&String::from_utf8_lossy(&ausgabe.stdout)))
+}
+
+/// Rein: die JSON-Ausgabe von `pactl` in (Kennung, Beschreibung).
+fn json_paare(text: &str) -> Option<Vec<(String, Option<String>)>> {
+    let liste: Vec<serde_json::Value> = serde_json::from_str(text.trim()).ok()?;
+    Some(
+        liste
+            .iter()
+            .filter_map(|g| {
+                let name = g.get("name")?.as_str()?.to_string();
+                let beschreibung = g
+                    .get("description")
+                    .and_then(|d| d.as_str())
+                    .map(str::to_string);
+                Some((name, beschreibung))
+            })
+            .collect(),
+    )
+}
+
+/// Rein: die Textausgabe (`LC_ALL=C`) in (Kennung, Beschreibung).
+fn text_paare(text: &str) -> Vec<(String, Option<String>)> {
+    let mut aus: Vec<(String, Option<String>)> = Vec::new();
     for zeile in text.lines() {
-        let felder: Vec<&str> = zeile.split('\t').collect();
-        if felder.len() < 2 {
-            continue;
+        let zeile = zeile.trim();
+        if let Some(name) = zeile.strip_prefix("Name: ") {
+            aus.push((name.trim().to_string(), None));
+        } else if let Some(beschreibung) = zeile.strip_prefix("Description: ") {
+            if let Some(letztes) = aus.last_mut() {
+                if letztes.1.is_none() {
+                    letztes.1 = Some(beschreibung.trim().to_string());
+                }
+            }
         }
-        let id = felder[1].trim().to_string();
+    }
+    aus
+}
+
+/// Rein: fehlende Beschreibungen aus einer zweiten Liste nachtragen.
+fn ergaenzt(
+    mut erste: Vec<(String, Option<String>)>,
+    zweite: Vec<(String, Option<String>)>,
+) -> Vec<(String, Option<String>)> {
+    for (id, beschreibung) in erste.iter_mut() {
+        if beschreibung.is_none() {
+            *beschreibung = zweite
+                .iter()
+                .find(|(i, _)| i == id)
+                .and_then(|(_, b)| b.clone());
+        }
+    }
+    erste
+}
+
+/// Rein: aus (Kennung, Beschreibung) die wählbaren Geräte.
+fn geraete_aus(art: &str, paare: Vec<(String, Option<String>)>) -> Vec<Geraet> {
+    paare
+        .into_iter()
         // Monitore sind keine Aufnahmegeräte für Sprache: sie liefern die
-        // Wiedergabe des Rechners zurück. Wer sie als Mikrofon wählt, hört sich
-        // selbst — und alle anderen doppelt.
-        if art == "sources" && ist_monitor(&id) {
-            continue;
-        }
-        geraete.push(Geraet {
-            name: lesbar(&id),
+        // Wiedergabe des Rechners zurück. Wer sie als Mikrofon wählt, hört
+        // sich selbst — und alle anderen doppelt.
+        .filter(|(id, _)| !(art == "sources" && ist_monitor(id)))
+        .map(|(id, beschreibung)| Geraet {
+            name: beschreibung
+                .filter(|b| !b.trim().is_empty())
+                .unwrap_or_else(|| lesbar(&id)),
             id,
             vorgabe: false,
-        });
-    }
-    Ok(geraete)
+        })
+        .collect()
 }
 
 /// Ist das ein Monitor (Ausgang, mitgeschnitten)? Monitore liefern das, was der
@@ -137,7 +222,8 @@ pub fn ist_monitor(id: &str) -> bool {
     id.ends_with(".monitor")
 }
 
-/// Macht aus `alsa_input.usb-Sennheiser_…-00.mono-fallback` etwas Lesbares.
+/// Letzter Ausweg, wenn `pactl` keine Beschreibung nennt: aus
+/// `alsa_input.usb-Sennheiser_…-00.mono-fallback` etwas Lesbares raten.
 fn lesbar(id: &str) -> String {
     let ohne_praefix = id
         .strip_prefix("alsa_input.")
@@ -446,6 +532,57 @@ pub fn pegel(geraet: &str, millisekunden: u64) -> Result<u8, Fehler> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn json_von_pactl_gibt_die_namen_der_systemeinstellungen() {
+        let json = r#"[{"index":65,"name":"alsa_input.pci-0000_0f_00.6.analog-stereo","description":"Ryzen HD Audio Controller Analoges Stereo"},
+            {"index":1017,"name":"alsa_output.usb-Sennheiser_Sennheiser_Profile_0226044674-00.analog-stereo.monitor","description":"Monitor of Sennheiser Profile Analoges Stereo"},
+            {"index":1018,"name":"alsa_input.usb-Sennheiser_Sennheiser_Profile_0226044674-00.mono-fallback","description":"Sennheiser Profile Mono"}]"#;
+        let g = geraete_aus("sources", json_paare(json).unwrap());
+        let namen: Vec<&str> = g.iter().map(|g| g.name.as_str()).collect();
+        assert_eq!(
+            namen,
+            [
+                "Ryzen HD Audio Controller Analoges Stereo",
+                "Sennheiser Profile Mono"
+            ]
+        );
+        assert_eq!(
+            g[1].id,
+            "alsa_input.usb-Sennheiser_Sennheiser_Profile_0226044674-00.mono-fallback"
+        );
+    }
+
+    #[test]
+    fn textausgabe_als_rueckfall() {
+        let text = "Sink #5\n\tState: SUSPENDED\n\tName: alsa_output.pci-0000_03_00.1.hdmi-stereo\n\tDescription: Navi 48 HDMI/DP Audio Controller Digital Stereo (HDMI 3)\n\tDriver: PipeWire\nSink #6\n\tName: ohne_beschreibung\n";
+        let g = geraete_aus("sinks", text_paare(text));
+        assert_eq!(
+            g[0].name,
+            "Navi 48 HDMI/DP Audio Controller Digital Stereo (HDMI 3)"
+        );
+        assert_eq!(
+            g[1].name, "ohne beschreibung",
+            "ohne Beschreibung wird geraten"
+        );
+    }
+
+    #[test]
+    fn fehlende_beschreibung_wird_ergaenzt() {
+        let json = vec![
+            ("a".to_string(), None),
+            ("b".to_string(), Some("B".to_string())),
+        ];
+        let text = vec![("a".to_string(), Some("Kopfhörer".to_string()))];
+        let g = ergaenzt(json, text);
+        assert_eq!(g[0].1.as_deref(), Some("Kopfhörer"));
+        assert_eq!(g[1].1.as_deref(), Some("B"));
+    }
+
+    #[test]
+    fn kaputtes_json_faellt_auf_text_zurueck() {
+        assert!(json_paare("Invalid non-ASCII character: 0xffffffc3").is_none());
+    }
 
     #[test]
     fn lesbare_namen() {

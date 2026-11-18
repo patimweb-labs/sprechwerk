@@ -272,3 +272,154 @@ pub fn hauptknopf_mit(ui: &mut egui::Ui, f: &Farben, icon: Icon, text: &str) -> 
         .stroke(Stroke::new(thema::SIZE_BORDER, f.accent_default)),
     )
 }
+
+// ---- Seiten und Formulare: einheitlich in beiden Fenstern ----------------
+
+/// Größte Breite des Inhalts einer Seite — lange Zeilen lesen sich schlecht.
+pub const SEITENBREITE: f32 = thema::SPACE_8 * 12.0;
+/// Ab dieser Breite steht die Beschriftung links neben dem Feld, darunter
+/// darüber.
+const FORMULAR_NEBENEINANDER: f32 = thema::SPACE_8 * 8.0;
+/// Breite der Beschriftungsspalte.
+const BESCHRIFTUNG: f32 = thema::SPACE_8 * 3.0;
+
+/// Eine Seite: senkrecht scrollbar, Rand an beiden Seiten, nie breiter als
+/// [`SEITENBREITE`], nie breiter als das Fenster.
+pub fn seite<R>(ui: &mut egui::Ui, inhalt: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            let breite = ui.available_width().min(SEITENBREITE);
+            ui.set_max_width(breite);
+            ui.add_space(thema::SPACE_2);
+            let r = inhalt(ui);
+            ui.add_space(thema::SPACE_6);
+            r
+        })
+        .inner
+}
+
+/// Eine Formularzeile: Beschriftung, Bedienelement, Hinweis darunter. Breit
+/// nebeneinander, schmal untereinander. Die Beschriftung wird zum
+/// zugänglichen Namen des Elements.
+pub fn feld(
+    ui: &mut egui::Ui,
+    f: &Farben,
+    beschriftung: &str,
+    hinweis: Option<&str>,
+    inhalt: impl FnOnce(&mut egui::Ui) -> egui::Response,
+) -> egui::Response {
+    let nebeneinander = ui.available_width() >= FORMULAR_NEBENEINANDER;
+    let antwort = if nebeneinander {
+        ui.horizontal(|ui| {
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(BESCHRIFTUNG, thema::SIZE_CONTROL_SM),
+                Sense::hover(),
+            );
+            let l = ui.put(
+                rect,
+                egui::Label::new(text(f, beschriftung, Ton::Leise)).truncate(),
+            );
+            ui.vertical(|ui| {
+                let a = inhalt(ui).labelled_by(l.id);
+                if let Some(h) = hinweis {
+                    ui.add(egui::Label::new(text(f, h, Ton::Blass).small()).wrap());
+                }
+                a
+            })
+            .inner
+        })
+        .inner
+    } else {
+        ui.vertical(|ui| {
+            let l = ui.label(text(f, beschriftung, Ton::Leise));
+            let a = inhalt(ui).labelled_by(l.id);
+            if let Some(h) = hinweis {
+                ui.add(egui::Label::new(text(f, h, Ton::Blass).small()).wrap());
+            }
+            a
+        })
+        .inner
+    };
+    ui.add_space(thema::SPACE_1);
+    antwort
+}
+
+/// Breite für Eingabefelder: so breit wie Platz ist, höchstens eine Spalte.
+pub fn feldbreite(ui: &egui::Ui) -> f32 {
+    ui.available_width().min(thema::SPACE_8 * 6.0)
+}
+
+/// Fakten (Beschriftung → Wert), Werte brechen um statt aus dem Rand zu
+/// laufen. `mono` für Kennungen und Adressen.
+pub fn fakten(ui: &mut egui::Ui, f: &Farben, zeilen: &[(String, String, bool)]) {
+    let nebeneinander = ui.available_width() >= FORMULAR_NEBENEINANDER;
+    for (k, w, mono) in zeilen {
+        let wert = if *mono {
+            RichText::new(w).monospace()
+        } else {
+            RichText::new(w)
+        };
+        if nebeneinander {
+            ui.horizontal_top(|ui| {
+                let (rect, _) = ui.allocate_exact_size(
+                    egui::vec2(BESCHRIFTUNG, thema::FONT_SIZE_LG),
+                    Sense::hover(),
+                );
+                ui.put(rect, egui::Label::new(text(f, k, Ton::Leise)).truncate());
+                ui.add(egui::Label::new(wert).wrap());
+            });
+        } else {
+            ui.label(text(f, k, Ton::Leise).small());
+            ui.add(egui::Label::new(wert).wrap());
+        }
+        ui.add_space(thema::SPACE_1);
+    }
+}
+
+/// Auswahl aus wenigen Möglichkeiten als Reihe (Farbschema, Sprache …).
+/// Bricht um, wenn der Platz nicht reicht.
+pub fn auswahl<T: PartialEq + Copy>(
+    ui: &mut egui::Ui,
+    wert: &mut T,
+    moeglichkeiten: &[(T, String)],
+) -> bool {
+    let mut geaendert = false;
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = thema::SPACE_1;
+        for (m, name) in moeglichkeiten {
+            let gewaehlt = *wert == *m;
+            if ui
+                .add(egui::Button::selectable(gewaehlt, name.as_str()).frame_when_inactive(true))
+                .clicked()
+                && !gewaehlt
+            {
+                *wert = *m;
+                geaendert = true;
+            }
+        }
+    });
+    geaendert
+}
+
+/// Zustand als kleines Schild: Quadrat in der Statusfarbe, Text daneben.
+pub fn status(ui: &mut egui::Ui, f: &Farben, ton: Ton, beschriftung: &str) -> egui::Response {
+    ui.horizontal(|ui| {
+        let (rect, _) =
+            ui.allocate_exact_size(egui::vec2(thema::SPACE_2, thema::SPACE_2), Sense::hover());
+        ui.painter().rect_filled(rect, 0.0, thema::ton(f, ton));
+        ui.label(text(f, beschriftung, ton));
+    })
+    .response
+}
+
+/// Ein Wert zum Weitergeben (Fingerabdruck, Kennung): umbrechend, daneben
+/// ein Knopf zum Kopieren.
+pub fn kopierbar(ui: &mut egui::Ui, f: &Farben, wert: &str, kopieren: &str) {
+    ui.horizontal_top(|ui| {
+        if icon_knopf(ui, f, Icon::Kopieren, kopieren, false).clicked() {
+            ui.ctx().copy_text(wert.to_string());
+        }
+        ui.add(egui::Label::new(RichText::new(wert).monospace()).wrap());
+    });
+}

@@ -24,42 +24,50 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
         leer(ui, o, &t(s, "bans.empty.title"), &t(s, "bans.empty.desc"));
         return;
     }
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        egui::Grid::new("sperren")
-            .num_columns(5)
-            .striped(true)
-            .spacing([thema::SPACE_4, thema::SPACE_2])
-            .show(ui, |ui| {
-                for k in [
-                    "bans.col.what",
-                    "bans.col.kind",
-                    "bans.col.reason",
-                    "bans.col.by",
-                ] {
-                    ui.label(text(o, t(s, k), Ton::Leise).strong());
-                }
-                ui.label("");
-                ui.end_row();
-                for sp in o.zustand.sperren.clone() {
-                    let (was, art) = match (&sp.kennung, &sp.adresse) {
-                        (Some(k), _) => (logik::kennung_gruppiert(k, 16), t(s, "bans.kind_key")),
-                        (None, Some(a)) => (a.clone(), t(s, "bans.kind_address")),
-                        (None, None) => ("—".into(), String::new()),
-                    };
-                    ui.label(RichText::new(was).monospace());
-                    ui.label(art);
-                    ui.label(&sp.grund);
-                    ui.label(&sp.handelnder_name);
-                    if knopf(ui, o.thema().farben(), Icon::Schliessen, &t(s, "bans.lift")).clicked()
-                    {
-                        aktionen.push(Aktion::Befehl(Befehl::Entsperren {
-                            kennung: sp.kennung.clone(),
-                            adresse: sp.adresse.clone(),
-                        }));
-                        aktionen.push(Aktion::Befehl(Befehl::Sperrliste));
-                    }
-                    ui.end_row();
-                }
-            });
+    let f = *o.thema().farben();
+    let sperren = o.zustand.sperren.clone();
+    sprechwerk_oberflaeche::bausteine::seite(ui, |ui| {
+        for (i, sp) in sperren.iter().enumerate() {
+            if i > 0 {
+                ui.separator();
+            }
+            let (was, art) = match (&sp.kennung, &sp.adresse) {
+                (Some(k), _) => (logik::kennung_gruppiert(k, 16), t(s, "bans.kind_key")),
+                (None, Some(a)) => (a.clone(), t(s, "bans.kind_address")),
+                (None, None) => ("—".into(), String::new()),
+            };
+            let mut aufheben = false;
+            egui::Sides::new()
+                .height(thema::SIZE_CONTROL_LG)
+                .shrink_left()
+                .truncate()
+                .show(
+                    ui,
+                    |ui| {
+                        ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing.y = 0.0;
+                            ui.label(RichText::new(&was).monospace());
+                            ui.label(
+                                text(
+                                    o,
+                                    format!("{art} · {} · {}", sp.grund, sp.handelnder_name),
+                                    Ton::Blass,
+                                )
+                                .small(),
+                            );
+                        });
+                    },
+                    |ui| {
+                        aufheben = knopf(ui, &f, Icon::Schliessen, &t(s, "bans.lift")).clicked();
+                    },
+                );
+            if aufheben {
+                aktionen.push(Aktion::Befehl(Befehl::Entsperren {
+                    kennung: sp.kennung.clone(),
+                    adresse: sp.adresse.clone(),
+                }));
+                aktionen.push(Aktion::Befehl(Befehl::Sperrliste));
+            }
+        }
     });
 }
