@@ -100,17 +100,9 @@ impl<K: Kern> Fenster<K> {
         ansichten::kopf(ui, &mut self.o, &mut aktionen);
         ansichten::fuss(ui, &self.o);
         egui::CentralPanel::default()
-            .frame({
-                // Räume bringen eigene Leisten mit; Seiten brauchen Rand.
-                let rand = if self.o.ansicht == Ansicht::Raeume {
-                    0.0
-                } else {
-                    thema::SPACE_5
-                };
-                egui::Frame::new()
-                    .fill(self.o.thema().farben().bg_canvas)
-                    .inner_margin(egui::Margin::symmetric(rand as i8, 0))
-            })
+            // Ohne Rand: den setzen die Seiten innen (`bausteine::seite`), damit
+            // Scrollbalken am Fensterrand sitzen.
+            .frame(egui::Frame::new().fill(self.o.thema().farben().bg_canvas))
             .show(ui, |ui| match self.o.ansicht {
                 Ansicht::Server => ansichten::server::zeigen(ui, &mut self.o, &mut aktionen),
                 Ansicht::Raeume => {

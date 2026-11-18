@@ -13,8 +13,11 @@ use sprechwerk_client::sitzung::Aktion;
 use sprechwerk_ipc::Befehl;
 
 pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) {
+    sprechwerk_oberflaeche::bausteine::seite(ui, |ui| inhalt(ui, o, aktionen));
+}
+
+fn inhalt(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) {
     let s = o.sprache();
-    ui.add_space(thema::SPACE_2);
     seitenkopf(ui, o, &t(s, "audit.title"), &t(s, "audit.sub"));
     if !o.zustand.darf_protokoll_lesen() {
         ui.label(text(o, t(s, "audit.no_right"), Ton::Warnung));
@@ -39,7 +42,8 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
         use chrono::Offset;
         chrono::Local::now().offset().fix().local_minus_utc() as i64
     };
-    egui::ScrollArea::both().show(ui, |ui| {
+    // Breiter als die Seite? Dann scrollt die Tabelle waagerecht in sich.
+    egui::ScrollArea::horizontal().show(ui, |ui| {
         egui::Grid::new("protokoll")
             .num_columns(5)
             .striped(true)

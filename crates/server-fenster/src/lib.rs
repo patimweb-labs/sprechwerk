@@ -12,7 +12,7 @@ use eframe::egui::{self, RichText, Stroke};
 use sprechwerk_domain::Role;
 use sprechwerk_oberflaeche::bausteine::{
     auswahl, fakten, feld, feldbreite, hauptknopf_mit, icon_knopf, icon_text_knopf, karte, knopf,
-    kopierbar, leer, seite, seitenkopf, status, status_klein, text, Icon,
+    kopierbar, leer, rand, seite, seitenkopf, status, status_klein, text, Icon,
 };
 use sprechwerk_oberflaeche::texte::{rolle, t, tf, Sprache};
 use sprechwerk_oberflaeche::thema::{self, fett, Thema, Ton};
@@ -303,11 +303,7 @@ pub fn zeichnen(ui: &mut egui::Ui, m: &mut Modell) -> Vec<Aktion> {
         });
 
     egui::CentralPanel::default()
-        .frame(
-            egui::Frame::new()
-                .fill(f.bg_canvas)
-                .inner_margin(egui::Margin::symmetric(thema::SPACE_5 as i8, 0)),
-        )
+        .frame(egui::Frame::new().fill(f.bg_canvas))
         .show(ui, |ui| match m.seite {
             Seite::Uebersicht => uebersicht(ui, m),
             Seite::Mitglieder => mitglieder(ui, m, &mut aktionen),
@@ -482,6 +478,10 @@ fn mitglieder(ui: &mut egui::Ui, m: &mut Modell, aktionen: &mut Vec<Aktion>) {
 }
 
 fn protokoll(ui: &mut egui::Ui, m: &mut Modell) {
+    rand(ui, |ui| protokoll_inhalt(ui, m));
+}
+
+fn protokoll_inhalt(ui: &mut egui::Ui, m: &mut Modell) {
     let s = m.sprache;
     let f = *m.thema.farben();
     ui.add_space(thema::SPACE_2);

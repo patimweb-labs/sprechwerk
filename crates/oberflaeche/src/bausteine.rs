@@ -283,19 +283,33 @@ const FORMULAR_NEBENEINANDER: f32 = thema::SPACE_8 * 8.0;
 /// Breite der Beschriftungsspalte.
 const BESCHRIFTUNG: f32 = thema::SPACE_8 * 3.0;
 
-/// Eine Seite: senkrecht scrollbar, Rand an beiden Seiten, nie breiter als
-/// [`SEITENBREITE`], nie breiter als das Fenster.
+/// Abstand des Inhalts zum Fensterrand.
+pub const SEITENRAND: f32 = thema::SPACE_5;
+
+/// Eine Seite: senkrecht scrollbar, nie breiter als [`SEITENBREITE`], nie
+/// breiter als das Fenster. Der Rand liegt **innen**: der Scrollbalken sitzt
+/// am Fensterrand, nur der Inhalt hält Abstand.
 pub fn seite<R>(ui: &mut egui::Ui, inhalt: impl FnOnce(&mut egui::Ui) -> R) -> R {
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            let breite = ui.available_width().min(SEITENBREITE);
-            ui.set_max_width(breite);
-            ui.add_space(thema::SPACE_2);
-            let r = inhalt(ui);
-            ui.add_space(thema::SPACE_6);
-            r
+            rand(ui, |ui| {
+                let breite = ui.available_width().min(SEITENBREITE);
+                ui.set_max_width(breite);
+                ui.add_space(thema::SPACE_2);
+                let r = inhalt(ui);
+                ui.add_space(thema::SPACE_6);
+                r
+            })
         })
+        .inner
+}
+
+/// Der Seitenrand für Seiten mit eigenem Scrollbereich (Protokoll).
+pub fn rand<R>(ui: &mut egui::Ui, inhalt: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    egui::Frame::new()
+        .inner_margin(egui::Margin::symmetric(SEITENRAND as i8, 0))
+        .show(ui, inhalt)
         .inner
 }
 

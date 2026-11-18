@@ -27,10 +27,16 @@ pub fn zeigen(
 ) {
     let f = *o.thema().farben();
     let s = o.sprache();
+    // Rand nur oben: links und rechts setzt die Liste ihn innen, damit der
+    // Scrollbalken an der Kante der Leiste sitzt.
     let leiste = egui::Frame::new()
         .fill(f.bg_panel)
         .stroke(Stroke::new(thema::SIZE_BORDER, f.border_subtle))
-        .inner_margin(egui::Margin::same(thema::SPACE_3 as i8));
+        .inner_margin(egui::Margin {
+            top: thema::SPACE_3 as i8,
+            ..Default::default()
+        });
+    let innen = egui::Margin::symmetric(thema::SPACE_3 as i8, 0);
 
     if o.einstellungen.chat_eingeklappt {
         // Schmale Schiene rechts: ein Knopf holt den Chat zurück.
@@ -54,7 +60,7 @@ pub fn zeigen(
             });
         egui::CentralPanel::default()
             .frame(leiste)
-            .show(ui, |ui| raumliste(ui, o, aktionen));
+            .show(ui, |ui| raumliste(ui, o, aktionen, innen));
         return;
     }
 
@@ -63,7 +69,7 @@ pub fn zeigen(
         .default_size(thema::SPACE_8 * 4.5)
         .min_size(thema::SPACE_8 * 3.0)
         .frame(leiste)
-        .show(ui, |ui| raumliste(ui, o, aktionen));
+        .show(ui, |ui| raumliste(ui, o, aktionen, innen));
     egui::CentralPanel::default()
         .frame(egui::Frame::new().fill(f.bg_canvas))
         .show(ui, |ui| chat(ui, o, speicher, aktionen));
@@ -73,7 +79,12 @@ pub fn zeigen(
 /// Leute — wie bei TeamSpeak. Ein Raum wird mit **Doppelklick** betreten (ein
 /// einfacher Klick soll niemanden versehentlich umziehen lassen); über
 /// Tastatur oder Screenreader genügt das Auslösen des Eintrags.
-fn raumliste(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) {
+fn raumliste(
+    ui: &mut egui::Ui,
+    o: &mut Oberflaeche,
+    aktionen: &mut Vec<Aktion>,
+    innen: egui::Margin,
+) {
     let s = o.sprache();
     let f = *o.thema().farben();
     let servername = match &o.zustand.verbindung {
@@ -81,24 +92,28 @@ fn raumliste(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>)
         _ => String::new(),
     };
     let mut anlegen = false;
-    egui::Sides::new()
-        .height(thema::SIZE_CONTROL_SM)
-        .shrink_left()
-        .truncate()
-        .show(
-            ui,
-            |ui| {
-                ui.add(Icon::Server.bild(thema::FONT_SIZE_LG, f.accent_default));
-                ui.label(
-                    RichText::new(&servername).font(egui::FontId::new(thema::FONT_SIZE_MD, fett())),
-                );
-            },
-            |ui| {
-                if o.zustand.darf_raeume_verwalten() {
-                    anlegen = icon_knopf(ui, &f, Icon::Plus, &t(s, "room.add"), false).clicked();
-                }
-            },
-        );
+    egui::Frame::new().inner_margin(innen).show(ui, |ui| {
+        egui::Sides::new()
+            .height(thema::SIZE_CONTROL_SM)
+            .shrink_left()
+            .truncate()
+            .show(
+                ui,
+                |ui| {
+                    ui.add(Icon::Server.bild(thema::FONT_SIZE_LG, f.accent_default));
+                    ui.label(
+                        RichText::new(&servername)
+                            .font(egui::FontId::new(thema::FONT_SIZE_MD, fett())),
+                    );
+                },
+                |ui| {
+                    if o.zustand.darf_raeume_verwalten() {
+                        anlegen =
+                            icon_knopf(ui, &f, Icon::Plus, &t(s, "room.add"), false).clicked();
+                    }
+                },
+            );
+    });
     if anlegen {
         o.dialog = Dialog::RaumAnlegen {
             name: String::new(),
@@ -109,75 +124,82 @@ fn raumliste(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>)
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = thema::SPACE_1;
-            for raum in &raeume {
-                let zahl = logik::anwesende(&o.zustand, raum.id).count();
-                let zahl = if zahl > 0 {
-                    zahl.to_string()
-                } else {
-                    String::new()
-                };
-                let breite = ui.available_width();
-                let antwort = ui
-                    .horizontal(|ui| {
-                        ui.add_space(thema::SPACE_3);
-                        ui.add(
-                            egui::Button::new(
-                                RichText::new(&raum.name)
-                                    .font(egui::FontId::new(thema::FONT_SIZE_MD, fett())),
+            egui::Frame::new().inner_margin(innen).show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = thema::SPACE_1;
+                for raum in &raeume {
+                    let zahl = logik::anwesende(&o.zustand, raum.id).count();
+                    let zahl = if zahl > 0 {
+                        zahl.to_string()
+                    } else {
+                        String::new()
+                    };
+                    let breite = ui.available_width();
+                    let antwort = ui
+                        .horizontal(|ui| {
+                            ui.add_space(thema::SPACE_3);
+                            ui.add(
+                                egui::Button::new(
+                                    RichText::new(&raum.name)
+                                        .font(egui::FontId::new(thema::FONT_SIZE_MD, fett())),
+                                )
+                                .selected(raum.hier)
+                                .frame_when_inactive(raum.hier)
+                                .right_text(RichText::new(zahl).color(f.text_faint))
+                                .min_size(egui::vec2(
+                                    breite - thema::SPACE_3,
+                                    thema::SIZE_CONTROL_SM,
+                                )),
                             )
-                            .selected(raum.hier)
-                            .frame_when_inactive(raum.hier)
-                            .right_text(RichText::new(zahl).color(f.text_faint))
-                            .min_size(egui::vec2(breite - thema::SPACE_3, thema::SIZE_CONTROL_SM)),
-                        )
-                    })
-                    .inner
-                    .on_hover_text(t(s, "room.join_hint"));
-                // Doppelklick mit der Maus — oder Auslösen ohne Maus.
-                let ohne_maus = antwort.clicked() && !ui.input(|i| i.pointer.any_click());
-                if (antwort.double_clicked() || ohne_maus) && !raum.hier {
-                    aktionen.push(Aktion::Befehl(Befehl::Betreten { raum: raum.id }));
-                }
-                antwort.context_menu(|ui| {
-                    if !raum.hier && ui.button(t(s, "room.enter")).clicked() {
+                        })
+                        .inner
+                        .on_hover_text(t(s, "room.join_hint"));
+                    // Doppelklick mit der Maus — oder Auslösen ohne Maus.
+                    let ohne_maus = antwort.clicked() && !ui.input(|i| i.pointer.any_click());
+                    if (antwort.double_clicked() || ohne_maus) && !raum.hier {
                         aktionen.push(Aktion::Befehl(Befehl::Betreten { raum: raum.id }));
-                        ui.close();
                     }
-                    if o.zustand.darf_raeume_verwalten() {
-                        if ui.button(t(s, "room.rename")).clicked() {
-                            o.dialog = Dialog::RaumUmbenennen {
-                                raum: raum.id,
-                                name: raum.name.clone(),
-                            };
+                    antwort.context_menu(|ui| {
+                        if !raum.hier && ui.button(t(s, "room.enter")).clicked() {
+                            aktionen.push(Aktion::Befehl(Befehl::Betreten { raum: raum.id }));
                             ui.close();
                         }
-                        if ui.button(t(s, "room.delete")).clicked() {
-                            o.dialog = Dialog::RaumLoeschen {
-                                raum: raum.id,
-                                name: raum.name.clone(),
-                            };
-                            ui.close();
-                        }
-                    }
-                });
-                if raum.hier && logik::schluessel_vorhanden(&o.zustand, raum.id) == Some(false) {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.add_space(thema::SPACE_6);
-                        icon(ui, &f, Icon::Warnung, Ton::Warnung);
-                        ui.label(text(o, t(s, "room.key_missing"), Ton::Warnung).small());
-                        if ui.small_button(t(s, "room.key_request")).clicked() {
-                            aktionen.push(Aktion::Befehl(Befehl::SchluesselAnfordern {
-                                raum: raum.id,
-                            }));
+                        if o.zustand.darf_raeume_verwalten() {
+                            if ui.button(t(s, "room.rename")).clicked() {
+                                o.dialog = Dialog::RaumUmbenennen {
+                                    raum: raum.id,
+                                    name: raum.name.clone(),
+                                };
+                                ui.close();
+                            }
+                            if ui.button(t(s, "room.delete")).clicked() {
+                                o.dialog = Dialog::RaumLoeschen {
+                                    raum: raum.id,
+                                    name: raum.name.clone(),
+                                };
+                                ui.close();
+                            }
                         }
                     });
+                    if raum.hier && logik::schluessel_vorhanden(&o.zustand, raum.id) == Some(false)
+                    {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.add_space(thema::SPACE_6);
+                            icon(ui, &f, Icon::Warnung, Ton::Warnung);
+                            ui.label(text(o, t(s, "room.key_missing"), Ton::Warnung).small());
+                            if ui.small_button(t(s, "room.key_request")).clicked() {
+                                aktionen.push(Aktion::Befehl(Befehl::SchluesselAnfordern {
+                                    raum: raum.id,
+                                }));
+                            }
+                        });
+                    }
+                    let leute: Vec<Mitglied> =
+                        logik::anwesende(&o.zustand, raum.id).cloned().collect();
+                    for m in &leute {
+                        person(ui, o, m, aktionen);
+                    }
                 }
-                let leute: Vec<Mitglied> = logik::anwesende(&o.zustand, raum.id).cloned().collect();
-                for m in &leute {
-                    person(ui, o, m, aktionen);
-                }
-            }
+            })
         });
 }
 
@@ -428,13 +450,18 @@ fn chat(
         .show(ui, |ui| eingabe(ui, o, speicher, aktionen));
 
     // Verlauf
+    // Ohne Rand am Panel: der Scrollbalken sitzt am Rand, der Abstand liegt
+    // innen um die Beiträge.
+    let innen = egui::Margin::same(thema::SPACE_4 as i8);
     egui::CentralPanel::default()
-        .frame(egui::Frame::new().inner_margin(egui::Margin::same(thema::SPACE_4 as i8)))
+        .frame(egui::Frame::new())
         .show(ui, |ui| {
             let nachrichten: Vec<Nachricht> =
                 logik::sichtbar(&o.zustand.nachrichten).cloned().collect();
             if nachrichten.is_empty() {
-                leer(ui, o, &t(s, "room.empty.title"), &t(s, "room.empty.desc"));
+                egui::Frame::new().inner_margin(innen).show(ui, |ui| {
+                    leer(ui, o, &t(s, "room.empty.title"), &t(s, "room.empty.desc"));
+                });
                 return;
             }
             let versatz = ortszeit_versatz();
@@ -442,15 +469,17 @@ fn chat(
                 .stick_to_bottom(true)
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    let mut vorher: Option<&Nachricht> = None;
-                    for n in &nachrichten {
-                        let kopf = logik::neuer_block(vorher, n);
-                        if kopf && vorher.is_some() {
-                            ui.add_space(thema::SPACE_3);
+                    egui::Frame::new().inner_margin(innen).show(ui, |ui| {
+                        let mut vorher: Option<&Nachricht> = None;
+                        for n in &nachrichten {
+                            let kopf = logik::neuer_block(vorher, n);
+                            if kopf && vorher.is_some() {
+                                ui.add_space(thema::SPACE_3);
+                            }
+                            beitrag(ui, o, s, n, kopf, versatz, speicher, aktionen);
+                            vorher = Some(n);
                         }
-                        beitrag(ui, o, s, n, kopf, versatz, speicher, aktionen);
-                        vorher = Some(n);
-                    }
+                    })
                 });
         });
 }
