@@ -1,5 +1,44 @@
 # Changelog
 
+## [2.0.0](https://github.com/patimweb-labs/sprechwerk/compare/v1.3.0...v2.0.0) (2026-11-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* Die Verwaltung im Browser gibt es nicht mehr (sprechwerk stand/rolle/protokoll oder sprechwerk-server-fenster); das Fensterprogramm heißt sprechwerk-fenster statt sprechwerk-desktop.
+
+### Neu
+
+* **fenster:** Bedienung wie TeamSpeak ([8f542e5](https://github.com/patimweb-labs/sprechwerk/commit/8f542e5d47a9fd7860012c5a340e800bf0aee81f))
+* **fenster:** Fensteranwendung in reinem Rust (egui) ([c4978e2](https://github.com/patimweb-labs/sprechwerk/commit/c4978e25dc758138950dff91fac4102c8ce9e8b0))
+* **fenster:** Sprechlicht in fester Spalte rechts neben dem Namen ([581c522](https://github.com/patimweb-labs/sprechwerk/commit/581c522ae6681ea551659ccef9fadbeed495743b))
+* **fenster:** Sprechlicht vor dem Namen statt Pegelbalken im Kopf ([162a4a6](https://github.com/patimweb-labs/sprechwerk/commit/162a4a62954e4506531bc7b8312d040fdaa30802))
+* Server-Fenster und Einstellungen einheitlich und schmal tauglich ([640f359](https://github.com/patimweb-labs/sprechwerk/commit/640f3591d26467abbc896134a82450ad816ebb14))
+* **server:** Verwaltung auf der Konsole und als Fenster statt im Browser ([bab010f](https://github.com/patimweb-labs/sprechwerk/commit/bab010fe033992e9b681df53301377e707753e6d))
+
+
+### Behoben
+
+* **fenster:** Gerätenamen wie im System, Hand-Zeiger, nichts verschwindet beim Verkleinern ([18dacff](https://github.com/patimweb-labs/sprechwerk/commit/18dacff4d33ace8d6a944f92486e23cf3fe6f755))
+* **fenster:** Icons zurück, Chat einklappbar, Kopfleiste ohne Überlappung; Effekte entfernt ([690698c](https://github.com/patimweb-labs/sprechwerk/commit/690698c75a23b854dcecac4d26639f21ce47d3a1))
+* Scrollbalken am Fensterrand statt einen Rand weit innen ([58a43ab](https://github.com/patimweb-labs/sprechwerk/commit/58a43aba317de61ed8e92bec918fd4a57870d670))
+
+
+### Umgebaut
+
+* Bausatz crates/oberflaeche für beide Fenster ([0b9d577](https://github.com/patimweb-labs/sprechwerk/commit/0b9d5778a17a6e8f58c3e22b1c0659849a76f0f4))
+* Client-Kern ohne Oberfläche in crates/client ([513dbc8](https://github.com/patimweb-labs/sprechwerk/commit/513dbc8f8a486e84680f761176a50c908392a050))
+
+
+### Dokumentation
+
+* ADR 0013 (alles in Rust), README, SPEC, AGENTS und Bilder nachgezogen ([8e0fa6f](https://github.com/patimweb-labs/sprechwerk/commit/8e0fa6f644168a0edc18a2aceca872691e95fcf2))
+
+
+### Bau und Pakete
+
+* Web-Oberfläche und Tauri entfernt, Pakete aus reinem Rust ([737c66d](https://github.com/patimweb-labs/sprechwerk/commit/737c66d2b655710cb0e335660f6ef8fc7358d0ad))
+
 ## [1.3.0](https://github.com/patimweb-labs/sprechwerk/compare/v1.2.0...v1.3.0) (2026-11-17)
 
 
