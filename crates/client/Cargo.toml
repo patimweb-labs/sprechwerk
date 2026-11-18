@@ -16,7 +16,14 @@ sprechwerk-audio = { path = "../audio" }
 sprechwerk-linkvorschau = { path = "../linkvorschau" }
 serde.workspace = true
 serde_json.workspace = true
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "net", "macros"] }
+# `fs`, `io-util`: Anhänge lesen und hochladen, ohne das Fenster aufzuhalten.
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "net", "macros", "fs", "io-util"] }
+# Dateien wählen und speichern über die Dialoge des Systems (ADR 0012 §3).
+# Unter Linux über das XDG-Portal — keine GTK-Entwicklungspakete nötig.
+rfd = { version = "0.18", default-features = false, features = ["xdg-portal", "wayland"] }
+# Videos und andere Dateien im Programm des Systems öffnen (das Fenster
+# spielt kein Video selbst ab).
+open = "5"
 thiserror.workspace = true
 anyhow.workspace = true
 bytes = "1"

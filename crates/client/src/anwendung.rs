@@ -10,13 +10,16 @@
 //! das Fenster darf nie blockieren, und ein Netzfehler darf die Oberfläche
 //! nicht anhalten.
 
+use crate::dateien::Dateiablage;
 use crate::sprech::Sprechbetrieb;
 use crate::verschluesselung::Schluesselverwaltung;
+use sprechwerk_adapters::anhang::{self, Dateischluessel};
 use sprechwerk_adapters::serverschluessel::{Bund, Lesbar};
 use sprechwerk_adapters::{Schluessel, Verbindung as Netz};
-use sprechwerk_ipc::Linkentwurf;
 use sprechwerk_ipc::{abbilden, Antwort, Befehl, Zustand};
-use sprechwerk_protocol::inhalt::{Inhalt, Linkvorschau};
+use sprechwerk_ipc::{Anhangentwurf, Dateiart, Entwurfsstand, Ladestand, Linkentwurf};
+use sprechwerk_protocol::inhalt::{Datei, Inhalt, Linkvorschau};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
@@ -42,7 +45,51 @@ enum Auftrag {
         url: String,
         vorschau: Option<Linkvorschau>,
     },
+    /// Das Vorschaubild einer Datei im Entwurf ist gerechnet (Base64, Maße).
+    Vorbereitet {
+        nr: u64,
+        vorschau: Option<(String, u32, u32)>,
+    },
+    /// Eine Datei im Entwurf lädt hoch (oder ist fertig: `ergebnis`).
+    Hochladen {
+        nr: u64,
+        prozent: u8,
+        ergebnis: Option<Result<(), String>>,
+    },
+    /// Ladestand einer empfangenen Datei.
+    Laden { id: String, stand: Ladestand },
+    /// Eine Datei ist entschlüsselt gespeichert — oder nicht.
+    Gespeichert { ergebnis: Result<String, String> },
 }
+
+/// Eine Datei im Entwurf: was die Oberfläche nicht sieht (Kennung, Schlüssel,
+/// Aufgabe) und was sie sieht (`ansicht`).
+struct Entwurfsdatei {
+    id: String,
+    schluessel: Dateischluessel,
+    typ: &'static str,
+    breite: Option<u32>,
+    hoehe: Option<u32>,
+    ansicht: Anhangentwurf,
+    aufgabe: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl Drop for Entwurfsdatei {
+    // Entfernt oder getrennt: das Hochladen bricht ab, der Server verwirft
+    // den halben Upload.
+    fn drop(&mut self) {
+        if let Some(a) = self.aufgabe.take() {
+            a.abort();
+        }
+    }
+}
+
+/// Vorschaubilder der Anhänge: kleiner als die einer Link-Vorschau, weil
+/// bis zu 16 in einen Umschlag passen müssen.
+const ANHANG_KANTE: u32 = 360;
+const ANHANG_VORSCHAU_BYTES: usize = 40 * 1024;
+/// Größer liest niemand ein Bild ganz ein, nur für ein Vorschaubild.
+const ANHANG_VORSCHAU_HOECHSTENS: u64 = 64 * 1024 * 1024;
 
 /// Der Zugang des Fensters zur Anwendung.
 pub struct Anwendung {
@@ -60,6 +107,7 @@ impl Anwendung {
         schluessel_pfad: PathBuf,
         sprech: Arc<Sprechbetrieb>,
         verschluesselung: Arc<Schluesselverwaltung>,
+        ablage: Arc<Dateiablage>,
         melde: F,
     ) -> Self
     where
@@ -89,8 +137,11 @@ impl Anwendung {
                     rx,
                     rueck,
                     zustand_thread,
-                    sprech_thread,
-                    verwaltung,
+                    Teile {
+                        sprech: sprech_thread,
+                        verwaltung,
+                        ablage,
+                    },
                     schluessel_pfad,
                     melde,
                 ));
@@ -166,18 +217,30 @@ where
     }
 }
 
+/// Was die Schleife neben Modell und Aufträgen braucht: Ton, Raumschlüssel,
+/// Dateien.
+struct Teile {
+    sprech: Arc<Sprechbetrieb>,
+    verwaltung: Arc<Schluesselverwaltung>,
+    ablage: Arc<Dateiablage>,
+}
+
 /// Die Schleife: Aufträge annehmen, Rahmen des Servers verarbeiten.
 async fn lauf<F>(
     mut rx: mpsc::UnboundedReceiver<Auftrag>,
     rueck: mpsc::UnboundedSender<Auftrag>,
     zustand: Arc<Mutex<Zustand>>,
-    sprech: Arc<Sprechbetrieb>,
-    verwaltung: Arc<Schluesselverwaltung>,
+    teile: Teile,
     schluessel_pfad: PathBuf,
     melde: F,
 ) where
     F: Fn(Zustand) + Send + 'static,
 {
+    let Teile {
+        sprech,
+        verwaltung,
+        ablage,
+    } = teile;
     let mut netz: Option<Netz> = None;
     // Der eigene Anmeldeschlüssel — nötig, um Raumschlüssel zu verteilen und
     // Umschläge zu öffnen.
@@ -194,6 +257,11 @@ async fn lauf<F>(
     let mut ping_gesendet: Option<std::time::Instant> = None;
     // Ruft Link-Vorschauen ab (ADR 0012 §2: der Absender, nicht die Empfänger).
     let holer = sprechwerk_linkvorschau::Holer::neu().ok();
+    // Dateien im Entwurf (ADR 0012 §3), in der Reihenfolge des Hinzufügens.
+    let mut entwuerfe: Vec<Entwurfsdatei> = Vec::new();
+    let mut naechste_nr: u64 = 1;
+    // Was gerade lädt oder scheiterte; „bereit" sagt der Zwischenspeicher.
+    let mut staende: HashMap<String, Ladestand> = HashMap::new();
 
     loop {
         let mut auftrag: Option<Auftrag> = None;
@@ -262,7 +330,7 @@ async fn lauf<F>(
                         let vorher = z.aktueller_raum;
                         abbilden::verarbeite(&mut z, frame);
                         if let Some(b) = bund.as_ref() {
-                            chat_lesen(&mut z, b);
+                            chat_lesen(&mut z, b, &ablage, &staende);
                         }
                         if let Some(ms) = gemessen {
                             z.latenz_ms = Some(ms);
@@ -302,6 +370,8 @@ async fn lauf<F>(
                         abbilden::getrennt(&mut z, None);
                         neu_melden = true;
                     }
+                    entwuerfe.clear();
+                    staende.clear();
                     netz = None;
                     sprache = None;
                     sprech.stoppen();
@@ -311,6 +381,8 @@ async fn lauf<F>(
                         abbilden::getrennt(&mut z, Some(format!("Verbindung beendet: {fehler}")));
                         neu_melden = true;
                     }
+                    entwuerfe.clear();
+                    staende.clear();
                     netz = None;
                     sprache = None;
                     sprech.stoppen();
@@ -476,7 +548,7 @@ async fn lauf<F>(
                             // wäre wieder weg.
                             z.zertifikat = Some(zertifikat.clone());
                             if let Some(b) = bund.as_ref() {
-                                chat_lesen(&mut z, b);
+                                chat_lesen(&mut z, b, &ablage, &staende);
                             }
                             // Der eigene Name gehört ins Modell (er kommt nicht
                             // über die Meldung zurück).
@@ -514,6 +586,59 @@ async fn lauf<F>(
                 melden(&zustand, &melde);
             }
 
+            Auftrag::Vorbereitet { nr, vorschau } => {
+                if let Some(e) = entwuerfe.iter_mut().find(|e| e.ansicht.nr == nr) {
+                    if let Some((bild, breite, hoehe)) = vorschau {
+                        e.ansicht.vorschau = Some(bild);
+                        e.breite = Some(breite);
+                        e.hoehe = Some(hoehe);
+                    }
+                    if e.ansicht.stand == Entwurfsstand::Vorbereitet {
+                        e.ansicht.stand = Entwurfsstand::Laedt { prozent: 0 };
+                    }
+                }
+                entwurf_zeigen(&zustand, &entwuerfe);
+                melden(&zustand, &melde);
+            }
+
+            Auftrag::Hochladen {
+                nr,
+                prozent,
+                ergebnis,
+            } => {
+                if let Some(e) = entwuerfe.iter_mut().find(|e| e.ansicht.nr == nr) {
+                    e.ansicht.stand = match ergebnis {
+                        None => Entwurfsstand::Laedt { prozent },
+                        Some(Ok(())) => Entwurfsstand::Bereit,
+                        Some(Err(text)) => Entwurfsstand::Fehler { text },
+                    };
+                }
+                entwurf_zeigen(&zustand, &entwuerfe);
+                melden(&zustand, &melde);
+            }
+
+            Auftrag::Laden { id, stand } => {
+                if stand == Ladestand::Bereit {
+                    staende.remove(&id);
+                } else {
+                    staende.insert(id, stand);
+                }
+                if let Ok(mut z) = zustand.lock() {
+                    abbilden::ladestaende(&mut z, |id| stand_von(&ablage, &staende, id));
+                }
+                melden(&zustand, &melde);
+            }
+
+            Auftrag::Gespeichert { ergebnis } => {
+                if let Ok(mut z) = zustand.lock() {
+                    z.meldung = Some(match ergebnis {
+                        Ok(ziel) => format!("gespeichert: {ziel}"),
+                        Err(fehler) => format!("nicht gespeichert: {fehler}"),
+                    });
+                }
+                melden(&zustand, &melde);
+            }
+
             Auftrag::Befehl { befehl, antwort } => {
                 // Befehle, die nur das Modell betreffen.
                 let nur_modell = match &befehl {
@@ -531,6 +656,17 @@ async fn lauf<F>(
                                 });
                                 true
                             });
+                        }
+                        true
+                    }
+                    Befehl::AnhangEntfernen { nr } => {
+                        entwuerfe.retain(|e| e.ansicht.nr != *nr);
+                        entwurf_zeigen(&zustand, &entwuerfe);
+                        true
+                    }
+                    Befehl::BetrachterSchliessen => {
+                        if let Ok(mut z) = zustand.lock() {
+                            z.betrachter = None;
                         }
                         true
                     }
@@ -566,6 +702,8 @@ async fn lauf<F>(
                     if let Some(v) = netz.take() {
                         v.schliessen();
                     }
+                    entwuerfe.clear();
+                    staende.clear();
                     bund = None;
                     sprache = None;
                     sprech.stoppen();
@@ -584,11 +722,115 @@ async fn lauf<F>(
                     continue;
                 };
 
+                // Anhänge: eigene Datenströme, kein Rahmen auf dem Steuerstrom.
+                match &befehl {
+                    Befehl::AnhaengeHinzufuegen { pfade } => {
+                        for pfad in pfade {
+                            let nr = naechste_nr;
+                            naechste_nr += 1;
+                            entwuerfe.push(entwurf_starten(
+                                nr,
+                                PathBuf::from(pfad),
+                                verbindung.leitung(),
+                                rueck.clone(),
+                            ));
+                        }
+                        entwurf_zeigen(&zustand, &entwuerfe);
+                        melden(&zustand, &melde);
+                        let _ = antwort.send(Antwort::Ok);
+                        continue;
+                    }
+                    Befehl::DateiOeffnen { nachricht, datei } => {
+                        let ansicht = zustand
+                            .lock()
+                            .ok()
+                            .and_then(|z| abbilden::datei_finden(&z, *nachricht, datei));
+                        let Some(ansicht) = ansicht else {
+                            let _ = antwort.send(Antwort::Fehler {
+                                text: "Datei unbekannt".into(),
+                            });
+                            continue;
+                        };
+                        let laedt = matches!(staende.get(datei), Some(Ladestand::Laedt { .. }));
+                        if !ablage.liegt_vor(datei) && !laedt {
+                            staende.insert(datei.clone(), Ladestand::Laedt { prozent: 0 });
+                            laden_starten(
+                                datei.clone(),
+                                verbindung.leitung(),
+                                ablage.clone(),
+                                rueck.clone(),
+                                None,
+                            );
+                        }
+                        if let Ok(mut z) = zustand.lock() {
+                            z.betrachter = Some(sprechwerk_ipc::Betrachter {
+                                nachricht: *nachricht,
+                                datei: ansicht,
+                            });
+                            abbilden::ladestaende(&mut z, |id| stand_von(&ablage, &staende, id));
+                        }
+                        melden(&zustand, &melde);
+                        let _ = antwort.send(Antwort::Ok);
+                        continue;
+                    }
+                    Befehl::DateiSpeichern { datei, ziel, .. } => {
+                        if ablage.schluessel(datei).is_none() {
+                            let _ = antwort.send(Antwort::Fehler {
+                                text: "Datei unbekannt".into(),
+                            });
+                            continue;
+                        }
+                        if !ablage.liegt_vor(datei) {
+                            staende.insert(datei.clone(), Ladestand::Laedt { prozent: 0 });
+                        }
+                        laden_starten(
+                            datei.clone(),
+                            verbindung.leitung(),
+                            ablage.clone(),
+                            rueck.clone(),
+                            Some(PathBuf::from(ziel)),
+                        );
+                        if let Ok(mut z) = zustand.lock() {
+                            abbilden::ladestaende(&mut z, |id| stand_von(&ablage, &staende, id));
+                        }
+                        melden(&zustand, &melde);
+                        let _ = antwort.send(Antwort::Ok);
+                        continue;
+                    }
+                    _ => {}
+                }
+
                 // Nach dem Senden eines Texts ist der Entwurf leer.
                 let mut entwurf_leeren = false;
                 let rahmen = match befehl {
                     Befehl::Betreten { raum } => {
                         sprechwerk_protocol::ClientFrame::Betreten { raum }
+                    }
+                    // Mit Dateien: eine Nachricht der Art `anhang` (ohne Effekt
+                    // und Link-Vorschau — die Dateien sind die Vorschau).
+                    Befehl::Text { text } if !entwuerfe.is_empty() => {
+                        if entwuerfe
+                            .iter()
+                            .any(|e| e.ansicht.stand != Entwurfsstand::Bereit)
+                        {
+                            let _ = antwort.send(Antwort::Fehler {
+                                text: "Dateien sind noch nicht hochgeladen".into(),
+                            });
+                            continue;
+                        }
+                        entwurf_leeren = true;
+                        let inhalt = Inhalt::Anhang {
+                            text: text.trim_end().to_string(),
+                            dateien: entwuerfe.iter().map(datei_im_umschlag).collect(),
+                        };
+                        let anhaenge = entwuerfe.iter().map(|e| e.id.clone()).collect();
+                        match geheim_schreiben(bund.as_ref(), verbindung, &inhalt) {
+                            Ok(text) => sprechwerk_protocol::ClientFrame::Text { text, anhaenge },
+                            Err(text) => {
+                                let _ = antwort.send(Antwort::Fehler { text });
+                                continue;
+                            }
+                        }
                     }
                     Befehl::Text { text } => {
                         // Die Vorschau geht mit, wenn ihr Link noch im Text
@@ -602,7 +844,10 @@ async fn lauf<F>(
                         entwurf_leeren = true;
                         let inhalt = Inhalt::Text { text, vorschau };
                         match geheim_schreiben(bund.as_ref(), verbindung, &inhalt) {
-                            Ok(text) => sprechwerk_protocol::ClientFrame::Text { text },
+                            Ok(text) => sprechwerk_protocol::ClientFrame::Text {
+                                text,
+                                anhaenge: Vec::new(),
+                            },
                             Err(text) => {
                                 let _ = antwort.send(Antwort::Fehler { text });
                                 continue;
@@ -622,7 +867,10 @@ async fn lauf<F>(
                             weg,
                         };
                         match geheim_schreiben(bund.as_ref(), verbindung, &inhalt) {
-                            Ok(text) => sprechwerk_protocol::ClientFrame::Text { text },
+                            Ok(text) => sprechwerk_protocol::ClientFrame::Text {
+                                text,
+                                anhaenge: Vec::new(),
+                            },
                             Err(text) => {
                                 let _ = antwort.send(Antwort::Fehler { text });
                                 continue;
@@ -689,14 +937,23 @@ async fn lauf<F>(
                     | Befehl::Verbinden { .. }
                     | Befehl::Trennen
                     | Befehl::Vorschau { .. }
-                    | Befehl::VorschauVerwerfen => unreachable!(),
+                    | Befehl::VorschauVerwerfen
+                    | Befehl::AnhaengeHinzufuegen { .. }
+                    | Befehl::AnhangEntfernen { .. }
+                    | Befehl::DateiOeffnen { .. }
+                    | Befehl::BetrachterSchliessen
+                    | Befehl::DateiSpeichern { .. } => unreachable!(),
                 };
 
                 match verbindung.sende(rahmen).await {
                     Ok(()) => {
                         if entwurf_leeren {
+                            // Verschickt: die Dateien gehören jetzt der
+                            // Nachricht (die Aufgaben sind fertig).
+                            entwuerfe.clear();
                             if let Ok(mut z) = zustand.lock() {
                                 z.entwurf = Linkentwurf::Keiner;
+                                z.anhaenge.clear();
                             }
                             melden(&zustand, &melde);
                         }
@@ -846,10 +1103,25 @@ async fn serverschluessel_bedienen(
 
 /// Entschlüsselt, was im Modell noch auf seinen Schlüssel wartet, und sagt der
 /// Oberfläche, ob geschrieben werden kann.
-fn chat_lesen(z: &mut Zustand, bund: &Bund) {
+fn chat_lesen(
+    z: &mut Zustand,
+    bund: &Bund,
+    ablage: &Dateiablage,
+    staende: &HashMap<String, Ladestand>,
+) {
     use sprechwerk_ipc::NachrichtInhalt;
     abbilden::entschluesseln(z, |n| match bund.lesen(n) {
-        Lesbar::Inhalt(inhalt) => abbilden::inhalt_abbilden(inhalt),
+        Lesbar::Inhalt(inhalt) => {
+            // Die Schlüssel der Dateien bleiben hier, im Rust-Teil.
+            if let Inhalt::Anhang { dateien, .. } = &inhalt {
+                for d in dateien {
+                    if let Some(s) = Dateischluessel::aus_hex(&d.schluessel) {
+                        ablage.merken(&d.id, s, abbilden::art_und_typ(&d.typ).1);
+                    }
+                }
+            }
+            abbilden::inhalt_abbilden(inhalt)
+        }
         Lesbar::Unbekannt { art } => NachrichtInhalt::Neuer { art },
         // Bleibt „wartet" und wird beim nächsten Mal erneut versucht.
         Lesbar::SchluesselFehlt => NachrichtInhalt::Wartet,
@@ -857,6 +1129,7 @@ fn chat_lesen(z: &mut Zustand, bund: &Bund) {
         Lesbar::Leer => NachrichtInhalt::Geloescht,
     });
     abbilden::reaktionen_zaehlen(z);
+    abbilden::ladestaende(z, |id| stand_von(ablage, staende, id));
     z.textschluessel = if bund.kann_schreiben() {
         sprechwerk_ipc::Textschluessel::Bereit
     } else {
@@ -910,6 +1183,215 @@ fn entwurf_fuer(
             url: url.to_string(),
         }
     }
+}
+
+/// Ladestand einer Datei: was gerade läuft, sonst was im Zwischenspeicher
+/// liegt.
+fn stand_von(ablage: &Dateiablage, staende: &HashMap<String, Ladestand>, id: &str) -> Ladestand {
+    match staende.get(id) {
+        Some(s) => s.clone(),
+        None if ablage.liegt_vor(id) => Ladestand::Bereit,
+        None => Ladestand::Keiner,
+    }
+}
+
+/// Der Entwurf ins Modell.
+fn entwurf_zeigen(zustand: &Arc<Mutex<Zustand>>, entwuerfe: &[Entwurfsdatei]) {
+    if let Ok(mut z) = zustand.lock() {
+        z.anhaenge = entwuerfe.iter().map(|e| e.ansicht.clone()).collect();
+    }
+}
+
+/// Eine Datei, wie sie im Umschlag steht — mit ihrem Schlüssel.
+fn datei_im_umschlag(e: &Entwurfsdatei) -> Datei {
+    Datei {
+        id: e.id.clone(),
+        name: e.ansicht.name.clone(),
+        typ: e.typ.to_string(),
+        groesse: e.ansicht.groesse,
+        schluessel: e.schluessel.hex(),
+        vorschau: e.ansicht.vorschau.clone(),
+        breite: e.breite,
+        hoehe: e.hoehe,
+    }
+}
+
+fn prozent(teil: u64, ganz: u64) -> u8 {
+    teil.saturating_mul(100)
+        .checked_div(ganz)
+        .map_or(100, |p| p.min(100) as u8)
+}
+
+/// Nimmt eine Datei in den Entwurf: Vorschau rechnen, verschlüsselt
+/// hochladen. Alles in einer Aufgabe — das Fenster wartet auf nichts.
+fn entwurf_starten(
+    nr: u64,
+    pfad: PathBuf,
+    leitung: sprechwerk_adapters::Leitung,
+    rueck: mpsc::UnboundedSender<Auftrag>,
+) -> Entwurfsdatei {
+    let roh = pfad
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let name = abbilden::dateiname(&roh);
+    let typ = anhang::typ_aus_name(&name);
+    let art = abbilden::art_und_typ(typ).0;
+    let groesse = std::fs::metadata(&pfad)
+        .ok()
+        .filter(|m| m.is_file())
+        .map(|m| m.len());
+    let id = anhang::neue_id();
+    let schluessel = Dateischluessel::neu();
+    let mut ansicht = Anhangentwurf {
+        nr,
+        name,
+        art,
+        groesse: groesse.unwrap_or(0),
+        vorschau: None,
+        stand: Entwurfsstand::Vorbereitet,
+    };
+    let Some(groesse) = groesse else {
+        ansicht.stand = Entwurfsstand::Fehler {
+            text: "keine lesbare Datei".into(),
+        };
+        return Entwurfsdatei {
+            id,
+            schluessel,
+            typ,
+            breite: None,
+            hoehe: None,
+            ansicht,
+            aufgabe: None,
+        };
+    };
+    let (a_id, a_s) = (id.clone(), schluessel.clone());
+    let aufgabe = tokio::spawn(async move {
+        let mut vorschau = None;
+        if art == Dateiart::Bild && groesse <= ANHANG_VORSCHAU_HOECHSTENS {
+            if let Ok(bytes) = tokio::fs::read(&pfad).await {
+                vorschau = tokio::task::spawn_blocking(move || {
+                    sprechwerk_linkvorschau::bild::vorschaubild(
+                        &bytes,
+                        ANHANG_KANTE,
+                        ANHANG_VORSCHAU_BYTES,
+                    )
+                })
+                .await
+                .ok()
+                .flatten()
+                .map(|v| (sprechwerk_linkvorschau::base64(&v.jpeg), v.breite, v.hoehe));
+            }
+        }
+        let _ = rueck.send(Auftrag::Vorbereitet { nr, vorschau });
+        let ergebnis = match tokio::fs::File::open(&pfad).await {
+            Ok(datei) => {
+                let mut zuletzt = 0;
+                let rueck_f = rueck.clone();
+                anhang::hochladen(&leitung, &a_id, &a_s, datei, groesse, move |n| {
+                    let p = prozent(n, groesse);
+                    if p != zuletzt {
+                        zuletzt = p;
+                        let _ = rueck_f.send(Auftrag::Hochladen {
+                            nr,
+                            prozent: p,
+                            ergebnis: None,
+                        });
+                    }
+                })
+                .await
+                .map_err(|f| format!("{f:#}"))
+            }
+            Err(f) => Err(f.to_string()),
+        };
+        let _ = rueck.send(Auftrag::Hochladen {
+            nr,
+            prozent: 100,
+            ergebnis: Some(ergebnis),
+        });
+    });
+    Entwurfsdatei {
+        id,
+        schluessel,
+        typ,
+        breite: None,
+        hoehe: None,
+        ansicht,
+        aufgabe: Some(aufgabe),
+    }
+}
+
+/// Lädt eine Datei in den Zwischenspeicher (falls nötig) und speichert sie,
+/// wenn `ziel` gegeben ist, entschlüsselt dorthin.
+fn laden_starten(
+    id: String,
+    leitung: sprechwerk_adapters::Leitung,
+    ablage: Arc<Dateiablage>,
+    rueck: mpsc::UnboundedSender<Auftrag>,
+    ziel: Option<PathBuf>,
+) {
+    tokio::spawn(async move {
+        if !ablage.liegt_vor(&id) {
+            let mut zuletzt = 0;
+            let rueck_f = rueck.clone();
+            let id_f = id.clone();
+            let geladen = anhang::herunterladen(&leitung, &id, &ablage.pfad(&id), move |n, g| {
+                let p = prozent(n, g);
+                if p != zuletzt {
+                    zuletzt = p;
+                    let _ = rueck_f.send(Auftrag::Laden {
+                        id: id_f.clone(),
+                        stand: Ladestand::Laedt { prozent: p },
+                    });
+                }
+            })
+            .await;
+            if let Err(fehler) = geladen {
+                let text = format!("{fehler:#}");
+                let _ = rueck.send(Auftrag::Laden {
+                    id,
+                    stand: Ladestand::Fehler { text: text.clone() },
+                });
+                if ziel.is_some() {
+                    let _ = rueck.send(Auftrag::Gespeichert {
+                        ergebnis: Err(text),
+                    });
+                }
+                return;
+            }
+            let _ = rueck.send(Auftrag::Laden {
+                id: id.clone(),
+                stand: Ladestand::Bereit,
+            });
+        }
+        let Some(ziel) = ziel else {
+            return;
+        };
+        let Some(schluessel) = ablage.schluessel(&id) else {
+            let _ = rueck.send(Auftrag::Gespeichert {
+                ergebnis: Err("Schlüssel fehlt".into()),
+            });
+            return;
+        };
+        let quelle = ablage.pfad(&id);
+        let ziel_text = ziel.display().to_string();
+        let ablage_b = ablage.clone();
+        let id_b = id.clone();
+        let ergebnis = tokio::task::spawn_blocking(move || {
+            let e = anhang::entschluesseln_in_datei(&quelle, schluessel, &id_b, &ziel);
+            if e.is_err() {
+                // Verändert: beim nächsten Mal neu laden.
+                ablage_b.vergessen(&id_b);
+            }
+            e
+        })
+        .await
+        .map_err(|f| f.to_string())
+        .and_then(|e| e.map_err(|f| format!("{f:#}")));
+        let _ = rueck.send(Auftrag::Gespeichert {
+            ergebnis: ergebnis.map(|()| ziel_text),
+        });
+    });
 }
 
 fn melden<F: Fn(Zustand)>(zustand: &Arc<Mutex<Zustand>>, melde: &F) {
@@ -1026,6 +1508,7 @@ mod tests {
             verzeichnis.join("schluessel"),
             Arc::new(crate::sprech::Sprechbetrieb::neu()),
             Arc::new(crate::verschluesselung::Schluesselverwaltung::neu()),
+            Arc::new(Dateiablage::neu(verzeichnis.join("anhaenge"))),
             |_| {},
         );
         (anwendung, verzeichnis)
@@ -1231,6 +1714,171 @@ mod tests {
         let _ = std::fs::remove_dir_all(bosse_dir);
     }
 
+    /// Anhänge vom Fenster bis zum Fenster (ADR 0012 §3): Ada hängt eine Datei
+    /// an, sie lädt verschlüsselt hoch; Bosse sieht sie, öffnet und speichert
+    /// sie entschlüsselt. Beim Server liegt weder Name noch Inhalt.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn anhaenge_gehen_ende_zu_ende() {
+        use sprechwerk_ipc::{NachrichtInhalt, Textschluessel};
+        let server = server_starten("anhang-e2e");
+        let (ada, ada_dir) = anwendung_fuer("anhang-ada");
+        let (bosse, bosse_dir) = anwendung_fuer("anhang-bosse");
+        let adresse = server.adresse.to_string();
+        ada.verbinden(adresse.clone(), "Ada".into(), None, None)
+            .await
+            .expect("Ada");
+        bis(5, "Ada hat den Schlüssel", || {
+            ada.zustand().textschluessel == Textschluessel::Bereit
+        })
+        .await;
+        bosse
+            .verbinden(adresse, "Bosse".into(), None, None)
+            .await
+            .expect("Bosse");
+        bis(5, "Bosse hat den Schlüssel", || {
+            bosse.zustand().textschluessel == Textschluessel::Bereit
+        })
+        .await;
+
+        // Eine Datei über mehrere Blöcke, mit Merkwort.
+        std::fs::create_dir_all(&ada_dir).unwrap();
+        let quelle = ada_dir.join("Kassenbericht 2026.txt");
+        let mut inhalt = b"Kassenbericht-geheim ".repeat(10_000);
+        inhalt.extend_from_slice(b"Ende");
+        std::fs::write(&quelle, &inhalt).unwrap();
+
+        // Ohne fertigen Upload geht nichts hinaus.
+        ada.befehl(Befehl::AnhaengeHinzufuegen {
+            pfade: vec![
+                quelle.display().to_string(),
+                ada_dir.join("gibt-es-nicht").display().to_string(),
+            ],
+        })
+        .await;
+        bis(5, "Entwurf zeigt beide", || {
+            ada.zustand().anhaenge.len() == 2
+        })
+        .await;
+        bis(5, "Upload ist fertig", || {
+            ada.zustand().anhaenge[0].stand == Entwurfsstand::Bereit
+        })
+        .await;
+        assert!(matches!(
+            ada.zustand().anhaenge[1].stand,
+            Entwurfsstand::Fehler { .. }
+        ));
+        // Mit der kaputten Datei geht nichts hinaus — sie muss weg.
+        assert!(matches!(
+            ada.befehl(Befehl::Text {
+                text: "Bericht".into(),
+            })
+            .await,
+            Antwort::Fehler { .. }
+        ));
+        let nr = ada.zustand().anhaenge[1].nr;
+        ada.befehl(Befehl::AnhangEntfernen { nr }).await;
+        assert_eq!(ada.zustand().anhaenge.len(), 1);
+        let antwort = ada
+            .befehl(Befehl::Text {
+                text: "Bericht anbei".into(),
+            })
+            .await;
+        assert!(matches!(antwort, Antwort::Ok), "{antwort:?}");
+        assert!(ada.zustand().anhaenge.is_empty(), "Entwurf ist leer");
+
+        // Bosse sieht die Datei — ohne Schlüssel im Modell.
+        bis(5, "Bosse sieht den Anhang", || {
+            bosse.zustand().nachrichten.iter().any(|n| {
+                matches!(&n.inhalt, NachrichtInhalt::Anhang { text, dateien }
+                    if text == "Bericht anbei" && dateien[0].name == "Kassenbericht 2026.txt"
+                        && dateien[0].art == Dateiart::Datei
+                        && dateien[0].groesse == inhalt.len() as u64)
+            })
+        })
+        .await;
+        let (nachricht, datei) = bosse
+            .zustand()
+            .nachrichten
+            .iter()
+            .find_map(|n| match &n.inhalt {
+                NachrichtInhalt::Anhang { dateien, .. } => Some((n.id, dateien[0].id.clone())),
+                _ => None,
+            })
+            .unwrap();
+        let ansicht = bosse
+            .zustand()
+            .nachrichten
+            .iter()
+            .find(|n| n.id == nachricht)
+            .map(|n| serde_json::to_string(&n.inhalt).unwrap())
+            .unwrap();
+        assert!(
+            !ansicht.contains("schluessel"),
+            "kein Schlüssel im Modell: {ansicht}"
+        );
+
+        // Speichern: geladen, entschlüsselt, am Ziel.
+        let ziel = bosse_dir.join("gespeichert.txt");
+        let antwort = bosse
+            .befehl(Befehl::DateiSpeichern {
+                nachricht,
+                datei: datei.clone(),
+                ziel: ziel.display().to_string(),
+            })
+            .await;
+        assert!(matches!(antwort, Antwort::Ok), "{antwort:?}");
+        bis(5, "Datei ist gespeichert", || {
+            std::fs::read(&ziel).is_ok_and(|b| b == inhalt)
+        })
+        .await;
+        bis(5, "Meldung sagt es", || {
+            bosse
+                .zustand()
+                .meldung
+                .is_some_and(|m| m.starts_with("gespeichert"))
+        })
+        .await;
+
+        // Öffnen: liegt schon vor, der Betrachter steht im Modell.
+        bosse
+            .befehl(Befehl::DateiOeffnen {
+                nachricht,
+                datei: datei.clone(),
+            })
+            .await;
+        let b = bosse.zustand().betrachter.expect("Betrachter");
+        assert_eq!(b.datei.stand, sprechwerk_ipc::Ladestand::Bereit);
+        bosse.befehl(Befehl::BetrachterSchliessen).await;
+        assert!(bosse.zustand().betrachter.is_none());
+
+        // Beim Server: weder Merkwort noch Dateiname.
+        for datei in walk(&server.verzeichnis) {
+            if let Ok(bytes) = std::fs::read(&datei) {
+                assert!(
+                    !bytes.windows(20).any(|w| w == b"Kassenbericht-geheim")
+                        && !bytes.windows(13).any(|w| w == b"Kassenbericht"),
+                    "Klartext in {}",
+                    datei.display()
+                );
+            }
+        }
+        let _ = std::fs::remove_dir_all(ada_dir);
+        let _ = std::fs::remove_dir_all(bosse_dir);
+    }
+
+    fn walk(d: &std::path::Path) -> Vec<std::path::PathBuf> {
+        let mut aus = Vec::new();
+        for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                aus.extend(walk(&p));
+            } else {
+                aus.push(p);
+            }
+        }
+        aus
+    }
+
     /// Die ganze Kette vom Fenster bis zum Handschlag: ein angehefteter Wert
     /// entscheidet, ob die Verbindung zustande kommt — und der gesehene Wert
     /// landet im Modell, damit die Oberfläche ihn zeigen kann.
@@ -1246,6 +1894,7 @@ mod tests {
             verzeichnis.join("schluessel"),
             Arc::new(crate::sprech::Sprechbetrieb::neu()),
             Arc::new(crate::verschluesselung::Schluesselverwaltung::neu()),
+            Arc::new(Dateiablage::neu(verzeichnis.join("anhaenge"))),
             |_| {},
         );
 

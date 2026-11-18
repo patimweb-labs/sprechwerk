@@ -492,6 +492,7 @@ mod tests {
                 ..Default::default()
             },
             verwaltung: Default::default(),
+            anhaenge: Default::default(),
         };
         let mut kern = Kern::neu(konfig).unwrap();
         let (ada, _) = kern.anmelden(&schluessel(1), "Ada", "10.0.0.1").unwrap();

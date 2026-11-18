@@ -7,6 +7,7 @@
 //! Dienste) und `sprechwerk-server-fenster` (dasselbe mit Fenster). Beide
 //! starten [`dienst::laufen`] und verwalten über [`verwaltung::Verwaltung`].
 
+pub mod ablage;
 pub mod dienst;
 pub mod gesundheit;
 pub mod kern;

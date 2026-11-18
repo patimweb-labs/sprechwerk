@@ -146,6 +146,24 @@ pub async fn laufen(
                 if entfernt > 0 {
                     tracing::info!(entfernt, "Nachrichten nach Aufbewahrungsfrist entfernt");
                     let _ = k.speichern();
+                    // Mit der Nachricht gehen ihre Anhänge.
+                    k.anhaenge_aufraeumen();
+                }
+            }
+        });
+    }
+
+    // Anhänge, die hochgeladen, aber nie verschickt wurden, nach ihrer Frist
+    // wegräumen (ADR 0012 §3).
+    {
+        let kern_anhaenge = kern.clone();
+        tokio::spawn(async move {
+            let mut takt = tokio::time::interval(Duration::from_secs(600));
+            loop {
+                takt.tick().await;
+                let weg = kern_anhaenge.lock().expect("Sperre").anhaenge_aufraeumen();
+                if weg > 0 {
+                    tracing::info!(weg, "Anhänge ohne Nachricht entfernt");
                 }
             }
         });

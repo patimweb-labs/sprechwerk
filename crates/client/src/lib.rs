@@ -9,6 +9,7 @@
 
 pub mod anwendung;
 pub mod audio;
+pub mod dateien;
 pub mod einstellungen;
 pub mod sitzung;
 pub mod sprech;
