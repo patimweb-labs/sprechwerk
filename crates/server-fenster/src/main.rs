@@ -168,7 +168,7 @@ fn main() -> eframe::Result {
         "Sprechwerk Server",
         optionen,
         Box::new(move |cc| {
-            thema::schriften(&cc.egui_ctx);
+            sprechwerk_oberflaeche::einrichten(&cc.egui_ctx);
             let (sender, berichte) = mpsc::channel();
             Ok(Box::new(App {
                 m: Modell::default(),

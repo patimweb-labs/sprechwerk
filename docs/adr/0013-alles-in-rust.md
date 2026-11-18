@@ -91,7 +91,10 @@ Tauri-App ein egui-Fenster über denselben Crates bauen.
   Verlauf gibt es über das Kontextmenü („Text kopieren"), nicht durch Ziehen
   über mehrere Beiträge. IME und Farb-Emoji sind schwächer als in einer
   Webview (Emoji einfarbig, NotoEmoji).
-* **Animationen sind Handarbeit** (Effektbühne: Teilchen im Painter).
+* **Effekte entfallen** (Konfetti, Herzen, Beben): in egui Handarbeit, und
+  der Nutzer braucht sie nicht. Alte Nachrichten mit Effekt bleiben lesbar.
+* **Icons** sind dieselbe Lucide-Auswahl wie `@weppelmann/icons`, als SVG
+  eingebettet (`scripts/icons-holen.py`) und in der Theme-Farbe gezeichnet.
 * **Alte Konfiguration bleibt lesbar:** `verwaltung.bind/code/browser` werden
   angenommen und beim Start als wirkungslos gemeldet.
 * **Die Kennung bleibt:** das Fenster liest Schlüssel und Einstellungen am

@@ -3,7 +3,7 @@
 
 //! Verhängte Sperren mit Grund und Knopf zum Aufheben.
 
-use super::{leer, seitenkopf, text};
+use super::{knopf, leer, seitenkopf, text, Icon};
 use crate::logik;
 use crate::modell::Oberflaeche;
 use crate::texte::t;
@@ -50,7 +50,8 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
                     ui.label(art);
                     ui.label(&sp.grund);
                     ui.label(&sp.handelnder_name);
-                    if ui.button(t(s, "bans.lift")).clicked() {
+                    if knopf(ui, o.thema().farben(), Icon::Schliessen, &t(s, "bans.lift")).clicked()
+                    {
                         aktionen.push(Aktion::Befehl(Befehl::Entsperren {
                             kennung: sp.kennung.clone(),
                             adresse: sp.adresse.clone(),

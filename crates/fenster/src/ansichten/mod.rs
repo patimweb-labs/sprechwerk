@@ -5,7 +5,6 @@
 //! das Modell, zeichnet und legt Aktionen ab — rechnen tut sie nicht.
 
 pub mod dialog;
-pub mod effekt;
 pub mod einstellungen;
 pub mod protokoll;
 pub mod raeume;
@@ -19,7 +18,10 @@ use crate::thema::{self, fett, Ton};
 use eframe::egui::{self, RichText, Stroke};
 use sprechwerk_client::sitzung::Aktion;
 use sprechwerk_ipc::{Befehl, Verbindung};
-pub use sprechwerk_oberflaeche::bausteine::{self, hauptknopf, karte, kuerzel, pegelbalken};
+pub use sprechwerk_oberflaeche::bausteine::{
+    self, hauptknopf, hauptknopf_mit, icon, icon_knopf, icon_text_knopf, karte, knopf, kuerzel,
+    pegelbalken, Icon,
+};
 
 /// Text in einer Bedeutungsfarbe.
 pub fn text(o: &Oberflaeche, inhalt: impl Into<String>, art: Ton) -> RichText {
@@ -36,7 +38,13 @@ pub fn leer(ui: &mut egui::Ui, o: &Oberflaeche, titel: &str, erklaerung: &str) {
     bausteine::leer(ui, o.thema().farben(), titel, erklaerung)
 }
 
+/// Ab dieser Breite stehen die Reiter mit Text da, darunter nur als Icon.
+const BREIT: f32 = thema::SPACE_8 * 14.0;
+
 /// Kopfleiste: Marke, Ansichten, eigenes Mikrofon und Ton, Trennen.
+///
+/// `Sides` teilt die Zeile: rechts die Knöpfe in fester Breite, links bekommt
+/// den Rest — bei einem schmalen Fenster schieben sich nie Teile übereinander.
 pub fn kopf(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) {
     let s = o.sprache();
     let f = *o.thema().farben();
@@ -51,57 +59,79 @@ pub fn kopf(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) 
                 )),
         )
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new("sprechwerk")
-                        .font(egui::FontId::new(thema::FONT_SIZE_LG, fett()))
-                        .color(f.accent_default),
+            let breit = ui.available_width() >= BREIT;
+            // Rechts nur Abzüge des Modells — links wird es verändert.
+            let verbunden = o.verbunden();
+            let audio = o.audio;
+            let mut rechts = Vec::new();
+            egui::Sides::new()
+                .height(thema::SIZE_CONTROL_SM)
+                .shrink_left()
+                .truncate()
+                .show(
+                    ui,
+                    |ui| {
+                        ui.label(
+                            RichText::new("sprechwerk")
+                                .font(egui::FontId::new(thema::FONT_SIZE_LG, fett()))
+                                .color(f.accent_default),
+                        );
+                        ui.add_space(thema::SPACE_3);
+                        let mut reiter = vec![(Ansicht::Server, Icon::Server, "server.title")];
+                        if o.verbunden() {
+                            reiter.push((Ansicht::Raeume, Icon::Sprechblase, "app.rooms"));
+                            if o.zustand.darf_protokoll_lesen() {
+                                reiter.push((Ansicht::Protokoll, Icon::Protokoll, "app.audit"));
+                            }
+                            if logik::darf_sperren(&o.zustand) {
+                                reiter.push((Ansicht::Sperren, Icon::Sperre, "app.bans"));
+                            }
+                        }
+                        reiter.push((Ansicht::Einstellungen, Icon::Einstellungen, "app.settings"));
+                        for (ansicht, bild, schluessel) in reiter {
+                            let gewaehlt = o.ansicht == ansicht;
+                            let name = t(s, schluessel);
+                            let antwort = if breit {
+                                icon_text_knopf(ui, &f, bild, &name, gewaehlt)
+                            } else {
+                                icon_knopf(ui, &f, bild, &name, gewaehlt)
+                            };
+                            if antwort.clicked() {
+                                aktionen.extend(o.oeffnen(ansicht));
+                            }
+                        }
+                    },
+                    |ui| {
+                        if !verbunden {
+                            return;
+                        }
+                        if icon_knopf(ui, &f, Icon::Trennen, &t(s, "app.disconnect"), false)
+                            .clicked()
+                        {
+                            rechts.push(Aktion::Befehl(Befehl::Trennen));
+                            rechts.push(Aktion::AudioStoppen);
+                        }
+                        let (bild, name) = if audio.taub {
+                            (Icon::KopfhoererAus, "app.sound_unmute")
+                        } else {
+                            (Icon::Kopfhoerer, "app.sound_mute")
+                        };
+                        if icon_knopf(ui, &f, bild, &t(s, name), audio.taub).clicked() {
+                            rechts.push(Aktion::HoerenAus(!audio.taub));
+                        }
+                        let (bild, name) = if audio.stumm {
+                            (Icon::MikrofonAus, "app.mic_unmute")
+                        } else {
+                            (Icon::Mikrofon, "app.mic_mute")
+                        };
+                        if icon_knopf(ui, &f, bild, &t(s, name), audio.stumm).clicked() {
+                            rechts.push(Aktion::MikrofonStumm(!audio.stumm));
+                        }
+                        let pegel = if audio.stumm { 0 } else { audio.pegel };
+                        pegelbalken(ui, &f, pegel, None, thema::SPACE_7);
+                    },
                 );
-                ui.add_space(thema::SPACE_4);
-                let mut reiter = vec![(Ansicht::Server, t(s, "server.title"))];
-                if o.verbunden() {
-                    reiter.push((Ansicht::Raeume, t(s, "app.rooms")));
-                    if o.zustand.darf_protokoll_lesen() {
-                        reiter.push((Ansicht::Protokoll, t(s, "app.audit")));
-                    }
-                    if logik::darf_sperren(&o.zustand) {
-                        reiter.push((Ansicht::Sperren, t(s, "app.bans")));
-                    }
-                }
-                reiter.push((Ansicht::Einstellungen, t(s, "app.settings")));
-                for (ansicht, name) in reiter {
-                    if ui.selectable_label(o.ansicht == ansicht, name).clicked() {
-                        aktionen.extend(o.oeffnen(ansicht));
-                    }
-                }
-
-                if o.verbunden() {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button(t(s, "app.disconnect")).clicked() {
-                            aktionen.push(Aktion::Befehl(Befehl::Trennen));
-                            aktionen.push(Aktion::AudioStoppen);
-                        }
-                        let ton = if o.audio.taub {
-                            "app.sound_unmute"
-                        } else {
-                            "app.sound_mute"
-                        };
-                        if ui.selectable_label(o.audio.taub, t(s, ton)).clicked() {
-                            aktionen.push(Aktion::HoerenAus(!o.audio.taub));
-                        }
-                        let mik = if o.audio.stumm {
-                            "app.mic_unmute"
-                        } else {
-                            "app.mic_mute"
-                        };
-                        if ui.selectable_label(o.audio.stumm, t(s, mik)).clicked() {
-                            aktionen.push(Aktion::MikrofonStumm(!o.audio.stumm));
-                        }
-                        let pegel = if o.audio.stumm { 0 } else { o.audio.pegel };
-                        pegelbalken(ui, &f, pegel, None, thema::SPACE_8);
-                    });
-                }
-            });
+            aktionen.extend(rechts);
         });
 }
 

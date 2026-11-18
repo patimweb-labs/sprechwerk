@@ -34,7 +34,7 @@ Oberfläche bekommt nur das Ergebnis (`inhalt`: Text, wartet, unlesbar, …).
 Fehlt der Schlüssel, bleibt eine Nachricht „wartet" und wird lesbar, sobald
 ein Mitglied ihn weitergegeben hat — ohne den Verlauf neu zu laden.
 
-### Reaktionen, Effekte, Link-Vorschau (ADR 0012, Stufe 2)
+### Reaktionen und Link-Vorschau (ADR 0012, Stufe 2)
 
 Alles läuft **denselben** Weg wie Text — der Server sieht nur Geheimtext und
 weiß nicht, ob darin ein Text, eine Reaktion oder eine Vorschau steckt.
@@ -54,22 +54,22 @@ sequenceDiagram
     L->>W: GET (Seite, dann og:image)
     L-->>D: Linkvorschau { titel, beschreibung, bild (JPEG, 480 px) }
     D-->>UI: Zustand.entwurf = fertig → Karte über dem Eingabefeld
-    UI->>D: Aktion::Befehl(Text { text, effekt })
-    D->>S: Inhalt::Text { text, effekt, vorschau } verschlüsselt
+    UI->>D: Aktion::Befehl(Text { text })
+    D->>S: Inhalt::Text { text, vorschau } verschlüsselt
     UI->>D: Aktion::Befehl(Reagieren { nachricht, zeichen })
     D->>D: abbilden::meine_reaktion → setzen oder zurücknehmen
     D->>S: Inhalt::Reaktion { ziel, zeichen, weg } verschlüsselt
     S-->>D: ServerFrame::Text (Geheimtext, an alle im Raum)
     D->>I: inhalt_abbilden (prüft Link, Längen, Bild) · reaktionen_zaehlen
-    D->>I: effekt_ausloesen (nur bei neu angekommenen Nachrichten)
-    D-->>UI: Zustand (nachrichten[].reaktionen, effekt { nr })
+    D-->>UI: Zustand (nachrichten[].reaktionen)
 ```
 
 Nur der **Absender** ruft die Seite ab; Empfänger bekommen die fertige
 Vorschau im Umschlag und fragen keine fremde Seite an. Reaktionen sind eigene
 Umschläge, die der Client am Ziel zusammenfasst (`reaktionen_zaehlen`, rein,
-jedes Mal aus dem ganzen Verlauf). Ein Effekt spielt, wenn `effekt.nr` sich
-ändert — die Oberfläche braucht dafür keinen eigenen Zustand.
+jedes Mal aus dem ganzen Verlauf).
+(Effekte gab es bis 1.3; sie sind entfallen, alte Nachrichten mit Effekt
+bleiben lesbar.)
 
 Der Rückweg über die Meldung ist **kein** Umweg: der Absender bekommt seine
 Nachricht vom Server zurück, damit die Zeit und die Reihenfolge stimmen, die der

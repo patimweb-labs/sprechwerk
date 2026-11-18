@@ -23,7 +23,7 @@ Legende: **✔ gebaut und geprüft** · **◐ entworfen, nicht gebaut** · **○
 | Sprache Ende zu Ende, je Raum | ✔ | `docs/adr/0006-endezuende.md` |
 | Fenster in reinem Rust (egui), Chat einklappbar | ✔ | `docs/adr/0013-alles-in-rust.md` |
 | Verwaltung: Konsole und Server-Fenster | ✔ | `docs/adr/0013-alles-in-rust.md` |
-| Reaktionen, Effekte, Link-Vorschau | ✔ | `docs/adr/0012-alles-ende-zu-ende.md` (Stufe 2) |
+| Reaktionen, Link-Vorschau | ✔ | `docs/adr/0012-alles-ende-zu-ende.md` (Stufe 2) |
 | Betrieb (Docker, Sicherung, Export) | ✔ | `SPEC.md` §2, `README.md` |
 | Pakete je System | ◐ (in der CI gebaut, auf echten Windows-/Mac-Geräten ungeprüft) | `packaging/`, `docs/adr/0013-alles-in-rust.md` |
 | Video, Bildschirm | ◐ (bewusst später) | `docs/adr/0005-video-und-bildschirm.md` |
@@ -126,7 +126,7 @@ Schriftgrade aus den Token-Dateien, drei Themes (ADR 0013).
 ## 8. Was bewusst **nicht** in Version 1 ist
 
 Dateien, Status/Abwesenheit, Video, Bildschirmfreigabe, Suche.
-(Reaktionen und Effekte kamen mit ADR 0012 Stufe 2 dazu.) Jedes hat einen Entwurf (§9 bzw. ADR 0005), aber keinen Platz in v1 —
+(Reaktionen kamen mit ADR 0012 Stufe 2 dazu; Effekte gab es kurz und sind wieder entfallen.) Jedes hat einen Entwurf (§9 bzw. ADR 0005), aber keinen Platz in v1 —
 weil „Struktur, die nicht verrottet" und „Betrieb, der beherrschbar ist" die
 Zusage sind, nicht der Funktionsumfang.
 

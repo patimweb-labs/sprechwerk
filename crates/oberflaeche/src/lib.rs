@@ -9,3 +9,9 @@ pub mod texte;
 pub mod thema;
 
 pub use egui;
+
+/// Einmal beim Start: Schriften und die Bildlader (für die SVG-Icons).
+pub fn einrichten(ctx: &egui::Context) {
+    thema::schriften(ctx);
+    egui_extras::install_image_loaders(ctx);
+}

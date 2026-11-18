@@ -8,7 +8,7 @@ use eframe::egui;
 use sprechwerk_client::Client;
 use sprechwerk_fenster::app::Fenster;
 use sprechwerk_fenster::modell::Oberflaeche;
-use sprechwerk_fenster::{profil, thema};
+use sprechwerk_fenster::profil;
 use std::sync::{mpsc, Arc, Mutex};
 
 fn main() -> eframe::Result {
@@ -28,7 +28,7 @@ fn main() -> eframe::Result {
         "Sprechwerk",
         optionen,
         Box::new(|cc| {
-            thema::schriften(&cc.egui_ctx);
+            sprechwerk_oberflaeche::einrichten(&cc.egui_ctx);
             let (tx, rx) = mpsc::channel();
             let tx = Mutex::new(tx);
             let ctx = cc.egui_ctx.clone();

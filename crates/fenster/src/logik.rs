@@ -278,46 +278,6 @@ impl Sprechtaste {
     }
 }
 
-/// Ein Teilchen der Effektbühne (Konfetti, Herzen).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Teilchen {
-    /// Waagerechte Lage in Prozent der Breite.
-    pub x: f32,
-    /// Verzögerung in Sekunden.
-    pub verzug: f32,
-    /// Falldauer in Sekunden.
-    pub dauer: f32,
-    /// Drehung in Grad über den Fall.
-    pub drehung: f32,
-    /// Seitliche Drift in Prozent.
-    pub drift: f32,
-    /// Index der Farbe (0–4).
-    pub farbe: usize,
-}
-
-/// Teilchen aus einem Startwert: dieselbe Nummer ergibt dasselbe Bild, auf
-/// jedem Gerät (kein Zufall, der getestet werden müsste).
-pub fn teilchen(nr: u64, anzahl: usize) -> Vec<Teilchen> {
-    let mut s = (nr as u32).wrapping_mul(2_654_435_761);
-    let mut zufall = || {
-        s = s.wrapping_add(0x6d2b_79f5);
-        let mut t = s;
-        t = (t ^ (t >> 15)).wrapping_mul(t | 1);
-        t ^= t.wrapping_add((t ^ (t >> 7)).wrapping_mul(t | 61));
-        ((t ^ (t >> 14)) as f64 / 4_294_967_296.0) as f32
-    };
-    (0..anzahl)
-        .map(|_| Teilchen {
-            x: (zufall() * 1000.0).round() / 10.0,
-            verzug: (zufall() * 60.0).round() / 100.0,
-            dauer: ((1.6 + zufall() * 1.4) * 100.0).round() / 100.0,
-            drehung: (zufall() * 720.0 - 360.0).round(),
-            drift: ((zufall() * 20.0 - 10.0) * 10.0).round() / 10.0,
-            farbe: (zufall() * 5.0) as usize % 5,
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -414,15 +374,5 @@ mod tests {
         assert!(Sprechtaste::Taste(Key::A).schreibt());
         assert!(!Sprechtaste::Taste(Key::F8).schreibt());
         assert!(!Sprechtaste::Maus4.schreibt());
-    }
-
-    #[test]
-    fn teilchen_sind_reproduzierbar() {
-        let a = teilchen(7, 40);
-        assert_eq!(a, teilchen(7, 40));
-        assert_ne!(a, teilchen(8, 40));
-        assert!(a
-            .iter()
-            .all(|t| (0.0..=100.0).contains(&t.x) && t.farbe < 5));
     }
 }

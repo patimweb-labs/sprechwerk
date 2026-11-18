@@ -13,6 +13,9 @@ sprechwerk-domain.workspace = true
 # Emoji (Reaktionen, Schloss, Herz): ohne dieses Merkmal fehlen sie in den
 # eingebauten Schriften (die Oberflächentests fallen dann um).
 egui = { version = "0.37", default-features = false, features = ["default_fonts", "monochrome_emoji_fonts"] }
+# Icons: Lucide-SVGs (wie @weppelmann/icons), gerendert mit resvg, eingefärbt
+# mit der Theme-Farbe — scharf in jeder Größe, kein Icon-Font.
+egui_extras = { version = "0.37", default-features = false, features = ["svg"] }
 serde_json.workspace = true
 
 [build-dependencies]

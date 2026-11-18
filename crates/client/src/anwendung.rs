@@ -258,20 +258,11 @@ async fn lauf<F>(
                         None
                     };
                     let mut raum_wechsel = false;
-                    // Eine neue Nachricht spielt ihren Effekt — eine aus dem
-                    // Verlauf nicht (sonst knallt es bei jedem Raumwechsel).
-                    let neu_angekommen = match &frame {
-                        sprechwerk_protocol::ServerFrame::Text { nachricht } => Some(nachricht.id),
-                        _ => None,
-                    };
                     if let Ok(mut z) = zustand.lock() {
                         let vorher = z.aktueller_raum;
                         abbilden::verarbeite(&mut z, frame);
                         if let Some(b) = bund.as_ref() {
                             chat_lesen(&mut z, b);
-                        }
-                        if let Some(id) = neu_angekommen {
-                            abbilden::effekt_ausloesen(&mut z, id);
                         }
                         if let Some(ms) = gemessen {
                             z.latenz_ms = Some(ms);
@@ -526,12 +517,6 @@ async fn lauf<F>(
             Auftrag::Befehl { befehl, antwort } => {
                 // Befehle, die nur das Modell betreffen.
                 let nur_modell = match &befehl {
-                    Befehl::EffektZeigen { nachricht } => {
-                        if let Ok(mut z) = zustand.lock() {
-                            abbilden::effekt_ausloesen(&mut z, *nachricht);
-                        }
-                        true
-                    }
                     Befehl::Vorschau { url } => {
                         if let Ok(mut z) = zustand.lock() {
                             z.entwurf = entwurf_fuer(&z.entwurf, url.as_deref(), |u| {
@@ -605,7 +590,7 @@ async fn lauf<F>(
                     Befehl::Betreten { raum } => {
                         sprechwerk_protocol::ClientFrame::Betreten { raum }
                     }
-                    Befehl::Text { text, effekt } => {
+                    Befehl::Text { text } => {
                         // Die Vorschau geht mit, wenn ihr Link noch im Text
                         // steht — weggelöscht heißt: nicht gewollt.
                         let vorschau = zustand.lock().ok().and_then(|z| match &z.entwurf {
@@ -615,11 +600,7 @@ async fn lauf<F>(
                             _ => None,
                         });
                         entwurf_leeren = true;
-                        let inhalt = Inhalt::Text {
-                            text,
-                            effekt,
-                            vorschau,
-                        };
+                        let inhalt = Inhalt::Text { text, vorschau };
                         match geheim_schreiben(bund.as_ref(), verbindung, &inhalt) {
                             Ok(text) => sprechwerk_protocol::ClientFrame::Text { text },
                             Err(text) => {
@@ -707,7 +688,6 @@ async fn lauf<F>(
                     Befehl::Zustand
                     | Befehl::Verbinden { .. }
                     | Befehl::Trennen
-                    | Befehl::EffektZeigen { .. }
                     | Befehl::Vorschau { .. }
                     | Befehl::VorschauVerwerfen => unreachable!(),
                 };
@@ -1146,7 +1126,6 @@ mod tests {
         let antwort = bosse
             .befehl(Befehl::Text {
                 text: "Kassenstand: 1312 Euro".into(),
-                effekt: Some(sprechwerk_ipc::Effekt::Konfetti),
             })
             .await;
         assert!(matches!(antwort, Antwort::Ok), "{antwort:?}");
@@ -1155,18 +1134,19 @@ mod tests {
                 n.inhalt
                     == NachrichtInhalt::Text {
                         text: "Kassenstand: 1312 Euro".into(),
-                        effekt: Some(sprechwerk_ipc::Effekt::Konfetti),
                         vorschau: None,
                     }
             })
         })
         .await;
-        // Neu angekommen: der Effekt spielt bei Ada.
-        let auftritt = ada.zustand().effekt.expect("Effekt bei Ada");
-        assert_eq!(auftritt.effekt, sprechwerk_ipc::Effekt::Konfetti);
-
         // Ada reagiert — Bosse sieht es an seiner Nachricht, nicht als Beitrag.
-        let ziel = auftritt.nachricht;
+        let ziel = ada
+            .zustand()
+            .nachrichten
+            .iter()
+            .find(|n| n.verfasser_name == "Bosse")
+            .map(|n| n.id)
+            .expect("Bosses Nachricht bei Ada");
         let antwort = ada
             .befehl(Befehl::Reagieren {
                 nachricht: ziel,
@@ -1215,7 +1195,6 @@ mod tests {
         .await;
         ada.befehl(Befehl::Text {
             text: format!("Hier: {seite}"),
-            effekt: None,
         })
         .await;
         assert_eq!(ada.zustand().entwurf, Linkentwurf::Keiner);

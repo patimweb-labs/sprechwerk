@@ -2,10 +2,11 @@
 // Copyright (C) 2026 Patrick Weppelmann
 
 //! Räume und Chat: links die Räume mit ihren Leuten, rechts der Verlauf des
-//! eigenen Raums. Eingreifen (stumm, verschieben, sperren) über das Menü am
+//! eigenen Raums. Eingeklappt wird der Chat zur schmalen Schiene am rechten
+//! Rand, und die Raumliste bekommt die Fläche (gemerkt in den Einstellungen). Eingreifen (stumm, verschieben, sperren) über das Menü am
 //! Namen — es erscheint nur, wenn die Rolle es erlaubt (AGENTS.md §2.3).
 
-use super::{kuerzel, leer, text};
+use super::{icon, icon_knopf, kuerzel, leer, text, Icon};
 use crate::app::Zwischenspeicher;
 use crate::logik::{self, Stueck, REAKTIONEN};
 use crate::modell::{Dialog, Oberflaeche};
@@ -15,7 +16,7 @@ use base64::Engine;
 use eframe::egui::{self, RichText, Stroke};
 use sprechwerk_client::sitzung::Aktion;
 use sprechwerk_ipc::{
-    Befehl, Effekt, Linkentwurf, Linkvorschau, Mitglied, Nachricht, NachrichtInhalt, Textschluessel,
+    Befehl, Linkentwurf, Linkvorschau, Mitglied, Nachricht, NachrichtInhalt, Textschluessel,
 };
 
 pub fn zeigen(
@@ -25,32 +26,44 @@ pub fn zeigen(
     aktionen: &mut Vec<Aktion>,
 ) {
     let f = *o.thema().farben();
-    let eingeklappt = o.einstellungen.chat_eingeklappt;
+    let s = o.sprache();
+    let leiste = egui::Frame::new()
+        .fill(f.bg_panel)
+        .stroke(Stroke::new(thema::SIZE_BORDER, f.border_subtle))
+        .inner_margin(egui::Margin::same(thema::SPACE_3 as i8));
+
+    if o.einstellungen.chat_eingeklappt {
+        // Schmale Schiene rechts: ein Knopf holt den Chat zurück.
+        egui::Panel::right("chatschiene")
+            .resizable(false)
+            .exact_size(thema::SIZE_CONTROL_LG + thema::SPACE_2 * 2.0)
+            .frame(
+                egui::Frame::new()
+                    .fill(f.bg_panel)
+                    .stroke(Stroke::new(thema::SIZE_BORDER, f.border_subtle))
+                    .inner_margin(egui::Margin::same(thema::SPACE_2 as i8)),
+            )
+            .show(ui, |ui| {
+                ui.vertical_centered(|ui| {
+                    if icon_knopf(ui, &f, Icon::Sprechblase, &t(s, "chat.expand"), false).clicked()
+                    {
+                        o.einstellungen.chat_eingeklappt = false;
+                        aktionen.push(o.speichern());
+                    }
+                });
+            });
+        egui::CentralPanel::default()
+            .frame(leiste)
+            .show(ui, |ui| raumliste(ui, o, aktionen));
+        return;
+    }
+
     egui::Panel::left("raeume")
         .resizable(true)
         .default_size(thema::SPACE_8 * 4.5)
-        .frame(
-            egui::Frame::new()
-                .fill(f.bg_panel)
-                .stroke(Stroke::new(thema::SIZE_BORDER, f.border_subtle))
-                .inner_margin(egui::Margin::same(thema::SPACE_3 as i8)),
-        )
+        .min_size(thema::SPACE_8 * 3.0)
+        .frame(leiste)
         .show(ui, |ui| raumliste(ui, o, aktionen));
-
-    if eingeklappt {
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new().inner_margin(egui::Margin::same(thema::SPACE_4 as i8)))
-            .show(ui, |ui| {
-                if ui
-                    .button(format!("« {}", t(o.sprache(), "chat.expand")))
-                    .clicked()
-                {
-                    o.einstellungen.chat_eingeklappt = false;
-                    aktionen.push(o.speichern());
-                }
-            });
-        return;
-    }
     egui::CentralPanel::default()
         .frame(egui::Frame::new().fill(f.bg_canvas))
         .show(ui, |ui| chat(ui, o, speicher, aktionen));
@@ -65,11 +78,7 @@ fn raumliste(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>)
         );
         if o.zustand.darf_raeume_verwalten() {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .small_button("+")
-                    .on_hover_text(t(s, "room.add"))
-                    .clicked()
-                {
+                if icon_knopf(ui, &f, Icon::Plus, &t(s, "room.add"), false).clicked() {
                     o.dialog = Dialog::RaumAnlegen {
                         name: String::new(),
                     };
@@ -81,18 +90,37 @@ fn raumliste(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>)
     let raeume = o.zustand.raeume.clone();
     egui::ScrollArea::vertical().show(ui, |ui| {
         for raum in &raeume {
-            let marke = if raum.verschluesselt { "🔒 " } else { "" };
             let zahl = logik::anwesende(&o.zustand, raum.id).count();
             let zahl = if zahl > 0 {
                 zahl.to_string()
             } else {
                 String::new()
             };
+            let schloss = Icon::Schloss.bild(
+                thema::FONT_SIZE_SM,
+                if raum.hier {
+                    f.accent_default
+                } else {
+                    f.text_faint
+                },
+            );
+            let knopf = if raum.verschluesselt {
+                egui::Button::image_and_text(schloss, raum.name.as_str())
+            } else {
+                egui::Button::new(raum.name.as_str())
+            };
             let antwort = ui.add(
-                egui::Button::selectable(raum.hier, format!("{marke}{}", raum.name))
+                knopf
+                    .selected(raum.hier)
+                    .frame_when_inactive(raum.hier)
                     .right_text(zahl)
                     .min_size(egui::vec2(ui.available_width(), thema::SIZE_CONTROL_SM)),
             );
+            let antwort = if raum.verschluesselt {
+                antwort.on_hover_text(t(s, "room.encrypted"))
+            } else {
+                antwort
+            };
             if antwort.clicked() && !raum.hier {
                 aktionen.push(Aktion::Befehl(Befehl::Betreten { raum: raum.id }));
             }
@@ -119,7 +147,10 @@ fn raumliste(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>)
                 });
             }
             if raum.hier && logik::schluessel_vorhanden(&o.zustand, raum.id) == Some(false) {
-                ui.label(text(o, t(s, "room.key_missing"), Ton::Warnung));
+                ui.horizontal_wrapped(|ui| {
+                    icon(ui, &f, Icon::Warnung, Ton::Warnung);
+                    ui.label(text(o, t(s, "room.key_missing"), Ton::Warnung));
+                });
                 if ui.small_button(t(s, "room.key_request")).clicked() {
                     aktionen.push(Aktion::Befehl(Befehl::SchluesselAnfordern {
                         raum: raum.id,
@@ -254,22 +285,32 @@ fn chat(
                 )),
         )
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(&raum.name).font(egui::FontId::new(thema::FONT_SIZE_LG, fett())),
+            // Der Hinweis links wird gekürzt, der Knopf rechts bleibt immer da.
+            let mut einklappen = false;
+            egui::Sides::new()
+                .height(thema::SIZE_CONTROL_SM)
+                .shrink_left()
+                .truncate()
+                .show(
+                    ui,
+                    |ui| {
+                        ui.label(
+                            RichText::new(&raum.name)
+                                .font(egui::FontId::new(thema::FONT_SIZE_LG, fett())),
+                        );
+                        icon(ui, &f, Icon::Schloss, Ton::Blass).on_hover_text(t(s, "chat.e2e"));
+                        ui.label(text(o, t(s, "chat.e2e"), Ton::Blass).small());
+                    },
+                    |ui| {
+                        einklappen =
+                            icon_knopf(ui, &f, Icon::PanelZu, &t(s, "chat.collapse"), false)
+                                .clicked();
+                    },
                 );
-                ui.label(text(o, t(s, "chat.e2e"), Ton::Blass).small());
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .small_button("▶")
-                        .on_hover_text(t(s, "chat.collapse"))
-                        .clicked()
-                    {
-                        o.einstellungen.chat_eingeklappt = true;
-                        aktionen.push(o.speichern());
-                    }
-                });
-            });
+            if einklappen {
+                o.einstellungen.chat_eingeklappt = true;
+                aktionen.push(o.speichern());
+            }
             if o.zustand.textschluessel == Textschluessel::Wartet {
                 ui.label(text(o, t(s, "chat.key_wait"), Ton::Warnung));
             }
@@ -344,7 +385,6 @@ fn beitrag(
             match &n.inhalt {
                 NachrichtInhalt::Text {
                     text: inhalt,
-                    effekt,
                     vorschau,
                 } => {
                     ui.horizontal_wrapped(|ui| {
@@ -364,15 +404,6 @@ fn beitrag(
                     });
                     if let Some(v) = vorschau {
                         vorschaukarte(ui, o, v, speicher, None);
-                    }
-                    if let Some(e) = effekt.filter(|e| *e != Effekt::Unbekannt) {
-                        let name = t(s, &format!("effect.{}", effekt_name(e)));
-                        if ui
-                            .small_button(format!("✨ {}", tf(s, "effect.replay", &[&name])))
-                            .clicked()
-                        {
-                            aktionen.push(Aktion::Befehl(Befehl::EffektZeigen { nachricht: n.id }));
-                        }
                     }
                 }
                 NachrichtInhalt::Wartet => {
@@ -439,13 +470,27 @@ fn beitrag(
                     }
                 });
                 if let NachrichtInhalt::Text { text, .. } = &n.inhalt {
-                    if ui.button(t(s, "chat.copy")).clicked() {
+                    if ui
+                        .add(egui::Button::image_and_text(
+                            Icon::Kopieren.bild(thema::FONT_SIZE_MD, f.text_muted),
+                            t(s, "chat.copy"),
+                        ))
+                        .clicked()
+                    {
                         ui.ctx().copy_text(text.clone());
                         ui.close();
                     }
                 }
             }
-            if n.loeschbar && !n.geloescht && ui.button(t(s, "chat.delete")).clicked() {
+            if n.loeschbar
+                && !n.geloescht
+                && ui
+                    .add(egui::Button::image_and_text(
+                        Icon::Papierkorb.bild(thema::FONT_SIZE_MD, f.status_error),
+                        t(s, "chat.delete"),
+                    ))
+                    .clicked()
+            {
                 aktionen.push(Aktion::Befehl(Befehl::NachrichtLoeschen {
                     nachricht: n.id,
                 }));
@@ -478,29 +523,7 @@ fn eingabe(
     let darf_schreiben =
         o.zustand.textschluessel != Textschluessel::Wartet && o.zustand.meine_rolle().is_some();
     ui.horizontal(|ui| {
-        let effekt_text = match o.effekt {
-            Some(e) => t(s, &format!("effect.{}", effekt_name(e))),
-            None => t(s, "effect.short"),
-        };
-        egui::ComboBox::from_id_salt("effekt")
-            .selected_text(effekt_text)
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut o.effekt, None, t(s, "effect.none"));
-                for e in [Effekt::Konfetti, Effekt::Herzen, Effekt::Beben] {
-                    ui.selectable_value(
-                        &mut o.effekt,
-                        Some(e),
-                        t(s, &format!("effect.{}", effekt_name(e))),
-                    );
-                }
-            })
-            .response
-            .on_hover_text(t(s, "effect.choose"))
-            .widget_info(|| {
-                egui::WidgetInfo::labeled(egui::Role::ComboBox, true, t(s, "effect.choose"))
-            });
-
-        let senden_breite = thema::SPACE_8 * 1.5;
+        let senden_breite = thema::SIZE_CONTROL_LG + thema::SPACE_2;
         let feld = ui.add_enabled(
             darf_schreiben,
             egui::TextEdit::multiline(&mut o.entwurf)
@@ -517,7 +540,12 @@ fn eingabe(
         }
         let enter =
             feld.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter) && !i.modifiers.shift);
-        let knopf = ui.add_enabled(darf_schreiben, egui::Button::new(t(s, "chat.send")));
+        let f = *o.thema().farben();
+        let knopf = ui
+            .add_enabled_ui(darf_schreiben, |ui| {
+                icon_knopf(ui, &f, Icon::Senden, &t(s, "chat.send"), false)
+            })
+            .inner;
         if enter || knopf.clicked() {
             aktionen.extend(o.senden());
             feld.request_focus();
@@ -596,15 +624,6 @@ fn bild(
 fn oeffne_link(ctx: &egui::Context, url: &str) {
     if sprechwerk_ipc::abbilden::ist_weblink(url) {
         ctx.open_url(egui::OpenUrl::new_tab(url));
-    }
-}
-
-pub fn effekt_name(e: Effekt) -> &'static str {
-    match e {
-        Effekt::Konfetti => "konfetti",
-        Effekt::Herzen => "herzen",
-        Effekt::Beben => "beben",
-        Effekt::Unbekannt => "none",
     }
 }
 

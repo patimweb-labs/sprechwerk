@@ -5,7 +5,7 @@
 //! Änderungen sind ein Entwurf im Modell; „Speichern" schreibt sie und wendet
 //! sie auf den laufenden Sprechpfad an.
 
-use super::{hauptknopf, karte, pegelbalken, seitenkopf, text};
+use super::{hauptknopf, karte, knopf, pegelbalken, seitenkopf, text, Icon};
 use crate::logik::{self, Sprechtaste};
 use crate::modell::{Laden, Oberflaeche};
 use crate::texte::{rolle, t, tf, Sprache};
@@ -75,7 +75,7 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
                 &geraete,
             );
             ui.horizontal(|ui| {
-                if ui.button(t(s, "set.mic_test")).clicked() {
+                if knopf(ui, &f, Icon::Mikrofon, &t(s, "set.mic_test")).clicked() {
                     o.pegeltest = Laden::Laedt;
                     aktionen.push(Aktion::Pegel {
                         geraet: o.einstellungen.mikrofon.clone(),
@@ -127,7 +127,7 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
                     &liste,
                     &geraete,
                 );
-                if ui.button(t(s, "set.speaker_test")).clicked() {
+                if knopf(ui, &f, Icon::Lautsprecher, &t(s, "set.speaker_test")).clicked() {
                     aktionen.push(Aktion::Testton {
                         geraet: o.einstellungen.lautsprecher.clone(),
                     });

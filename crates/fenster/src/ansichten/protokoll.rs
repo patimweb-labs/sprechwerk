@@ -3,7 +3,7 @@
 
 //! Prüfprotokoll: was geschah, wer es tat — und was abgelehnt wurde.
 
-use super::{leer, seitenkopf, text};
+use super::{knopf, leer, seitenkopf, text, Icon};
 use crate::logik;
 use crate::modell::Oberflaeche;
 use crate::texte::t;
@@ -20,7 +20,14 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
         ui.label(text(o, t(s, "audit.no_right"), Ton::Warnung));
         return;
     }
-    if ui.button(t(s, "audit.refresh")).clicked() {
+    if knopf(
+        ui,
+        o.thema().farben(),
+        Icon::Neuladen,
+        &t(s, "audit.refresh"),
+    )
+    .clicked()
+    {
         aktionen.push(Aktion::Befehl(Befehl::Protokoll { ab: 0, anzahl: 50 }));
     }
     ui.add_space(thema::SPACE_2);

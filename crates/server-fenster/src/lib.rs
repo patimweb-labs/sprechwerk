@@ -10,7 +10,9 @@
 
 use eframe::egui::{self, RichText, Stroke};
 use sprechwerk_domain::Role;
-use sprechwerk_oberflaeche::bausteine::{hauptknopf, karte, leer, seitenkopf, text};
+use sprechwerk_oberflaeche::bausteine::{
+    hauptknopf_mit, icon_knopf, icon_text_knopf, karte, knopf, leer, seitenkopf, text, Icon,
+};
 use sprechwerk_oberflaeche::texte::{rolle, t, tf, Sprache};
 use sprechwerk_oberflaeche::thema::{self, fett, Thema, Ton};
 use sprechwerk_server::konfig::Konfig;
@@ -175,29 +177,46 @@ pub fn zeichnen(ui: &mut egui::Ui, m: &mut Modell) -> Vec<Aktion> {
                 )),
         )
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new("sprechwerk")
-                        .font(egui::FontId::new(thema::FONT_SIZE_LG, fett()))
-                        .color(f.accent_default),
-                );
-                ui.label(text(&f, t(s, "srv.title"), Ton::Leise));
-                ui.add_space(thema::SPACE_4);
-                for (seite, k) in [
-                    (Seite::Uebersicht, "srv.overview"),
-                    (Seite::Mitglieder, "admin.members.title"),
-                    (Seite::Protokoll, "admin.log.title"),
-                    (Seite::Einstellungen, "srv.settings"),
-                ] {
-                    if ui.selectable_label(m.seite == seite, t(s, k)).clicked() {
-                        m.seite = seite;
-                    }
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    match &m.lauf {
+            // Rechts Zustand und Start/Stopp in fester Breite, links der Rest:
+            // nichts schiebt sich übereinander. Schmal: Reiter nur als Icon.
+            let breit = ui.available_width() >= thema::SPACE_8 * 12.0;
+            let lauf = m.lauf.clone();
+            let mut rechts = Vec::new();
+            egui::Sides::new()
+                .height(thema::SIZE_CONTROL_SM)
+                .shrink_left()
+                .truncate()
+                .show(
+                    ui,
+                    |ui| {
+                        ui.label(
+                            RichText::new("sprechwerk")
+                                .font(egui::FontId::new(thema::FONT_SIZE_LG, fett()))
+                                .color(f.accent_default),
+                        );
+                        ui.label(text(&f, t(s, "srv.title"), Ton::Leise));
+                        ui.add_space(thema::SPACE_3);
+                        for (seite, bild, k) in [
+                            (Seite::Uebersicht, Icon::Server, "srv.overview"),
+                            (Seite::Mitglieder, Icon::Leute, "admin.members.title"),
+                            (Seite::Protokoll, Icon::Protokoll, "admin.log.title"),
+                            (Seite::Einstellungen, Icon::Einstellungen, "srv.settings"),
+                        ] {
+                            let name = t(s, k);
+                            let antwort = if breit {
+                                icon_text_knopf(ui, &f, bild, &name, m.seite == seite)
+                            } else {
+                                icon_knopf(ui, &f, bild, &name, m.seite == seite)
+                            };
+                            if antwort.clicked() {
+                                m.seite = seite;
+                            }
+                        }
+                    },
+                    |ui| match &lauf {
                         Lauf::Gestoppt | Lauf::Fehler(_) => {
-                            if hauptknopf(ui, &f, &t(s, "srv.start")).clicked() {
-                                aktionen.push(Aktion::Starten);
+                            if hauptknopf_mit(ui, &f, Icon::Start, &t(s, "srv.start")).clicked() {
+                                rechts.push(Aktion::Starten);
                             }
                             ui.label(text(&f, t(s, "srv.state.stopped"), Ton::Blass));
                         }
@@ -206,22 +225,14 @@ pub fn zeichnen(ui: &mut egui::Ui, m: &mut Modell) -> Vec<Aktion> {
                             ui.label(text(&f, t(s, "srv.state.starting"), Ton::Warnung));
                         }
                         Lauf::Laeuft(_) => {
-                            if ui.button(t(s, "srv.stop")).clicked() {
-                                aktionen.push(Aktion::Anhalten);
+                            if knopf(ui, &f, Icon::Stopp, &t(s, "srv.stop")).clicked() {
+                                rechts.push(Aktion::Anhalten);
                             }
                             ui.label(text(&f, t(s, "srv.state.running"), Ton::Gut));
                         }
-                    }
-                    for th in Thema::ALLE.iter().rev() {
-                        if ui
-                            .selectable_label(m.thema == *th, t(s, th.text_schluessel()))
-                            .clicked()
-                        {
-                            m.thema = *th;
-                        }
-                    }
-                });
-            });
+                    },
+                );
+            aktionen.extend(rechts);
         });
 
     egui::Panel::bottom("fuss")
@@ -314,7 +325,7 @@ fn uebersicht(ui: &mut egui::Ui, m: &mut Modell) {
     karte(ui, &f, &t(s, "admin.server.fingerprint"), None, |ui| {
         let fp = gruppiert(&st.fingerabdruck);
         ui.label(RichText::new(&fp).monospace());
-        if ui.button(t(s, "srv.copy")).clicked() {
+        if knopf(ui, &f, Icon::Kopieren, &t(s, "srv.copy")).clicked() {
             ui.ctx().copy_text(fp);
         }
     });
@@ -482,6 +493,17 @@ fn einstellungen(ui: &mut egui::Ui, m: &mut Modell) {
     });
     ui.add_space(thema::SPACE_4);
     karte(ui, &f, &t(s, "set.appearance"), None, |ui| {
+        ui.horizontal(|ui| {
+            ui.label(t(s, "set.scheme"));
+            for th in Thema::ALLE {
+                if ui
+                    .selectable_label(m.thema == th, t(s, th.text_schluessel()))
+                    .clicked()
+                {
+                    m.thema = th;
+                }
+            }
+        });
         ui.horizontal(|ui| {
             ui.label(t(s, "set.language"));
             for sp in Sprache::ALLE {

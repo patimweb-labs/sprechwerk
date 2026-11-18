@@ -65,8 +65,6 @@ räumt nach Plan auf. Dazu:
 
 * **Reaktionen** — sechs Zeichen (👍 ❤️ 😂 😮 😢 🎉), zusammengefasst angezeigt;
   wer dabei ist, sieht man am Zeichen.
-* **Effekte** — Konfetti, Herzen, Beben; spielen einmal beim Empfang und lassen
-  sich noch einmal abspielen.
 * **Links** — anklickbar und mit **Vorschau**: Titel, Beschreibung und ein
   kleines Bild. Die Seite ruft der **Absender** ab, nie der Empfänger und nie
   der Server; abschaltbar in den Einstellungen. Anklicken öffnet den Browser
@@ -155,7 +153,7 @@ dass Funktionen fehlen, sondern durch das, was drumherum gewachsen ist.
 | Protokoll | binär, nicht dokumentiert (nachgebaut) | JSON-Rahmen, längenpräfixiert, versioniert ([`SPEC.md`](SPEC.md) §7, [`docs/datenfluss.md`](docs/datenfluss.md)) |
 | Oberfläche | Windows/macOS/Linux; Mobil-App kostenpflichtig | Fenster in reinem Rust (egui, Linux/Windows/macOS), drei Farbschemata, vier Sprachen; Browser später über WebTransport |
 | Text | dauerhaft, serverseitig gespeichert und lesbar | dauerhaft, aber der Server speichert nur Geheimtext — lesen können die Mitglieder |
-| Reaktionen, Effekte, Link-Vorschau | nicht vorhanden (nur Text) | Reaktionen, Effekte, Vorschau; die Seite ruft der Absender ab |
+| Reaktionen, Link-Vorschau | nicht vorhanden (nur Text) | Reaktionen, Vorschau; die Seite ruft der Absender ab |
 | Betriebswerkzeug | Abfrage-Schnittstelle, Hoster-Panels | Datei + Umgebungsvariablen + Unterbefehle (`stand`, `rolle`, `protokoll`, `beispiel`, `export`, `import`, `sicherung`, `--gesundheit`), dazu eine Verwaltung im Browser |
 | Prüfprotokoll im Client | nein | ja, für Administrator und Moderator |
 | Dateien, Status, Video, Plugins | vorhanden (teils seit Jahren) | **nicht vorhanden** — bewusst „später", nicht „gestrichen" |
@@ -416,7 +414,7 @@ steht in der Mitgliederliste.
 |---|---|
 | wer wann in welchem Raum ist und spricht | was gesagt wird |
 | dass jemand schreibt, wie lang (ungefähr), wann | was geschrieben wird |
-| Namen, Rollen, Kennungen der Mitglieder | Reaktionen, Effekte, Vorschauinhalte |
+| Namen, Rollen, Kennungen der Mitglieder | Reaktionen, Vorschauinhalte |
 
 **Der Preis:** Wer neu ist (oder auf einem neuen Gerät ohne die Schlüsseldatei)
 und allein online, kann erst lesen und schreiben, wenn ein Mitglied online

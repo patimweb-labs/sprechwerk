@@ -1535,48 +1535,6 @@
     "es": "{} — {} de {}",
     "fr": "{} — {} de {}"
   },
-  "effect.konfetti": {
-    "de": "Konfetti",
-    "en": "Confetti",
-    "es": "Confeti",
-    "fr": "Confettis"
-  },
-  "effect.herzen": {
-    "de": "Herzen",
-    "en": "Hearts",
-    "es": "Corazones",
-    "fr": "Cœurs"
-  },
-  "effect.beben": {
-    "de": "Beben",
-    "en": "Shake",
-    "es": "Temblor",
-    "fr": "Secousse"
-  },
-  "effect.none": {
-    "de": "Kein Effekt",
-    "en": "No effect",
-    "es": "Sin efecto",
-    "fr": "Aucun effet"
-  },
-  "effect.short": {
-    "de": "✨",
-    "en": "✨",
-    "es": "✨",
-    "fr": "✨"
-  },
-  "effect.choose": {
-    "de": "Effekt für die nächste Nachricht",
-    "en": "Effect for the next message",
-    "es": "Efecto para el próximo mensaje",
-    "fr": "Effet pour le prochain message"
-  },
-  "effect.replay": {
-    "de": "{} noch einmal",
-    "en": "Replay {}",
-    "es": "Repetir {}",
-    "fr": "Rejouer {}"
-  },
   "preview.loading": {
     "de": "Vorschau wird geladen …",
     "en": "Loading preview …",

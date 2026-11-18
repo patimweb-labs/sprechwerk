@@ -66,7 +66,6 @@ fn nachricht(id: u128, von: u128, name: &str, text: &str, minute: i64) -> Nachri
         verfasser_name: name.into(),
         inhalt: NachrichtInhalt::Text {
             text: text.into(),
-            effekt: None,
             vorschau: None,
         },
         roh: None,
@@ -217,7 +216,7 @@ fn fenster(o: Oberflaeche, groesse: (f32, f32)) -> (Harness<'static, Stand>, Fal
     let f = Fenster::neu(kern.clone(), rx, o);
     let h = Harness::builder()
         .with_size(groesse)
-        .with_context_setup(sprechwerk_fenster::thema::schriften)
+        .with_context_setup(sprechwerk_oberflaeche::einrichten)
         .build_ui_state(|ui, (f, _): &mut Stand| f.bild(ui), (f, tx));
     (h, kern)
 }
@@ -330,6 +329,62 @@ fn zustand_aus_dem_client_kommt_an() {
 }
 
 #[test]
+fn chat_einklappen_und_wieder_aufklappen() {
+    let (mut h, kern) = fenster(verbunden(Role::Mitglied, Ansicht::Raeume), (1100.0, 720.0));
+    h.run();
+    h.get_by_label("Chat einklappen").click();
+    h.run();
+    assert!(h.state().0.o.einstellungen.chat_eingeklappt);
+    assert!(
+        kern.0.borrow().iter().any(|a| matches!(a,
+            Aktion::EinstellungenSpeichern(e) if e.chat_eingeklappt)),
+        "der Zustand wird gemerkt"
+    );
+    // Eingeklappt: kein Eingabefeld, aber die Schiene mit dem Knopf zurück.
+    assert!(h
+        .query_by_role(egui::accesskit::Role::MultilineTextInput)
+        .is_none());
+    h.get_by_label("Chat ausklappen").click();
+    h.run();
+    assert!(!h.state().0.o.einstellungen.chat_eingeklappt);
+    assert!(h
+        .query_by_role(egui::accesskit::Role::MultilineTextInput)
+        .is_some());
+}
+
+/// Bei jeder Breite bis hinunter zur Mindestgröße stehen die Reiter links von
+/// den Knöpfen rechts — nichts schiebt sich übereinander.
+#[test]
+fn kopfleiste_ueberlappt_bei_keiner_breite() {
+    for breite in [720.0, 820.0, 960.0, 1400.0] {
+        let (mut h, _) = fenster(
+            verbunden(Role::Administrator, Ansicht::Raeume),
+            (breite, 700.0),
+        );
+        h.run();
+        if let Some(ziel) = std::env::var_os("SPRECHWERK_KOPFBILDER") {
+            let bild = h.render().expect("zeichnen (wgpu)");
+            bild.save(std::path::Path::new(&ziel).join(format!("kopf-{breite}.png")))
+                .unwrap();
+        }
+        // Der Einklappknopf des Chats bleibt im Fenster.
+        let einklappen = h.get_by_label("Chat einklappen").rect();
+        assert!(
+            einklappen.right() <= breite,
+            "Breite {breite}: Einklappknopf außerhalb"
+        );
+        let links = h.get_by_label("Einstellungen").rect();
+        let rechts = h.get_by_label("Mikrofon stummschalten").rect();
+        assert!(
+            links.right() <= rechts.left(),
+            "Breite {breite}: Reiter endet bei {} , Knöpfe beginnen bei {}",
+            links.right(),
+            rechts.left()
+        );
+    }
+}
+
+#[test]
 fn alle_ansichten_in_allen_themes() {
     let ziel = std::env::var_os("SPRECHWERK_BILDER").map(std::path::PathBuf::from);
     for thema in Thema::ALLE {
@@ -339,8 +394,10 @@ fn alle_ansichten_in_allen_themes() {
             ("einstellungen", Ansicht::Einstellungen),
             ("protokoll", Ansicht::Protokoll),
             ("sperren", Ansicht::Sperren),
+            ("raeume-eingeklappt", Ansicht::Raeume),
         ] {
             let mut o = verbunden(Role::Administrator, ansicht);
+            o.einstellungen.chat_eingeklappt = name == "raeume-eingeklappt";
             o.einstellungen.thema = thema.name().into();
             let (mut h, _) = fenster(o, (1200.0, 760.0));
             h.run();

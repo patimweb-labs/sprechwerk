@@ -211,6 +211,9 @@ des Systems), Link-Vorschau vom **Absender** abgerufen. *Preis:* die Seite
 sieht die Adresse des Absenders (abschaltbar); jede Reaktion ist eine eigene
 gespeicherte Nachricht; ein älterer Client zeigt Reaktionen als „neuere
 Version nötig", Effekt und Vorschau fehlen bei ihm einfach.
+**[A] Nachtrag 2026-11-18:** Effekte entfallen (*Nutzer:* „Die Effekte
+kannst du entfernen, die braucht es nicht."). Alte Nachrichten mit Effekt
+bleiben lesbar; das Feld wird übergangen.
 
 ## 7. Technik
 
@@ -342,6 +345,6 @@ Beim Schreiben des Codes waren weitere Festlegungen nötig. Alle sind **[A]**.
 7. Offen: Dateien im Chat (ADR 0012 Stufe 3, für das egui-Fenster neu zu
    bauen), Metadaten aus Fotos entfernen, Status, Video/Bildschirm, Suche
    (nur im Client möglich). Erledigt: Audio im Client, Fensteranwendung (seit
-   ADR 0013 in reinem Rust), Reaktionen und Effekte.
+   ADR 0013 in reinem Rust), Reaktionen.
 8. Offen: gestaffelte Speicherung, wenn die Vollschreibung zum Flaschenhals
    wird; Wiederherstellung aus Sicherung als Unterbefehl.

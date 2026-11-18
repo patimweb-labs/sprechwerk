@@ -33,12 +33,10 @@ impl Kern for Client {
 }
 
 /// Zeichenhilfen, die aus dem Modell abgeleitet und nur zwischengespeichert
-/// sind (Texturen der Vorschaubilder, Startzeit des laufenden Effekts).
+/// sind (Texturen der Vorschaubilder).
 #[derive(Default)]
 pub struct Zwischenspeicher {
     pub bilder: HashMap<String, Option<egui::TextureHandle>>,
-    /// (Nummer des Effekts, Startzeit in Sekunden der egui-Uhr).
-    pub effekt: Option<(u64, f64)>,
 }
 
 pub struct Fenster<K: Kern> {
@@ -117,7 +115,6 @@ impl<K: Kern> Fenster<K> {
                 }
             });
         ansichten::dialog::zeigen(ctx, &mut self.o, &mut aktionen);
-        ansichten::effekt::zeigen(ctx, &self.o, &mut self.speicher);
 
         for aktion in aktionen {
             self.kern.ausfuehren(aktion);

@@ -12,7 +12,7 @@ use sprechwerk_client::einstellungen::{Einstellungen, Favorit};
 use sprechwerk_client::sitzung::{Aktion, Ergebnis, Meldung};
 use sprechwerk_client::AudioStand;
 use sprechwerk_domain::{MemberId, Role, RoomId};
-use sprechwerk_ipc::{Befehl, Effekt, Zustand};
+use sprechwerk_ipc::{Befehl, Zustand};
 
 /// Welche Ansicht offen ist.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -101,8 +101,6 @@ pub struct Oberflaeche {
     pub entwurf: String,
     /// Zuletzt an den Client gemeldeter Link des Entwurfs.
     pub entwurf_link: Option<String>,
-    /// Effekt für die nächste Nachricht.
-    pub effekt: Option<Effekt>,
     pub geraete: Laden<Geraeteliste>,
     pub pegeltest: Laden<u8>,
     pub audio: AudioStand,
@@ -232,8 +230,7 @@ impl Oberflaeche {
         }
         self.entwurf.clear();
         self.entwurf_link = None;
-        let effekt = self.effekt.take();
-        Some(Aktion::Befehl(Befehl::Text { text, effekt }))
+        Some(Aktion::Befehl(Befehl::Text { text }))
     }
 
     /// Nach jeder Änderung des Entwurfs: hat sich der erste Link geändert?
@@ -425,20 +422,18 @@ mod tests {
     }
 
     #[test]
-    fn senden_leert_den_entwurf_und_nimmt_den_effekt_mit() {
+    fn senden_leert_den_entwurf() {
         let mut o = Oberflaeche {
             entwurf: "  hallo  ".into(),
-            effekt: Some(Effekt::Konfetti),
             ..Default::default()
         };
         assert_eq!(
             o.senden(),
             Some(Aktion::Befehl(Befehl::Text {
                 text: "hallo".into(),
-                effekt: Some(Effekt::Konfetti)
             }))
         );
-        assert!(o.entwurf.is_empty() && o.effekt.is_none());
+        assert!(o.entwurf.is_empty());
         assert_eq!(o.senden(), None);
     }
 

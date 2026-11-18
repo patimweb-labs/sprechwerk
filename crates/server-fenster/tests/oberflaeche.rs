@@ -18,7 +18,7 @@ fn fenster(m: Modell) -> Harness<'static, Stand2> {
     Harness::builder()
         .with_size((1100.0, 700.0))
         .with_context_setup(|ctx| {
-            sprechwerk_oberflaeche::thema::schriften(ctx);
+            sprechwerk_oberflaeche::einrichten(ctx);
         })
         .build_ui_state(
             |ui, (m, aktionen): &mut Stand2| {

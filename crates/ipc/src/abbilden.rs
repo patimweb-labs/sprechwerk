@@ -137,8 +137,6 @@ pub fn verarbeite(zustand: &mut Zustand, rahmen: ServerFrame) {
             anwesend,
         } => {
             zustand.aktueller_raum = Some(raum);
-            // Ein Effekt gehört zum Raum, in dem er ankam.
-            zustand.effekt = None;
             zustand.nachrichten = verlauf
                 .iter()
                 .map(|n| nachricht_abbilden(n, zustand))
@@ -274,7 +272,6 @@ pub fn getrennt(zustand: &mut Zustand, grund: Option<String>) {
         None => Verbindung::Getrennt,
     });
     zustand.aktueller_raum = None;
-    zustand.effekt = None;
     zustand.entwurf = crate::Linkentwurf::Keiner;
     zustand.mitglieder.clear();
     zustand.raeume.clear();
@@ -379,15 +376,10 @@ pub const MAX_BILD: usize = 200_000;
 /// Link, auf den man klicken kann, muss `http(s)` sein; ein Titel darf das
 /// Fenster nicht sprengen; ein Bild muss Base64 sein.
 pub fn inhalt_abbilden(inhalt: sprechwerk_protocol::inhalt::Inhalt) -> crate::NachrichtInhalt {
-    use sprechwerk_protocol::inhalt::{Effekt, Inhalt, MAX_ZEICHEN_BYTES};
+    use sprechwerk_protocol::inhalt::{Inhalt, MAX_ZEICHEN_BYTES};
     match inhalt {
-        Inhalt::Text {
+        Inhalt::Text { text, vorschau } => crate::NachrichtInhalt::Text {
             text,
-            effekt,
-            vorschau,
-        } => crate::NachrichtInhalt::Text {
-            text,
-            effekt: effekt.filter(|e| *e != Effekt::Unbekannt),
             vorschau: vorschau.and_then(vorschau_pruefen),
         },
         Inhalt::Reaktion { ziel, zeichen, weg } => {
@@ -520,30 +512,6 @@ pub fn meine_reaktion(
         .iter()
         .find(|n| n.id == nachricht)
         .is_some_and(|n| n.reaktionen.iter().any(|r| r.zeichen == zeichen && r.ich))
-}
-
-/// Spielt den Effekt einer Nachricht ab, falls sie einen hat. `true`, wenn ja.
-pub fn effekt_ausloesen(zustand: &mut Zustand, nachricht: sprechwerk_domain::MessageId) -> bool {
-    let effekt = zustand
-        .nachrichten
-        .iter()
-        .find(|n| n.id == nachricht)
-        .and_then(|n| match &n.inhalt {
-            crate::NachrichtInhalt::Text {
-                effekt: Some(e), ..
-            } => Some(*e),
-            _ => None,
-        });
-    let Some(effekt) = effekt else {
-        return false;
-    };
-    let nr = zustand.effekt.as_ref().map_or(1, |e| e.nr + 1);
-    zustand.effekt = Some(crate::Effektauftritt {
-        nachricht,
-        effekt,
-        nr,
-    });
-    true
 }
 
 /// Setzt den Inhalt aller Nachrichten neu, mit dem, was `lesen` aus der rohen
@@ -778,7 +746,6 @@ mod tests {
     fn text_inhalt(t: &str) -> crate::NachrichtInhalt {
         crate::NachrichtInhalt::Text {
             text: t.into(),
-            effekt: None,
             vorschau: None,
         }
     }
@@ -883,7 +850,7 @@ mod tests {
 
     #[test]
     fn inhalt_wird_geprueft() {
-        use sprechwerk_protocol::inhalt::{Effekt, Inhalt, Linkvorschau};
+        use sprechwerk_protocol::inhalt::{Inhalt, Linkvorschau};
         let v = |url: &str, bild: Option<&str>| Linkvorschau {
             url: url.into(),
             titel: "  Titel\n mit Umbruch ".into(),
@@ -892,16 +859,11 @@ mod tests {
         };
         let gelesen = inhalt_abbilden(Inhalt::Text {
             text: "t".into(),
-            effekt: Some(Effekt::Unbekannt),
             vorschau: Some(v("https://example.org/a", Some("QUJD"))),
         });
-        let crate::NachrichtInhalt::Text {
-            effekt, vorschau, ..
-        } = gelesen
-        else {
+        let crate::NachrichtInhalt::Text { vorschau, .. } = gelesen else {
             panic!("kein Text");
         };
-        assert_eq!(effekt, None, "unbekannter Effekt fällt weg");
         let vorschau = vorschau.unwrap();
         assert_eq!(vorschau.titel, "Titel  mit Umbruch");
         assert_eq!(
@@ -919,7 +881,6 @@ mod tests {
         ] {
             let i = inhalt_abbilden(Inhalt::Text {
                 text: "t".into(),
-                effekt: None,
                 vorschau: Some(v(url, None)),
             });
             assert!(
@@ -930,7 +891,6 @@ mod tests {
         // Ein Bild, das kein Base64 ist, fällt weg — der Rest bleibt.
         let i = inhalt_abbilden(Inhalt::Text {
             text: "t".into(),
-            effekt: None,
             vorschau: Some(v("https://example.org", Some("\"><script>"))),
         });
         let crate::NachrichtInhalt::Text {
@@ -962,44 +922,6 @@ mod tests {
             r(&MessageId::aus_roh(5).text(), "ein Satz"),
             crate::NachrichtInhalt::Unlesbar
         );
-    }
-
-    #[test]
-    fn effekt_spielt_und_zaehlt_hoch() {
-        use sprechwerk_protocol::inhalt::Effekt;
-        let mut z = verbunden(Role::Mitglied);
-        verlauf(
-            &mut z,
-            vec![
-                (1, 2, text_inhalt("ohne")),
-                (
-                    2,
-                    2,
-                    crate::NachrichtInhalt::Text {
-                        text: "Glückwunsch!".into(),
-                        effekt: Some(Effekt::Konfetti),
-                        vorschau: None,
-                    },
-                ),
-            ],
-        );
-        assert!(!effekt_ausloesen(&mut z, MessageId::aus_roh(1)));
-        assert!(z.effekt.is_none());
-        assert!(effekt_ausloesen(&mut z, MessageId::aus_roh(2)));
-        assert_eq!(z.effekt.as_ref().unwrap().nr, 1);
-        assert!(effekt_ausloesen(&mut z, MessageId::aus_roh(2)));
-        let e = z.effekt.clone().unwrap();
-        assert_eq!((e.effekt, e.nr), (Effekt::Konfetti, 2));
-        // Raumwechsel: der Effekt gehört nicht mit.
-        verarbeite(
-            &mut z,
-            ServerFrame::Betreten {
-                raum: RoomId::aus_roh(8),
-                verlauf: vec![],
-                anwesend: vec![],
-            },
-        );
-        assert!(z.effekt.is_none());
     }
 
     #[test]

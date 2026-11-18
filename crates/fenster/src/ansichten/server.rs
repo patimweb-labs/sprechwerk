@@ -4,7 +4,7 @@
 //! Serverliste: gemerkte Server, ein Klick verbindet. Dazu der eigene Name
 //! und — wenn verbunden — der Fingerabdruck des Zertifikats (TOFU).
 
-use super::{hauptknopf, karte, leer, seitenkopf, text};
+use super::{hauptknopf_mit, karte, knopf, leer, seitenkopf, text, Icon};
 use crate::logik;
 use crate::modell::{Dialog, Oberflaeche};
 use crate::texte::t;
@@ -94,30 +94,35 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
                             };
                             let frei = !verbindet && !hier && !name_fehlt;
                             if ui
-                                .add_enabled_ui(frei, |ui| hauptknopf(ui, &f, &knopf))
+                                .add_enabled_ui(frei, |ui| {
+                                    hauptknopf_mit(ui, &f, Icon::Stecker, &knopf)
+                                })
                                 .inner
                                 .clicked()
                             {
                                 aktionen.push(o.verbinden(&fav.server));
                             }
-                            ui.menu_button("…", |ui| {
-                                if ui.button(t(s, "server.remove")).clicked() {
-                                    o.dialog = Dialog::ServerEntfernen {
-                                        server: fav.server.clone(),
-                                        name: fav.name.clone(),
-                                    };
-                                    ui.close();
-                                }
-                                if o.einstellungen.vertrauen_fuer(&fav.server).is_some()
-                                    && ui.button(t(s, "server.certificate_forget")).clicked()
-                                {
-                                    aktionen.push(Aktion::ZertifikatVergessen {
-                                        server: fav.server.clone(),
-                                    });
-                                    o.einstellungen.vergiss_vertrauen(&fav.server);
-                                    ui.close();
-                                }
-                            })
+                            ui.menu_image_button(
+                                Icon::Mehr.bild(thema::FONT_SIZE_LG, f.text_muted),
+                                |ui| {
+                                    if ui.button(t(s, "server.remove")).clicked() {
+                                        o.dialog = Dialog::ServerEntfernen {
+                                            server: fav.server.clone(),
+                                            name: fav.name.clone(),
+                                        };
+                                        ui.close();
+                                    }
+                                    if o.einstellungen.vertrauen_fuer(&fav.server).is_some()
+                                        && ui.button(t(s, "server.certificate_forget")).clicked()
+                                    {
+                                        aktionen.push(Aktion::ZertifikatVergessen {
+                                            server: fav.server.clone(),
+                                        });
+                                        o.einstellungen.vergiss_vertrauen(&fav.server);
+                                        ui.close();
+                                    }
+                                },
+                            )
                             .response
                             .on_hover_text(crate::texte::tf(s, "server.menu_for", &[&fav.name]));
                         });
@@ -125,7 +130,7 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
                     }
                 });
             ui.add_space(thema::SPACE_2);
-            if ui.button(format!("+ {}", t(s, "server.add"))).clicked() {
+            if knopf(ui, &f, Icon::Plus, &t(s, "server.add")).clicked() {
                 o.dialog = Dialog::ServerHinzufuegen {
                     name: String::new(),
                     adresse: String::new(),

@@ -21,18 +21,19 @@ pub const MAX_ZEICHEN_BYTES: usize = 32;
 /// Eine Nachricht, wie sie vor dem Verschlüsseln aussieht.
 ///
 /// **Neue Felder sind optional** (`serde(default)`): ein älterer Client liest
-/// einen Text mit Effekt oder Vorschau noch als Text und zeigt ihn ohne — das
+/// einen Text mit Vorschau noch als Text und zeigt ihn ohne — das
 /// ist besser als „neuere Version nötig". Eine neue **Art** dagegen ist für ihn
 /// unbekannt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "art", rename_all = "snake_case")]
 pub enum Inhalt {
-    /// Geschriebener Text, wahlweise mit Effekt und Link-Vorschau.
+    /// Geschriebener Text, wahlweise mit Link-Vorschau.
+    ///
+    /// Bis 1.3 gab es hier ein Feld `effekt` (Konfetti, Herzen, Beben). Es ist
+    /// entfallen (ADR 0013); alte Nachrichten tragen es noch und bleiben
+    /// lesbar, weil unbekannte Felder übergangen werden.
     Text {
         text: String,
-        /// Spielt beim Empfang einmal ab (Konfetti, Herzen, Beben).
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        effekt: Option<Effekt>,
         /// Vorschau des ersten Links — vom **Absender** abgerufen, damit kein
         /// Empfänger seine Adresse einer fremden Seite verrät (ADR 0012 §2).
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -52,20 +53,6 @@ pub enum Inhalt {
 
 fn ist_falsch(b: &bool) -> bool {
     !*b
-}
-
-/// Ein Effekt, der beim Empfang einmal abspielt.
-///
-/// `Unbekannt` fängt Effekte neuerer Versionen ab: der Text bleibt lesbar,
-/// nur der Effekt fällt weg.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Effekt {
-    Konfetti,
-    Herzen,
-    Beben,
-    #[serde(other)]
-    Unbekannt,
 }
 
 /// Vorschau einer Seite, wie sie der Absender gesehen hat.
@@ -101,11 +88,10 @@ pub enum Gelesen {
 }
 
 impl Inhalt {
-    /// Ein schlichter Text ohne Effekt und Vorschau.
+    /// Ein schlichter Text ohne Vorschau.
     pub fn text(text: impl Into<String>) -> Self {
         Inhalt::Text {
             text: text.into(),
-            effekt: None,
             vorschau: None,
         }
     }
@@ -150,20 +136,16 @@ mod tests {
         let bytes = i.schreiben();
         let roh = std::str::from_utf8(&bytes).unwrap();
         assert!(roh.contains(r#""v":1"#));
-        // Ohne Effekt und Vorschau stehen die Felder gar nicht da — so liest
-        // auch ein Client der ersten Stufe den Text.
-        assert!(
-            !roh.contains("effekt") && !roh.contains("vorschau"),
-            "{roh}"
-        );
+        // Ohne Vorschau steht das Feld gar nicht da — so liest auch ein
+        // Client der ersten Stufe den Text.
+        assert!(!roh.contains("vorschau"), "{roh}");
         assert_eq!(Inhalt::lesen(&bytes), Gelesen::Inhalt(i));
     }
 
     #[test]
-    fn effekt_und_vorschau_sind_umkehrbar() {
+    fn vorschau_ist_umkehrbar() {
         let i = Inhalt::Text {
             text: "Schau: https://example.org".into(),
-            effekt: Some(Effekt::Konfetti),
             vorschau: Some(Linkvorschau {
                 url: "https://example.org".into(),
                 titel: "Beispiel".into(),
@@ -175,16 +157,10 @@ mod tests {
     }
 
     #[test]
-    fn ein_neuer_effekt_laesst_den_text_lesbar() {
-        let neu = br#"{"v":1,"art":"text","text":"Hallo","effekt":"feuerwerk"}"#;
-        assert_eq!(
-            Inhalt::lesen(neu),
-            Gelesen::Inhalt(Inhalt::Text {
-                text: "Hallo".into(),
-                effekt: Some(Effekt::Unbekannt),
-                vorschau: None,
-            })
-        );
+    fn alte_nachricht_mit_effekt_bleibt_lesbar() {
+        // So schrieb 1.3 einen Text mit Effekt; das Feld gibt es nicht mehr.
+        let alt = br#"{"v":1,"art":"text","text":"Hallo","effekt":"konfetti"}"#;
+        assert_eq!(Inhalt::lesen(alt), Gelesen::Inhalt(Inhalt::text("Hallo")));
     }
 
     #[test]
