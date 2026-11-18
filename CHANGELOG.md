@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.1](https://github.com/patimweb-labs/sprechwerk/compare/v2.0.0...v2.0.1) (2026-11-18)
+
+
+### Behoben
+
+* **packaging:** deb/rpm und MSI bauen wieder ([e535d90](https://github.com/patimweb-labs/sprechwerk/commit/e535d9057c80fc9daec65fc19b0b0b8242ae7f80))
+* **packaging:** deb/rpm und MSI bauen wieder ([c65fe40](https://github.com/patimweb-labs/sprechwerk/commit/c65fe404c0bfc9bce7e51c87157bc2c8f21b3722))
+
 ## [2.0.0](https://github.com/patimweb-labs/sprechwerk/compare/v1.3.0...v2.0.0) (2026-11-18)
 
 
