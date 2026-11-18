@@ -90,10 +90,10 @@
     "fr": "Serveurs"
   },
   "server.sub": {
-    "de": "Gemerkte Server. Ein Klick verbindet — kein Suchen nach der Adresse.",
-    "en": "Saved servers. One click connects — no searching for addresses.",
-    "es": "Servidores guardados. Un clic conecta — sin buscar direcciones.",
-    "fr": "Serveurs enregistrés. Un clic connecte — sans chercher l'adresse."
+    "de": "Gemerkte Server. Ein Klick verbindet, kein Suchen nach der Adresse.",
+    "en": "Saved servers. One click connects, no searching for addresses.",
+    "es": "Servidores guardados. Un clic conecta, sin buscar direcciones.",
+    "fr": "Serveurs enregistrés. Un clic connecte, sans chercher l'adresse."
   },
   "server.add": {
     "de": "Server hinzufügen",
@@ -144,16 +144,16 @@
     "fr": "Retirer de la liste"
   },
   "server.empty": {
-    "de": "Noch kein Server gemerkt — trag die Adresse deines Servers ein.",
-    "en": "No server saved yet — enter your server's address.",
-    "es": "Aún no hay servidores — introduce la dirección de tu servidor.",
-    "fr": "Aucun serveur enregistré — saisis l'adresse de ton serveur."
+    "de": "Noch kein Server gemerkt. Trag die Adresse deines Servers ein.",
+    "en": "No server saved yet. Enter your server's address.",
+    "es": "Aún no hay servidores. Introduce la dirección de tu servidor.",
+    "fr": "Aucun serveur enregistré. Saisis l'adresse de ton serveur."
   },
   "server.footnote": {
-    "de": "Die Kennung liegt auf diesem Rechner (Schlüsseldatei). Auf einem anderen Gerät nimmst du sie mit — sonst bist du dort ein neues Mitglied.",
-    "en": "Your identity lives on this machine (key file). Carry it to another device — otherwise you are a new member there.",
-    "es": "Tu identidad está en este equipo (archivo de clave). Llévala a otro dispositivo — si no, allí eres un miembro nuevo.",
-    "fr": "Ton identité réside sur cette machine (fichier de clé). Emporte-la ailleurs — sinon tu y es un nouveau membre."
+    "de": "Die Kennung liegt auf diesem Rechner (Schlüsseldatei). Auf einem anderen Gerät nimmst du sie mit, sonst bist du dort ein neues Mitglied.",
+    "en": "Your identity lives on this machine (key file). Carry it to another device, otherwise you are a new member there.",
+    "es": "Tu identidad está en este equipo (archivo de clave). Llévala a otro dispositivo; si no, allí eres un miembro nuevo.",
+    "fr": "Ton identité réside sur cette machine (fichier de clé). Emporte-la ailleurs, sinon tu y es un nouveau membre."
   },
   "server.certificate": {
     "de": "Zertifikat dieses Servers",
@@ -174,10 +174,10 @@
     "fr": "Oublier le certificat"
   },
   "server.certificate_forgotten": {
-    "de": "Zertifikat vergessen — beim nächsten Verbinden wird neu angeheftet",
-    "en": "Certificate forgotten — it will be pinned again on the next connection",
-    "es": "Certificado olvidado — se fijará de nuevo en la próxima conexión",
-    "fr": "Certificat oublié — il sera épinglé à nouveau à la prochaine connexion"
+    "de": "Zertifikat vergessen. Beim nächsten Verbinden wird neu angeheftet.",
+    "en": "Certificate forgotten. It will be pinned again on the next connection.",
+    "es": "Certificado olvidado. Se fijará de nuevo en la próxima conexión.",
+    "fr": "Certificat oublié. Il sera épinglé à nouveau à la prochaine connexion."
   },
   "server.add.title": {
     "de": "Server hinzufügen",
@@ -480,10 +480,10 @@
     "fr": "Réglages"
   },
   "set.sub": {
-    "de": "Was dieses Fenster betrifft — der Server steht in der Serverliste, seine Konfiguration in der Serverdatei.",
-    "en": "What this window is about — the server lives in the server list, its configuration in the server file.",
-    "es": "Lo que afecta a esta ventana — el servidor está en la lista, su configuración en el archivo.",
-    "fr": "Ce qui concerne cette fenêtre — le serveur est dans la liste, sa configuration dans le fichier."
+    "de": "Was dieses Fenster betrifft. Der Server steht in der Serverliste, seine Konfiguration in der Serverdatei.",
+    "en": "What this window is about. The server lives in the server list, its configuration in the server file.",
+    "es": "Lo que afecta a esta ventana. El servidor está en la lista, su configuración en el archivo.",
+    "fr": "Ce qui concerne cette fenêtre. Le serveur est dans la liste, sa configuration dans le fichier."
   },
   "set.me": {
     "de": "Ich",
@@ -582,10 +582,10 @@
     "fr": "Test du son"
   },
   "set.speaker.done": {
-    "de": "Ton gespielt — zu hören gewesen?",
-    "en": "Tone played — did you hear it?",
-    "es": "Tono reproducido — ¿lo has oído?",
-    "fr": "Son joué — tu l'as entendu ?"
+    "de": "Ton gespielt. Zu hören gewesen?",
+    "en": "Tone played. Did you hear it?",
+    "es": "Tono reproducido. ¿Lo has oído?",
+    "fr": "Son joué. Tu l'as entendu ?"
   },
   "set.talk": {
     "de": "Sprechen",
@@ -612,10 +612,10 @@
     "fr": "Touche"
   },
   "set.key.hint": {
-    "de": "Am besten eine Seitentaste der Maus (Maus 4/5) — sie stört weder beim Tippen noch bei Fensterkürzeln.",
-    "en": "Best is a side mouse button (Mouse 4/5) — it disturbs neither typing nor window shortcuts.",
-    "es": "Lo mejor es un botón lateral del ratón (Ratón 4/5) — no molesta al escribir ni a los atajos.",
-    "fr": "Le mieux est un bouton latéral de la souris (Souris 4/5) — il ne gêne ni la saisie ni les raccourcis."
+    "de": "Am besten eine Seitentaste der Maus (Maus 4/5): Sie stört weder beim Tippen noch bei Fensterkürzeln.",
+    "en": "Best is a side mouse button (Mouse 4/5): it disturbs neither typing nor window shortcuts.",
+    "es": "Lo mejor es un botón lateral del ratón (Ratón 4/5): no molesta al escribir ni a los atajos.",
+    "fr": "Le mieux est un bouton latéral de la souris (Souris 4/5) : il ne gêne ni la saisie ni les raccourcis."
   },
   "set.key.change": {
     "de": "Ändern",
@@ -732,10 +732,10 @@
     "fr": "Porte de bruit (silence sous le seuil)"
   },
   "set.noisegate.hint": {
-    "de": "Unterhalb der Sprechschwelle wird gar nichts gesendet — spart Bandbreite und lässt den Raum ruhig.",
-    "en": "Below the speech threshold nothing is sent at all — saves bandwidth and keeps the room quiet.",
-    "es": "Por debajo del umbral no se envía nada — ahorra ancho de banda y mantiene la sala en calma.",
-    "fr": "Sous le seuil, rien n'est envoyé — économise la bande passante et garde le salon calme."
+    "de": "Unterhalb der Sprechschwelle wird gar nichts gesendet. Das spart Bandbreite und lässt den Raum ruhig.",
+    "en": "Below the speech threshold nothing is sent at all. That saves bandwidth and keeps the room quiet.",
+    "es": "Por debajo del umbral no se envía nada. Ahorra ancho de banda y mantiene la sala en calma.",
+    "fr": "Sous le seuil, rien n'est envoyé. Cela économise la bande passante et garde le salon calme."
   },
   "room.encrypted": {
     "de": "Sprache Ende zu Ende verschlüsselt",
@@ -750,10 +750,10 @@
     "fr": "Annulation d'écho"
   },
   "set.aec.hint": {
-    "de": "Rechnet die eigene Wiedergabe aus der Aufnahme — sonst hören die anderen sich selbst, wenn du über Lautsprecher sprichst. Kostet etwas Rechenzeit.",
-    "en": "Removes your own playback from the capture — otherwise others hear themselves when you use speakers. Costs some CPU.",
-    "es": "Elimina tu propia reproducción de la captura — si no, los demás se oyen a sí mismos por altavoces. Cuesta algo de CPU.",
-    "fr": "Retire votre propre lecture de la capture — sinon les autres s'entendent via les haut-parleurs. Coûte un peu de CPU."
+    "de": "Rechnet die eigene Wiedergabe aus der Aufnahme. Sonst hören die anderen sich selbst, wenn du über Lautsprecher sprichst. Kostet etwas Rechenzeit.",
+    "en": "Removes your own playback from the capture. Otherwise others hear themselves when you use speakers. Costs some CPU.",
+    "es": "Elimina tu propia reproducción de la captura. Si no, los demás se oyen a sí mismos por altavoces. Cuesta algo de CPU.",
+    "fr": "Retire votre propre lecture de la capture. Sinon les autres s'entendent via les haut-parleurs. Coûte un peu de CPU."
   },
   "chat.collapse": {
     "de": "Chat einklappen",
@@ -816,10 +816,10 @@
     "fr": "Journal d'audit"
   },
   "audit.sub": {
-    "de": "Was geschah, wer es tat — und was abgelehnt wurde. Einträge lassen sich nicht ändern.",
-    "en": "What happened, who did it — and what was refused. Entries cannot be changed.",
-    "es": "Qué pasó, quién lo hizo — y qué se rechazó. Las entradas no se pueden cambiar.",
-    "fr": "Ce qui s'est passé, qui l'a fait — et ce qui a été refusé. Les entrées ne sont pas modifiables."
+    "de": "Was geschah, wer es tat und was abgelehnt wurde. Einträge lassen sich nicht ändern.",
+    "en": "What happened, who did it and what was refused. Entries cannot be changed.",
+    "es": "Qué pasó, quién lo hizo y qué se rechazó. Las entradas no se pueden cambiar.",
+    "fr": "Ce qui s'est passé, qui l'a fait et ce qui a été refusé. Les entrées ne sont pas modifiables."
   },
   "audit.refresh": {
     "de": "Neu laden",
@@ -1068,10 +1068,10 @@
     "fr": "Personne n'est banni"
   },
   "bans.empty.desc": {
-    "de": "Wenn jemand gesperrt wird, steht er hier — mit Grund und einem Knopf zum Aufheben.",
-    "en": "When someone is banned, they appear here — with the reason and a button to lift it.",
-    "es": "Cuando alguien sea bloqueado, aparecerá aquí — con el motivo y un botón para levantarlo.",
-    "fr": "Lorsque quelqu'un est banni, il apparaît ici — avec le motif et un bouton pour lever le bannissement."
+    "de": "Wenn jemand gesperrt wird, steht er hier, mit Grund und einem Knopf zum Aufheben.",
+    "en": "When someone is banned, they appear here, with the reason and a button to lift it.",
+    "es": "Cuando alguien sea bloqueado, aparecerá aquí, con el motivo y un botón para levantarlo.",
+    "fr": "Lorsque quelqu'un est banni, il apparaît ici, avec le motif et un bouton pour lever le bannissement."
   },
   "bans.no_right": {
     "de": "Nur Administratoren dürfen Sperren sehen und aufheben.",
@@ -1110,10 +1110,10 @@
     "fr": "Clé (publique)"
   },
   "set.key_hint": {
-    "de": "Diese Kennung ist deine Identität auf jedem Gerät. Sie ist öffentlich — sie weiterzugeben ist unbedenklich; die Schlüsseldatei daneben nicht.",
-    "en": "This key is your identity on every device. It is public — sharing it is harmless; the key file next to it is not.",
+    "de": "Diese Kennung ist deine Identität auf jedem Gerät. Sie ist öffentlich, sie weiterzugeben ist unbedenklich. Die Schlüsseldatei daneben nicht.",
+    "en": "This key is your identity on every device. It is public, sharing it is harmless. The key file next to it is not.",
     "es": "Esta clave es tu identidad en cualquier dispositivo. Es pública: compartirla es inofensivo, el archivo de clave no.",
-    "fr": "Cette clé est votre identité sur chaque appareil. Elle est publique — la partager est sans danger ; le fichier de clé, non."
+    "fr": "Cette clé est votre identité sur chaque appareil. Elle est publique, la partager est sans danger. Le fichier de clé, non."
   },
   "app.latency": {
     "de": "Umlaufzeit zum Server",
@@ -1128,10 +1128,10 @@
     "fr": "Motif (apparaît dans le journal)"
   },
   "room.key_missing": {
-    "de": "verschlüsselt · Schlüssel fehlt — du hörst nichts.",
-    "en": "encrypted · key missing — you hear nothing.",
+    "de": "verschlüsselt · Schlüssel fehlt, du hörst nichts.",
+    "en": "encrypted · key missing, you hear nothing.",
     "es": "cifrado · falta la clave: no oirás nada.",
-    "fr": "chiffré · clé manquante — vous n'entendez rien."
+    "fr": "chiffré · clé manquante, vous n'entendez rien."
   },
   "room.key_request": {
     "de": "Schlüssel anfordern",
@@ -1176,16 +1176,16 @@
     "fr": "il y a {} ans"
   },
   "room.encrypted_now": {
-    "de": "Sprache jetzt Ende zu Ende verschlüsselt — der Schlüssel wird ausgehandelt.",
-    "en": "Voice is now end-to-end encrypted — the key is being exchanged.",
+    "de": "Sprache jetzt Ende zu Ende verschlüsselt. Der Schlüssel wird ausgehandelt.",
+    "en": "Voice is now end-to-end encrypted. The key is being exchanged.",
     "es": "Ahora la voz va cifrada de extremo a extremo: se está negociando la clave.",
-    "fr": "La voix est désormais chiffrée de bout en bout — la clé est en cours d'échange."
+    "fr": "La voix est désormais chiffrée de bout en bout. La clé est en cours d'échange."
   },
   "room.unencrypted_now": {
-    "de": "Verschlüsselung aus — Sprache geht wieder lesbar über den Server.",
-    "en": "Encryption off — voice travels readable through the server again.",
+    "de": "Verschlüsselung aus. Sprache geht wieder lesbar über den Server.",
+    "en": "Encryption off. Voice travels readable through the server again.",
     "es": "Cifrado desactivado: la voz vuelve a pasar legible por el servidor.",
-    "fr": "Chiffrement désactivé — la voix repasse en clair par le serveur."
+    "fr": "Chiffrement désactivé. La voix repasse en clair par le serveur."
   },
   "admin.title": {
     "de": "Verwaltung",
@@ -1458,28 +1458,28 @@
     "fr": "{} connectés · {} membres"
   },
   "chat.e2e": {
-    "de": "Ende zu Ende verschlüsselt — Text und Sprache. Der Server liest nicht mit.",
-    "en": "End-to-end encrypted — text and voice. The server cannot read along.",
+    "de": "Ende zu Ende verschlüsselt: Text und Sprache. Der Server liest nicht mit.",
+    "en": "End-to-end encrypted: text and voice. The server cannot read along.",
     "es": "Cifrado de extremo a extremo: texto y voz. El servidor no puede leerlos.",
-    "fr": "Chiffré de bout en bout — texte et voix. Le serveur ne peut pas lire."
+    "fr": "Chiffré de bout en bout : texte et voix. Le serveur ne peut pas lire."
   },
   "chat.waiting": {
-    "de": "Verschlüsselt — der Schlüssel fehlt noch.",
-    "en": "Encrypted — the key has not arrived yet.",
+    "de": "Verschlüsselt. Der Schlüssel fehlt noch.",
+    "en": "Encrypted. The key has not arrived yet.",
     "es": "Cifrado: la clave aún no ha llegado.",
-    "fr": "Chiffré — la clé n’est pas encore arrivée."
+    "fr": "Chiffré. La clé n’est pas encore arrivée."
   },
   "chat.unreadable": {
-    "de": "Nicht lesbar — verändert oder beschädigt.",
-    "en": "Unreadable — altered or damaged.",
+    "de": "Nicht lesbar: verändert oder beschädigt.",
+    "en": "Unreadable: altered or damaged.",
     "es": "Ilegible: alterado o dañado.",
-    "fr": "Illisible — modifié ou endommagé."
+    "fr": "Illisible : modifié ou endommagé."
   },
   "chat.newer": {
-    "de": "„{}“ — dafür braucht es eine neuere Version.",
-    "en": "“{}” — this needs a newer version.",
+    "de": "„{}“: Dafür braucht es eine neuere Version.",
+    "en": "“{}”: this needs a newer version.",
     "es": "«{}»: se necesita una versión más reciente.",
-    "fr": "« {} » — une version plus récente est nécessaire."
+    "fr": "« {} » : une version plus récente est nécessaire."
   },
   "chat.key_wait": {
     "de": "Der Schlüssel für den Chat kommt von einem anderen Mitglied, sobald eines online ist, das ihn hat. Bis dahin kannst du nicht schreiben.",
@@ -1530,10 +1530,10 @@
     "fr": "Fête"
   },
   "react.count": {
-    "de": "{} — {} von {}",
-    "en": "{} — {} from {}",
-    "es": "{} — {} de {}",
-    "fr": "{} — {} de {}"
+    "de": "{}: {} ({})",
+    "en": "{}: {} ({})",
+    "es": "{}: {} ({})",
+    "fr": "{} : {} ({})"
   },
   "preview.loading": {
     "de": "Vorschau wird geladen …",
@@ -1554,10 +1554,10 @@
     "fr": "Générer des aperçus de liens"
   },
   "set.link_preview.hint": {
-    "de": "Schreibst du einen Link, ruft dieses Gerät die Seite ab und schickt Titel und Bild verschlüsselt mit. Die Seite sieht dabei deine Adresse — die anderen rufen nichts ab. Aus: Links bleiben anklickbar, nur ohne Vorschau.",
-    "en": "When you write a link, this device fetches the page and sends title and image along, encrypted. The site sees your address — the others fetch nothing. Off: links stay clickable, just without a preview.",
+    "de": "Schreibst du einen Link, ruft dieses Gerät die Seite ab und schickt Titel und Bild verschlüsselt mit. Die Seite sieht dabei deine Adresse, die anderen rufen nichts ab. Aus: Links bleiben anklickbar, nur ohne Vorschau.",
+    "en": "When you write a link, this device fetches the page and sends title and image along, encrypted. The site sees your address, the others fetch nothing. Off: links stay clickable, just without a preview.",
     "es": "Al escribir un enlace, este dispositivo carga la página y envía título e imagen cifrados. La página ve tu dirección; los demás no cargan nada. Desactivado: los enlaces siguen siendo clicables, sin vista previa.",
-    "fr": "Quand tu écris un lien, cet appareil charge la page et envoie titre et image, chiffrés. Le site voit ton adresse — les autres ne chargent rien. Désactivé : les liens restent cliquables, sans aperçu."
+    "fr": "Quand tu écris un lien, cet appareil charge la page et envoie titre et image, chiffrés. Le site voit ton adresse, les autres ne chargent rien. Désactivé : les liens restent cliquables, sans aperçu."
   },
   "set.chat": {
     "de": "Chat",
@@ -1710,15 +1710,243 @@
     "fr": "Salons et personnes"
   },
   "srv.overview.sub": {
-    "de": "Was der Server gerade tut — und was Mitglieder zum Verbinden brauchen.",
-    "en": "What the server is doing — and what members need to connect.",
+    "de": "Was der Server gerade tut und was Mitglieder zum Verbinden brauchen.",
+    "en": "What the server is doing and what members need to connect.",
     "es": "Qué hace el servidor y qué necesitan los miembros para conectarse.",
-    "fr": "Ce que fait le serveur — et ce dont les membres ont besoin pour se connecter."
+    "fr": "Ce que fait le serveur et ce dont les membres ont besoin pour se connecter."
   },
   "srv.share": {
     "de": "Zum Weitergeben",
     "en": "To share",
     "es": "Para compartir",
     "fr": "À partager"
+  },
+  "file.attach": {
+    "de": "Datei anhängen",
+    "en": "Attach file",
+    "es": "Adjuntar archivo",
+    "fr": "Joindre un fichier"
+  },
+  "file.remove": {
+    "de": "{} entfernen",
+    "en": "Remove {}",
+    "es": "Quitar {}",
+    "fr": "Retirer {}"
+  },
+  "file.preparing": {
+    "de": "wird vorbereitet …",
+    "en": "preparing …",
+    "es": "preparando …",
+    "fr": "préparation …"
+  },
+  "file.uploading": {
+    "de": "lädt hoch, {} %",
+    "en": "uploading, {} %",
+    "es": "subiendo, {} %",
+    "fr": "envoi, {} %"
+  },
+  "file.ready": {
+    "de": "bereit",
+    "en": "ready",
+    "es": "listo",
+    "fr": "prêt"
+  },
+  "file.failed": {
+    "de": "Fehler: {}",
+    "en": "Error: {}",
+    "es": "Error: {}",
+    "fr": "Erreur : {}"
+  },
+  "file.open": {
+    "de": "{} groß zeigen",
+    "en": "Show {} large",
+    "es": "Mostrar {} en grande",
+    "fr": "Afficher {} en grand"
+  },
+  "file.save": {
+    "de": "Speichern",
+    "en": "Save",
+    "es": "Guardar",
+    "fr": "Enregistrer"
+  },
+  "file.save_named": {
+    "de": "{} speichern",
+    "en": "Save {}",
+    "es": "Guardar {}",
+    "fr": "Enregistrer {}"
+  },
+  "file.loading": {
+    "de": "Wird geladen, {} %",
+    "en": "Loading, {} %",
+    "es": "Cargando, {} %",
+    "fr": "Chargement, {} %"
+  },
+  "file.close": {
+    "de": "Schließen",
+    "en": "Close",
+    "es": "Cerrar",
+    "fr": "Fermer"
+  },
+  "file.video": {
+    "de": "Video",
+    "en": "Video",
+    "es": "Vídeo",
+    "fr": "Vidéo"
+  },
+  "file.wait": {
+    "de": "Erst senden, wenn alle Dateien hochgeladen sind",
+    "en": "Send once all files are uploaded",
+    "es": "Enviar cuando todos los archivos estén subidos",
+    "fr": "Envoyer quand tous les fichiers sont envoyés"
+  },
+  "file.encrypted": {
+    "de": "Ende zu Ende verschlüsselt. Der Server sieht weder Name noch Inhalt.",
+    "en": "End-to-end encrypted. The server sees neither name nor content.",
+    "es": "Cifrado de extremo a extremo: el servidor no ve ni el nombre ni el contenido.",
+    "fr": "Chiffré de bout en bout. Le serveur ne voit ni le nom ni le contenu."
+  },
+  "file.open_system": {
+    "de": "Im Programm öffnen",
+    "en": "Open in app",
+    "es": "Abrir en la aplicación",
+    "fr": "Ouvrir dans l’application"
+  },
+  "file.drop": {
+    "de": "Dateien hier ablegen",
+    "en": "Drop files here",
+    "es": "Suelta los archivos aquí",
+    "fr": "Déposer les fichiers ici"
+  },
+  "file.play": {
+    "de": "Abspielen",
+    "en": "Play",
+    "es": "Reproducir",
+    "fr": "Lire"
+  },
+  "set.mic_talk": {
+    "de": "Mikrofon und Sprechen",
+    "en": "Microphone and talking",
+    "es": "Micrófono y habla",
+    "fr": "Micro et parole"
+  },
+  "set.mic_talk.sub": {
+    "de": "Welches Mikrofon, und wann es sendet.",
+    "en": "Which microphone, and when it transmits.",
+    "es": "Qué micrófono y cuándo transmite.",
+    "fr": "Quel micro, et quand il transmet."
+  },
+  "set.mic_test.start": {
+    "de": "Sprechtest starten",
+    "en": "Start mic test",
+    "es": "Iniciar prueba",
+    "fr": "Tester le micro"
+  },
+  "set.mic_test.stop": {
+    "de": "Sprechtest beenden",
+    "en": "Stop mic test",
+    "es": "Detener prueba",
+    "fr": "Arrêter le test"
+  },
+  "set.mic_test.live": {
+    "de": "Läuft mit der Verbindung. Sprich einfach.",
+    "en": "Running with the connection. Just talk.",
+    "es": "Activo con la conexión: habla.",
+    "fr": "Actif avec la connexion. Parle simplement."
+  },
+  "set.level.hint": {
+    "de": "Sprich in normaler Lautstärke: der Balken soll deutlich über die Marke gehen, Stille darunter bleiben. Die Marke (Sprechschwelle) ziehst du mit der Maus oder den Pfeiltasten.",
+    "en": "Speak at normal volume: the bar should clearly pass the marker, silence should stay below. Drag the marker (threshold) with the mouse or the arrow keys.",
+    "es": "Habla a volumen normal: la barra debe superar claramente la marca y el silencio quedar por debajo. Arrastra la marca (umbral) con el ratón o las flechas.",
+    "fr": "Parle normalement : la barre doit dépasser nettement le repère, le silence rester en dessous. Déplace le repère (seuil) à la souris ou avec les flèches."
+  },
+  "set.threshold.value": {
+    "de": "Schwelle {} %",
+    "en": "Threshold {} %",
+    "es": "Umbral {} %",
+    "fr": "Seuil {} %"
+  },
+  "set.lead.short": {
+    "de": "Vorlauf",
+    "en": "Pre-roll",
+    "es": "Preámbulo",
+    "fr": "Pré-enregistrement"
+  },
+  "rolle.kurz.administrator": {
+    "de": "A",
+    "en": "A",
+    "es": "A",
+    "fr": "A"
+  },
+  "rolle.kurz.moderator": {
+    "de": "M",
+    "en": "M",
+    "es": "M",
+    "fr": "M"
+  },
+  "rolle.kurz.gast": {
+    "de": "G",
+    "en": "G",
+    "es": "I",
+    "fr": "I"
+  },
+  "emoji.smileys": {
+    "de": "Gesichter",
+    "en": "Faces",
+    "es": "Caras",
+    "fr": "Visages"
+  },
+  "emoji.gesten": {
+    "de": "Gesten",
+    "en": "Gestures",
+    "es": "Gestos",
+    "fr": "Gestes"
+  },
+  "emoji.herzen": {
+    "de": "Herzen und Zeichen",
+    "en": "Hearts and symbols",
+    "es": "Corazones y símbolos",
+    "fr": "Cœurs et symboles"
+  },
+  "emoji.dinge": {
+    "de": "Dinge",
+    "en": "Things",
+    "es": "Cosas",
+    "fr": "Objets"
+  },
+  "emoji.insert": {
+    "de": "Emoji einfügen",
+    "en": "Insert emoji",
+    "es": "Insertar emoji",
+    "fr": "Insérer un emoji"
+  },
+  "edit.cut": {
+    "de": "Ausschneiden",
+    "en": "Cut",
+    "es": "Cortar",
+    "fr": "Couper"
+  },
+  "edit.copy": {
+    "de": "Kopieren",
+    "en": "Copy",
+    "es": "Copiar",
+    "fr": "Copier"
+  },
+  "edit.paste": {
+    "de": "Einfügen",
+    "en": "Paste",
+    "es": "Pegar",
+    "fr": "Coller"
+  },
+  "edit.select_all": {
+    "de": "Alles markieren",
+    "en": "Select all",
+    "es": "Seleccionar todo",
+    "fr": "Tout sélectionner"
+  },
+  "admin.members.offline": {
+    "de": "nicht verbunden",
+    "en": "not connected",
+    "es": "no conectado",
+    "fr": "non connecté"
   }
 }

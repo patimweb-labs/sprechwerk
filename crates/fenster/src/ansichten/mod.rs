@@ -240,12 +240,10 @@ pub fn fuss(ui: &mut egui::Ui, o: &Oberflaeche) {
             // Eine Zeile, die kürzt statt überzulaufen: links der Stand,
             // rechts eine Meldung — beide mit „…", wenn der Platz fehlt.
             ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
+            // Nur, was man wirklich braucht: wohin verbunden und wie schnell.
+            // Der Servername steht schon oben in der Werkzeugleiste.
             let (stand, farbe) = match &o.zustand.verbindung {
-                Some(Verbindung::Verbunden {
-                    server_name,
-                    server,
-                    ..
-                }) => (format!("{server_name} · {server}"), f.status_ok),
+                Some(Verbindung::Verbunden { server, .. }) => (server.clone(), f.status_ok),
                 Some(Verbindung::Verbindet { server }) => {
                     (tf(s, "app.connecting", &[server]), f.status_warn)
                 }
@@ -262,9 +260,10 @@ pub fn fuss(ui: &mut egui::Ui, o: &Oberflaeche) {
             if let Some(l) = logik::latenz_text(o.zustand.latenz_ms) {
                 zeile.append(&format!(" · {l}"), 0.0, format(f.text_muted));
             }
-            if let Some((q, gut)) = logik::qualitaet(s, &o.zustand) {
-                let c = if gut { f.status_ok } else { f.status_warn };
-                zeile.append(&format!(" · {q}"), 0.0, format(c));
+            // Verlust nur, wenn es welchen gibt — „keine Rahmen verloren" ist
+            // der Normalfall und keine Zeile wert.
+            if let Some((q, false)) = logik::qualitaet(s, &o.zustand) {
+                zeile.append(&format!(" · {q}"), 0.0, format(f.status_warn));
             }
             let meldung = match (&o.hinweis, &o.zustand.meldung) {
                 (Some(Hinweis::Fehler(x)), _) => Some((x.clone(), f.status_error)),

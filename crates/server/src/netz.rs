@@ -336,7 +336,7 @@ async fn bediene(verbindung: quinn::Connection, kern: Arc<Mutex<Kern>>) -> anyho
                                 mitglied = %ich,
                                 grenze = drossel.grenze,
                                 abgewiesen = drossel.abgewiesen,
-                                "Rahmengrenze überschritten — Verbindung wird getrennt"
+                                "Rahmengrenze überschritten, Verbindung wird getrennt"
                             );
                             let k = kern.lock().expect("Sperre");
                             k.senden(ich, Kern::fehler(Fehlercode::Spaeter));

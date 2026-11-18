@@ -30,6 +30,7 @@ AUSWAHL = {
     "play": "play", "square": "stop", "send-horizontal": "send", "link": "link",
     "triangle-alert": "warning", "external-link": "external", "panel-right-close": "panel_close",
     "hexagon": "brand",
+    "paperclip": "anhang", "file": "datei", "film": "film", "download": "herunterladen", "smile": "smiley",
 }
 
 KOPF = ('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" '

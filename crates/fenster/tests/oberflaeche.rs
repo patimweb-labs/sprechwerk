@@ -19,8 +19,9 @@ use sprechwerk_fenster::app::{Fenster, Kern};
 use sprechwerk_fenster::modell::{Ansicht, Oberflaeche};
 use sprechwerk_fenster::thema::Thema;
 use sprechwerk_ipc::{
-    Befehl, Eintrag, Guete, Mitglied, Nachricht, NachrichtInhalt, Raum, Reaktionen, Sperre,
-    Textschluessel, Verbindung, Zustand,
+    Anhangentwurf, Befehl, Betrachter, Dateiansicht, Dateiart, Eintrag, Entwurfsstand, Guete,
+    Ladestand, Mitglied, Nachricht, NachrichtInhalt, Raum, Reaktionen, Sperre, Textschluessel,
+    Verbindung, Zustand,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -33,6 +34,9 @@ impl Kern for Falsch {
     fn ausfuehren(&self, aktion: Aktion) {
         self.0.borrow_mut().push(aktion);
     }
+    fn datei(&self, id: &str) -> Option<Vec<u8>> {
+        (id == BILD).then(testbild)
+    }
     fn audio_stand(&self) -> AudioStand {
         AudioStand {
             laeuft: true,
@@ -44,6 +48,38 @@ impl Kern for Falsch {
 }
 
 const ICH: u128 = 1;
+const BILD: &str = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
+
+/// Ein Bild mit Verlauf in den Akzentfarben — als PNG, wie es aus dem
+/// Zwischenspeicher käme.
+fn testbild() -> Vec<u8> {
+    let bild = image::RgbaImage::from_fn(480, 300, |x, y| {
+        image::Rgba([(x * 255 / 480) as u8, 120, (y * 255 / 300) as u8, 255])
+    });
+    let mut aus = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(bild)
+        .write_to(&mut aus, image::ImageFormat::Png)
+        .unwrap();
+    aus.into_inner()
+}
+
+fn dateiansicht(id: &str, name: &str, art: Dateiart, groesse: u64) -> Dateiansicht {
+    Dateiansicht {
+        id: id.into(),
+        name: name.into(),
+        art,
+        typ: String::new(),
+        groesse,
+        vorschau: None,
+        breite: (art == Dateiart::Bild).then_some(480),
+        hoehe: (art == Dateiart::Bild).then_some(300),
+        stand: if art == Dateiart::Bild {
+            Ladestand::Bereit
+        } else {
+            Ladestand::Keiner
+        },
+    }
+}
 const ZWEI: u128 = 2;
 
 fn mitglied(id: u128, name: &str, rolle: Role, raum: u128, spricht: bool) -> Mitglied {
@@ -145,6 +181,27 @@ fn beispiel(rolle: Role) -> Zustand {
             2,
         ),
         nachricht(12, ICH, "Ada", "Bin in fünf Minuten da.", 3),
+        Nachricht {
+            inhalt: NachrichtInhalt::Anhang {
+                text: "Fotos und Video vom letzten Turnier".into(),
+                dateien: vec![
+                    dateiansicht(BILD, "brett.png", Dateiart::Bild, 412_000),
+                    dateiansicht(
+                        "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+                        "partie.mp4",
+                        Dateiart::Video,
+                        48_200_000,
+                    ),
+                    dateiansicht(
+                        "ffeeddccbbaa99887766554433221100",
+                        "paarungen.pdf",
+                        Dateiart::Datei,
+                        182_000,
+                    ),
+                ],
+            },
+            ..nachricht(13, 3, "Carla", "", 4)
+        },
     ];
     z.latenz_ms = Some(8);
     z.guete = Some(Guete {
@@ -491,4 +548,230 @@ fn verkleinern_laesst_nichts_verschwinden() {
             alles_im_fenster(&h, breite, name);
         }
     }
+}
+
+#[test]
+fn anhaengen_waehlt_dateien() {
+    let (mut h, kern) = fenster(verbunden(Role::Mitglied, Ansicht::Raeume), (1100.0, 720.0));
+    h.run();
+    h.get_by_label("Datei anhängen").click();
+    h.run();
+    assert!(kern.0.borrow().contains(&Aktion::AnhaengeWaehlen));
+}
+
+#[test]
+fn dateien_im_verlauf() {
+    let (mut h, kern) = fenster(verbunden(Role::Mitglied, Ansicht::Raeume), (1100.0, 900.0));
+    h.run();
+    h.get_by_label("brett.png groß zeigen").click();
+    h.run();
+    h.get_by_label("Abspielen: partie.mp4").click();
+    h.run();
+    h.get_by_label("paarungen.pdf speichern").click();
+    h.run();
+    let a = kern.0.borrow();
+    assert!(
+        a.iter().any(
+            |x| matches!(x, Aktion::Befehl(Befehl::DateiOeffnen { datei, .. }) if datei == BILD)
+        ),
+        "{a:?}"
+    );
+    assert!(
+        a.iter()
+            .any(|x| matches!(x, Aktion::DateiExtern { name, .. } if name == "partie.mp4")),
+        "Video im Player"
+    );
+    assert!(
+        a.iter().any(
+            |x| matches!(x, Aktion::DateiSpeichernUnter { name, .. } if name == "paarungen.pdf")
+        ),
+        "PDF speichern"
+    );
+}
+
+#[test]
+fn betrachter_zeigt_und_schliesst() {
+    let mut o = verbunden(Role::Mitglied, Ansicht::Raeume);
+    o.zustand.betrachter = Some(Betrachter {
+        nachricht: MessageId::aus_roh(13),
+        datei: dateiansicht(BILD, "brett.png", Dateiart::Bild, 412_000),
+    });
+    let (mut h, kern) = fenster(o, (1100.0, 720.0));
+    h.run();
+    h.get_by_label("Schließen").click();
+    h.run();
+    assert!(kern
+        .0
+        .borrow()
+        .contains(&Aktion::Befehl(Befehl::BetrachterSchliessen)));
+}
+
+#[test]
+fn entwurf_mit_dateien_senden_und_entfernen() {
+    let mut o = verbunden(Role::Mitglied, Ansicht::Raeume);
+    o.zustand.anhaenge = vec![Anhangentwurf {
+        nr: 7,
+        name: "brett.png".into(),
+        art: Dateiart::Bild,
+        groesse: 412_000,
+        vorschau: None,
+        stand: Entwurfsstand::Bereit,
+    }];
+    let (mut h, kern) = fenster(o, (1100.0, 720.0));
+    h.run();
+    // Nur Dateien, ohne Text: Enter schickt trotzdem.
+    h.get_by_role(egui::accesskit::Role::MultilineTextInput)
+        .focus();
+    h.run();
+    h.key_press(egui::Key::Enter);
+    h.run();
+    h.get_by_label("brett.png entfernen").click();
+    h.run();
+    let a = kern.0.borrow();
+    assert!(
+        a.iter()
+            .any(|x| matches!(x, Aktion::Befehl(Befehl::Text { text }) if text.is_empty())),
+        "{a:?}"
+    );
+    assert!(a.contains(&Aktion::Befehl(Befehl::AnhangEntfernen { nr: 7 })));
+}
+
+#[test]
+fn schwelle_direkt_im_pegelbalken_setzen() {
+    let mut o = verbunden(Role::Mitglied, Ansicht::Einstellungen);
+    o.einstellungen.schwelle = 30;
+    let (mut h, _) = fenster(o, (1100.0, 2400.0));
+    h.run();
+    if let Some(ziel) = std::env::var_os("SPRECHWERK_SCHMALBILDER") {
+        let bild = h.render().expect("zeichnen (wgpu)");
+        bild.save(std::path::Path::new(&ziel).join("einstellungen-lang.png"))
+            .unwrap();
+    }
+    let balken = h.get_by_role_and_label(
+        egui::accesskit::Role::Slider,
+        "Sprechschwelle (bei offenem Mikrofon)",
+    );
+    // Klick ins rechte Viertel: die Schwelle springt dorthin.
+    let r = balken.rect();
+    let ziel = egui::pos2(r.left() + r.width() * 0.75, r.center().y);
+    h.input_mut().events.push(egui::Event::PointerMoved(ziel));
+    h.input_mut().events.push(egui::Event::PointerButton {
+        pos: ziel,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: Default::default(),
+    });
+    h.step();
+    h.input_mut().events.push(egui::Event::PointerButton {
+        pos: ziel,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: Default::default(),
+    });
+    h.run();
+    let schwelle = h.state().0.o.einstellungen.schwelle;
+    assert!((73..=77).contains(&schwelle), "Schwelle {schwelle}");
+}
+
+#[test]
+fn sprechtest_ohne_verbindung_oeffnet_das_mikrofon() {
+    let mut o = Oberflaeche::neu(einstellungen(), Zustand::neu());
+    o.ansicht = Ansicht::Einstellungen;
+    let (mut h, kern) = fenster(o, (1100.0, 2400.0));
+    h.run();
+    h.get_by_label("Sprechtest starten").click();
+    h.run();
+    assert!(kern.0.borrow().contains(&Aktion::AudioStarten));
+    assert!(h.query_by_label("Sprechtest beenden").is_some());
+}
+
+#[test]
+fn leere_sperrliste_steht_im_seitenrahmen() {
+    let mut o = verbunden(Role::Administrator, Ansicht::Sperren);
+    o.zustand.sperren.clear();
+    let (mut h, _) = fenster(o, (1000.0, 500.0));
+    h.run();
+    if let Some(ziel) = std::env::var_os("SPRECHWERK_SCHMALBILDER") {
+        let bild = h.render().expect("zeichnen (wgpu)");
+        bild.save(std::path::Path::new(&ziel).join("sperren-leer.png"))
+            .unwrap();
+    }
+    // Überschrift und leere Ansicht beginnen an derselben Kante.
+    let titel = h.get_by_label("Verhängte Sperren").rect();
+    let leer = h.get_by_label("Niemand gesperrt").rect();
+    assert!(
+        (titel.left() - leer.left()).abs() < 24.0,
+        "{titel:?} {leer:?}"
+    );
+    assert!(titel.left() >= 20.0, "Rand zur Fensterkante");
+}
+
+#[test]
+fn emoji_ins_eingabefeld() {
+    let (mut h, _) = fenster(verbunden(Role::Mitglied, Ansicht::Raeume), (1100.0, 720.0));
+    h.run();
+    h.get_by_label("Emoji einfügen").click();
+    h.run();
+    h.get_by_label("😎").click();
+    h.run();
+    assert_eq!(h.state().0.o.entwurf, "😎");
+}
+
+#[test]
+fn auf_fremde_nachricht_reagieren() {
+    let (mut h, kern) = fenster(verbunden(Role::Mitglied, Ansicht::Raeume), (1100.0, 900.0));
+    h.run();
+    // Über die Nachricht fahren: der Knopf zum Reagieren erscheint.
+    h.get_by_label("Guten Abend! Heute Blitzschach ab 20 Uhr.")
+        .hover();
+    h.run_steps(3);
+    h.get_all_by_label("Reagieren")
+        .next()
+        .expect("Knopf")
+        .click();
+    h.run_steps(3);
+    if let Some(ziel) = std::env::var_os("SPRECHWERK_SCHMALBILDER") {
+        let bild = h.render().expect("zeichnen (wgpu)");
+        bild.save(std::path::Path::new(&ziel).join("reagieren.png"))
+            .unwrap();
+    }
+    h.get_by_label("🚀").click();
+    h.run_steps(3);
+    assert!(
+        kern.0.borrow().iter().any(|a| matches!(a,
+            Aktion::Befehl(Befehl::Reagieren { zeichen, .. }) if zeichen == "🚀")),
+        "{:?}",
+        kern.0.borrow()
+    );
+}
+
+#[test]
+fn rechtsklick_ins_eingabefeld_bietet_einfuegen() {
+    let (mut h, _) = fenster(verbunden(Role::Mitglied, Ansicht::Raeume), (1100.0, 720.0));
+    h.run();
+    h.get_by_role(egui::accesskit::Role::MultilineTextInput)
+        .click_secondary();
+    h.run();
+    for name in ["Ausschneiden", "Kopieren", "Einfügen", "Alles markieren"] {
+        assert!(h.query_by_label(name).is_some(), "{name} fehlt");
+    }
+}
+
+/// Jedes Emoji der Auswahl kann die eingebaute Schrift zeichnen — sonst
+/// stünde ein Kästchen in der Auswahl.
+#[test]
+fn jedes_emoji_der_auswahl_ist_darstellbar() {
+    let ctx = egui::Context::default();
+    sprechwerk_oberflaeche::einrichten(&ctx);
+    let mut aus = ctx.run_ui(Default::default(), |_| {});
+    aus.textures_delta.clear();
+    let fehlt: Vec<&str> = sprechwerk_fenster::logik::EMOJI
+        .iter()
+        .flat_map(|(_, e)| e.iter().copied())
+        .filter(|z| {
+            let z = sprechwerk_fenster::logik::darstellbar(z);
+            !ctx.fonts_mut(|f| f.has_glyphs(&egui::FontId::proportional(20.0), &z))
+        })
+        .collect();
+    assert!(fehlt.is_empty(), "ohne Glyphe: {fehlt:?}");
 }

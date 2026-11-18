@@ -80,6 +80,17 @@ pub fn tf(sprache: Sprache, schluessel: &str, werte: &[&dyn std::fmt::Display]) 
     text
 }
 
+/// Abkürzung der Rolle fürs Abzeichen (A, M, G); Mitglied hat keine.
+pub fn rolle_kurz(sprache: Sprache, rolle: sprechwerk_domain::Role) -> String {
+    let name = match rolle {
+        sprechwerk_domain::Role::Administrator => "administrator",
+        sprechwerk_domain::Role::Moderator => "moderator",
+        sprechwerk_domain::Role::Mitglied => return String::new(),
+        sprechwerk_domain::Role::Gast => "gast",
+    };
+    t(sprache, &format!("rolle.kurz.{name}"))
+}
+
 /// Rollenname in der gewählten Sprache.
 pub fn rolle(sprache: Sprache, rolle: sprechwerk_domain::Role) -> String {
     let name = match rolle {

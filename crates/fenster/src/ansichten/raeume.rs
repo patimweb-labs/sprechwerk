@@ -7,24 +7,29 @@
 //! Namen — es erscheint nur, wenn die Rolle es erlaubt (AGENTS.md §2.3).
 
 use super::{icon, icon_knopf, leer, text, Icon};
-use crate::app::Zwischenspeicher;
+use crate::app::{Dateiquelle, Zwischenspeicher};
 use crate::logik::{self, Stueck, REAKTIONEN};
 use crate::modell::{Dialog, Oberflaeche};
-use crate::texte::{rolle, t, tf, Sprache};
+use crate::texte::{rolle, rolle_kurz, t, tf, Sprache};
 use crate::thema::{self, fett, Ton};
 use base64::Engine;
 use eframe::egui::{self, RichText, Stroke};
 use sprechwerk_client::sitzung::Aktion;
+use sprechwerk_domain::MessageId;
 use sprechwerk_ipc::{
-    Befehl, Linkentwurf, Linkvorschau, Mitglied, Nachricht, NachrichtInhalt, Textschluessel,
+    Befehl, Dateiansicht, Dateiart, Entwurfsstand, Ladestand, Linkentwurf, Linkvorschau, Mitglied,
+    Nachricht, NachrichtInhalt, Textschluessel,
 };
+use sprechwerk_oberflaeche::bausteine::rollenabzeichen;
 
 pub fn zeigen(
     ui: &mut egui::Ui,
     o: &mut Oberflaeche,
     speicher: &mut Zwischenspeicher,
+    datei: Dateiquelle,
     aktionen: &mut Vec<Aktion>,
 ) {
+    betrachter(ui.ctx(), o, speicher, datei, aktionen);
     let f = *o.thema().farben();
     let s = o.sprache();
     // Rand nur oben: links und rechts setzt die Liste ihn innen, damit der
@@ -72,7 +77,7 @@ pub fn zeigen(
         .show(ui, |ui| raumliste(ui, o, aktionen, innen));
     egui::CentralPanel::default()
         .frame(egui::Frame::new().fill(f.bg_canvas))
-        .show(ui, |ui| chat(ui, o, speicher, aktionen));
+        .show(ui, |ui| chat(ui, o, speicher, datei, aktionen));
 }
 
 /// Der Kanalbaum: der Server als Wurzel, darunter die Räume, darunter die
@@ -203,22 +208,6 @@ fn raumliste(
         });
 }
 
-/// Breite der Rollenspalte im Baum — fest, damit das Sprechlicht daneben bei
-/// allen Personen übereinander steht.
-const ROLLENSPALTE: f32 = thema::SPACE_8 * 1.5;
-
-/// Eine Spalte fester Breite, Inhalt rechtsbündig.
-fn spalte(ui: &mut egui::Ui, breite: f32, inhalt: impl FnOnce(&mut egui::Ui)) {
-    ui.allocate_ui_with_layout(
-        egui::vec2(breite, thema::SIZE_CONTROL_SM),
-        egui::Layout::right_to_left(egui::Align::Center),
-        |ui| {
-            ui.set_min_size(egui::vec2(breite, thema::FONT_SIZE_MD));
-            inhalt(ui);
-        },
-    );
-}
-
 /// Das Sprechlicht neben dem Namen, wie bei TeamSpeak: ein Quadrat, das
 /// aufleuchtet, solange jemand spricht (und damit mit der Stimme flackert).
 /// Stumm und taub zeigen statt dessen ihr Icon — das ist wichtiger.
@@ -276,23 +265,21 @@ fn person(ui: &mut egui::Ui, o: &mut Oberflaeche, m: &Mitglied, aktionen: &mut V
     let antwort = ui
         .horizontal(|ui| {
             ui.set_min_width(breite);
-            // Eingerückt unter den Raum (wie ein Ast im Baum).
-            ui.add_space(thema::SPACE_6 + thema::SPACE_4);
+            // Bündig mit den Raumnamen (Abstand vor dem Raumknopf plus dessen
+            // Innenrand): Fettschrift und Abzeichen grenzen genug ab,
+            // Einrücken kostete nur Platz für den Namen.
+            ui.add_space(thema::SPACE_3 + ui.spacing().button_padding.x);
             let name = if m.ich {
                 RichText::new(format!("{} ({})", m.name, t(s, "chat.you"))).color(f.accent_default)
             } else {
                 RichText::new(&m.name)
             };
-            // Feste Spalten von rechts: Rolle, Sprechlicht — bei jeder Person
-            // an derselben Stelle, egal wie lang Name oder Rolle sind. Der
+            // Feste Spalten von rechts: Rollenabzeichen, Sprechlicht — bei
+            // jeder Person an derselben Stelle (auch ohne Abzeichen). Der
             // Name nimmt den Rest und wird gekürzt.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(thema::SPACE_2);
-                spalte(ui, ROLLENSPALTE, |ui| {
-                    ui.add(
-                        egui::Label::new(text(o, rolle(s, m.rolle), Ton::Blass).small()).truncate(),
-                    );
-                });
+                rollenabzeichen(ui, &f, m.rolle, &rolle_kurz(s, m.rolle), &rolle(s, m.rolle));
                 ui.add_space(thema::SPACE_2);
                 sprechlicht(ui, &f, status);
                 ui.add_space(thema::SPACE_2);
@@ -387,6 +374,7 @@ fn chat(
     ui: &mut egui::Ui,
     o: &mut Oberflaeche,
     speicher: &mut Zwischenspeicher,
+    datei: Dateiquelle,
     aktionen: &mut Vec<Aktion>,
 ) {
     let s = o.sprache();
@@ -476,7 +464,7 @@ fn chat(
                             if kopf && vorher.is_some() {
                                 ui.add_space(thema::SPACE_3);
                             }
-                            beitrag(ui, o, s, n, kopf, versatz, speicher, aktionen);
+                            beitrag(ui, o, s, n, kopf, versatz, speicher, datei, aktionen);
                             vorher = Some(n);
                         }
                     })
@@ -493,6 +481,7 @@ fn beitrag(
     kopf: bool,
     versatz: i64,
     speicher: &mut Zwischenspeicher,
+    datei: Dateiquelle,
     aktionen: &mut Vec<Aktion>,
 ) {
     let f = *o.thema().farben();
@@ -525,24 +514,23 @@ fn beitrag(
                     text: inhalt,
                     vorschau,
                 } => {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        for stueck in logik::teile(inhalt) {
-                            match stueck {
-                                Stueck::Text(x) => {
-                                    ui.label(x);
-                                }
-                                Stueck::Link(url) => {
-                                    if ui.link(&url).clicked() {
-                                        oeffne_link(ui.ctx(), &url);
-                                    }
-                                }
-                            }
-                        }
-                    });
+                    textzeile(ui, inhalt);
                     if let Some(v) = vorschau {
                         vorschaukarte(ui, o, v, speicher, None);
                     }
+                }
+                NachrichtInhalt::Anhang {
+                    text: inhalt,
+                    dateien,
+                } => {
+                    if !inhalt.is_empty() {
+                        textzeile(ui, inhalt);
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        for d in dateien {
+                            dateikachel(ui, o, n.id, d, speicher, datei, aktionen);
+                        }
+                    });
                 }
                 NachrichtInhalt::Wartet => {
                     ui.label(text(o, t(s, "chat.waiting"), Ton::Blass).italics());
@@ -561,7 +549,8 @@ fn beitrag(
             if !n.reaktionen.is_empty() {
                 ui.horizontal_wrapped(|ui| {
                     for r in &n.reaktionen {
-                        let beschriftung = format!("{} {}", r.zeichen, r.anzahl);
+                        let beschriftung =
+                            format!("{} {}", logik::darstellbar(&r.zeichen), r.anzahl);
                         let hinweis = tf(
                             s,
                             "react.count",
@@ -588,14 +577,20 @@ fn beitrag(
         .response
         .interact(egui::Sense::click());
 
-    let lesbar = matches!(n.inhalt, NachrichtInhalt::Text { .. });
+    let lesbar = matches!(
+        n.inhalt,
+        NachrichtInhalt::Text { .. } | NachrichtInhalt::Anhang { .. }
+    );
+    if lesbar {
+        reaktionsknopf(ui, o, s, n.id, antwort.rect, speicher, aktionen);
+    }
     if lesbar || n.loeschbar {
         antwort.context_menu(|ui| {
             if lesbar {
                 ui.horizontal(|ui| {
                     for z in REAKTIONEN {
                         if ui
-                            .button(z)
+                            .button(logik::darstellbar(z))
                             .on_hover_text(t(s, &format!("react.{z}")))
                             .clicked()
                         {
@@ -660,11 +655,24 @@ fn eingabe(
     }
     let darf_schreiben =
         o.zustand.textschluessel != Textschluessel::Wartet && o.zustand.meine_rolle().is_some();
+    entwurfsdateien(ui, o, aktionen);
     ui.horizontal(|ui| {
-        let senden_breite = thema::SIZE_CONTROL_LG + thema::SPACE_2;
+        let f = *o.thema().farben();
+        if ui
+            .add_enabled_ui(darf_schreiben, |ui| {
+                icon_knopf(ui, &f, Icon::Anhang, &t(s, "file.attach"), false)
+            })
+            .inner
+            .clicked()
+        {
+            aktionen.push(Aktion::AnhaengeWaehlen);
+        }
+        // Rechts neben dem Feld: Emoji und Senden.
+        let senden_breite = (thema::SIZE_CONTROL_SM + thema::SPACE_2) * 2.0 + thema::SPACE_2;
         let feld = ui.add_enabled(
             darf_schreiben,
             egui::TextEdit::multiline(&mut o.entwurf)
+                .id_salt("chat-eingabe")
                 .desired_rows(1)
                 .desired_width(ui.available_width() - senden_breite)
                 .hint_text(t(s, "chat.placeholder"))
@@ -676,9 +684,18 @@ fn eingabe(
         if feld.changed() {
             aktionen.extend(o.entwurf_geaendert());
         }
+        bearbeitungsmenue(&feld, o, s);
+        let emoji = ui
+            .add_enabled_ui(darf_schreiben, |ui| {
+                emoji_knopf(ui, &f, Icon::Smiley, &t(s, "emoji.insert"), s)
+            })
+            .inner;
+        if let Some(e) = emoji {
+            einfuegen_am_cursor(ui.ctx(), &feld, &mut o.entwurf, e);
+            aktionen.extend(o.entwurf_geaendert());
+        }
         let enter =
             feld.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter) && !i.modifiers.shift);
-        let f = *o.thema().farben();
         let knopf = ui
             .add_enabled_ui(darf_schreiben, |ui| {
                 icon_knopf(ui, &f, Icon::Senden, &t(s, "chat.send"), false)
@@ -769,4 +786,605 @@ fn oeffne_link(ctx: &egui::Context, url: &str) {
 fn ortszeit_versatz() -> i64 {
     use chrono::Offset;
     chrono::Local::now().offset().fix().local_minus_utc() as i64
+}
+
+/// Text mit anklickbaren Links.
+fn textzeile(ui: &mut egui::Ui, inhalt: &str) {
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        for stueck in logik::teile(inhalt) {
+            match stueck {
+                Stueck::Text(x) => {
+                    ui.label(logik::darstellbar(&x));
+                }
+                Stueck::Link(url) => {
+                    if ui.link(&url).clicked() {
+                        oeffne_link(ui.ctx(), &url);
+                    }
+                }
+            }
+        }
+    });
+}
+
+// ---- Anhänge (ADR 0012 §3) ------------------------------------------------
+
+/// Größte Kante einer Vorschau im Verlauf.
+const KACHEL: f32 = thema::SPACE_8 * 4.0;
+
+/// Ein Bild als Textur — aus Bytes, einmal dekodiert und gemerkt. Große
+/// Bilder werden fürs Fenster verkleinert (die Datei selbst bleibt, wie sie ist).
+fn textur(
+    ctx: &egui::Context,
+    speicher: &mut Zwischenspeicher,
+    schluessel: &str,
+    bytes: impl FnOnce() -> Option<Vec<u8>>,
+) -> Option<egui::TextureHandle> {
+    if let Some(t) = speicher.bilder.get(schluessel) {
+        return t.clone();
+    }
+    let bytes = bytes()?;
+    let textur = image::load_from_memory(&bytes).ok().map(|bild| {
+        let bild = if bild.width() > 2048 || bild.height() > 2048 {
+            bild.thumbnail(2048, 2048)
+        } else {
+            bild
+        };
+        let rgba = bild.to_rgba8();
+        let groesse = [rgba.width() as usize, rgba.height() as usize];
+        let farbbild = egui::ColorImage::from_rgba_unmultiplied(groesse, rgba.as_raw());
+        ctx.load_texture(schluessel.to_string(), farbbild, Default::default())
+    });
+    speicher
+        .bilder
+        .insert(schluessel.to_string(), textur.clone());
+    textur
+}
+
+/// Vorschaubild einer Datei (vom Absender, JPEG Base64).
+fn dateivorschau(
+    ctx: &egui::Context,
+    speicher: &mut Zwischenspeicher,
+    d: &Dateiansicht,
+) -> Option<egui::TextureHandle> {
+    let roh = d.vorschau.as_ref()?;
+    textur(ctx, speicher, &format!("datei-vorschau:{}", d.id), || {
+        base64::engine::general_purpose::STANDARD.decode(roh).ok()
+    })
+}
+
+/// Das Bild selbst, sobald es geladen ist — sonst die Vorschau.
+fn dateibild(
+    ctx: &egui::Context,
+    speicher: &mut Zwischenspeicher,
+    datei: Dateiquelle,
+    d: &Dateiansicht,
+) -> Option<egui::TextureHandle> {
+    if d.art == Dateiart::Bild && d.stand == Ladestand::Bereit {
+        if let Some(t) = textur(ctx, speicher, &format!("datei:{}", d.id), || datei(&d.id)) {
+            return Some(t);
+        }
+    }
+    dateivorschau(ctx, speicher, d)
+}
+
+/// Größe einer Vorschau: Seitenverhältnis der Datei, höchstens `KACHEL`.
+fn kachelgroesse(d: &Dateiansicht, textur: Option<&egui::TextureHandle>) -> egui::Vec2 {
+    let (b, h) = match (d.breite, d.hoehe, textur) {
+        (Some(b), Some(h), _) if b > 0 && h > 0 => (b as f32, h as f32),
+        (_, _, Some(t)) => (t.size()[0] as f32, t.size()[1] as f32),
+        // Ohne Maße und ohne Vorschau: eine Fläche im Videoformat.
+        _ => return egui::vec2(KACHEL * 0.75, KACHEL * 0.75 * 9.0 / 16.0),
+    };
+    let faktor = (KACHEL / b.max(h))
+        .min(1.0)
+        .max(thema::SPACE_8 * 1.5 / b.max(h));
+    egui::vec2(b * faktor, h * faktor)
+}
+
+fn ladetext(s: Sprache, stand: &Ladestand) -> Option<String> {
+    match stand {
+        Ladestand::Laedt { prozent } => Some(tf(s, "file.loading", &[prozent])),
+        Ladestand::Fehler { text } => Some(tf(s, "file.failed", &[text])),
+        Ladestand::Keiner | Ladestand::Bereit => None,
+    }
+}
+
+/// Eine Datei im Verlauf: Bild als Vorschau (Klick: Betrachter), Video als
+/// Kachel mit Abspielzeichen (Klick: Player des Systems), sonst eine Karte
+/// mit Speichern. Rechtsklick: speichern oder im Programm öffnen.
+#[allow(clippy::too_many_arguments)]
+fn dateikachel(
+    ui: &mut egui::Ui,
+    o: &Oberflaeche,
+    nachricht: MessageId,
+    d: &Dateiansicht,
+    speicher: &mut Zwischenspeicher,
+    datei: Dateiquelle,
+    aktionen: &mut Vec<Aktion>,
+) {
+    let s = o.sprache();
+    let f = *o.thema().farben();
+    let speichern = Aktion::DateiSpeichernUnter {
+        nachricht,
+        datei: d.id.clone(),
+        name: d.name.clone(),
+    };
+    let extern_ = Aktion::DateiExtern {
+        nachricht,
+        datei: d.id.clone(),
+        name: d.name.clone(),
+    };
+    let antwort = match d.art {
+        Dateiart::Bild | Dateiart::Video => {
+            let bild = dateibild(ui.ctx(), speicher, datei, d);
+            let groesse = kachelgroesse(d, bild.as_ref());
+            let (rect, antwort) = ui.allocate_exact_size(groesse, egui::Sense::click());
+            let p = ui.painter();
+            p.rect_filled(rect, 0.0, f.bg_raised);
+            if let Some(t) = &bild {
+                p.image(
+                    t.id(),
+                    rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    egui::Color32::WHITE,
+                );
+            } else if d.art == Dateiart::Bild {
+                // Noch kein Bild, keine Vorschau: ein Dateizeichen als Platzhalter.
+                let feld = egui::Rect::from_center_size(
+                    rect.center(),
+                    egui::vec2(thema::SPACE_6, thema::SPACE_6),
+                );
+                Icon::Datei
+                    .bild(thema::SPACE_6, f.text_faint)
+                    .paint_at(ui, feld);
+            }
+            if d.art == Dateiart::Video {
+                // Abspielzeichen in der Mitte (gespielt wird im Programm des Systems).
+                let feld = egui::Rect::from_center_size(
+                    rect.center(),
+                    egui::vec2(thema::SIZE_CONTROL_LG, thema::SIZE_CONTROL_LG),
+                );
+                p.rect_filled(feld, 0.0, f.bg_canvas.gamma_multiply(0.8));
+                Icon::Start
+                    .bild(thema::FONT_SIZE_XL, f.text_default)
+                    .paint_at(ui, feld.shrink(thema::SPACE_2));
+            }
+            if let Some(x) = ladetext(s, &d.stand) {
+                let zeile = egui::Rect::from_min_max(
+                    egui::pos2(rect.left(), rect.bottom() - thema::SIZE_CONTROL_SM),
+                    rect.max,
+                );
+                p.rect_filled(zeile, 0.0, f.bg_canvas.gamma_multiply(0.85));
+                p.text(
+                    zeile.left_center() + egui::vec2(thema::SPACE_2, 0.0),
+                    egui::Align2::LEFT_CENTER,
+                    x,
+                    egui::FontId::proportional(thema::FONT_SIZE_SM),
+                    f.text_default,
+                );
+            }
+            let name = if d.art == Dateiart::Video {
+                format!("{}: {}", t(s, "file.play"), d.name)
+            } else {
+                tf(s, "file.open", &[&d.name])
+            };
+            let antwort =
+                antwort.on_hover_text(format!("{} · {}", d.name, logik::groesse_text(d.groesse)));
+            antwort.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
+            if antwort.clicked() {
+                aktionen.push(if d.art == Dateiart::Bild {
+                    Aktion::Befehl(Befehl::DateiOeffnen {
+                        nachricht,
+                        datei: d.id.clone(),
+                    })
+                } else {
+                    extern_.clone()
+                });
+            }
+            antwort
+        }
+        Dateiart::Datei => {
+            // Die Karte selbst ist keine Klickfläche — sonst läge sie über dem
+            // Knopf; Klick und Kontextmenü hängen am Knopf.
+            let mut knopf = None;
+            egui::Frame::new()
+                .fill(f.bg_raised)
+                .stroke(Stroke::new(thema::SIZE_BORDER, f.border_subtle))
+                .inner_margin(egui::Margin::same(thema::SPACE_2 as i8))
+                .show(ui, |ui| {
+                    ui.set_max_width(KACHEL);
+                    ui.horizontal(|ui| {
+                        ui.add(Icon::Datei.bild(thema::SPACE_6, f.text_muted));
+                        ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing.y = 0.0;
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(&d.name)
+                                        .font(egui::FontId::new(thema::FONT_SIZE_MD, fett())),
+                                )
+                                .truncate(),
+                            );
+                            let unter = ladetext(s, &d.stand)
+                                .unwrap_or_else(|| logik::groesse_text(d.groesse));
+                            ui.label(text(o, unter, Ton::Blass).small());
+                        });
+                        knopf = Some(icon_knopf(
+                            ui,
+                            &f,
+                            Icon::Herunterladen,
+                            &tf(s, "file.save_named", &[&d.name]),
+                            false,
+                        ));
+                    });
+                });
+            let knopf = knopf.expect("Knopf gezeichnet");
+            if knopf.clicked() {
+                aktionen.push(speichern.clone());
+            }
+            knopf
+        }
+    };
+    antwort.context_menu(|ui| {
+        if ui
+            .add(egui::Button::image_and_text(
+                Icon::Herunterladen.bild(thema::FONT_SIZE_MD, f.text_muted),
+                t(s, "file.save"),
+            ))
+            .clicked()
+        {
+            aktionen.push(speichern);
+            ui.close();
+        }
+        if ui
+            .add(egui::Button::image_and_text(
+                Icon::Extern.bild(thema::FONT_SIZE_MD, f.text_muted),
+                t(s, "file.open_system"),
+            ))
+            .clicked()
+        {
+            aktionen.push(extern_);
+            ui.close();
+        }
+    });
+}
+
+/// Die Dateien im Entwurf, über dem Eingabefeld: Name, Stand, entfernen.
+fn entwurfsdateien(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) {
+    if o.zustand.anhaenge.is_empty() {
+        return;
+    }
+    let s = o.sprache();
+    let f = *o.thema().farben();
+    let entwuerfe = o.zustand.anhaenge.clone();
+    ui.horizontal_wrapped(|ui| {
+        for e in &entwuerfe {
+            egui::Frame::new()
+                .fill(f.bg_raised)
+                .stroke(Stroke::new(thema::SIZE_BORDER, f.border_subtle))
+                .inner_margin(egui::Margin::symmetric(
+                    thema::SPACE_2 as i8,
+                    thema::SPACE_1 as i8,
+                ))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let symbol = match e.art {
+                            Dateiart::Bild => Icon::Datei,
+                            Dateiart::Video => Icon::Film,
+                            Dateiart::Datei => Icon::Datei,
+                        };
+                        ui.add(symbol.bild(thema::FONT_SIZE_MD, f.text_muted));
+                        ui.add(egui::Label::new(&e.name).truncate());
+                        let (stand, ton) = match &e.stand {
+                            Entwurfsstand::Vorbereitet => (t(s, "file.preparing"), Ton::Blass),
+                            Entwurfsstand::Laedt { prozent } => {
+                                (tf(s, "file.uploading", &[prozent]), Ton::Blass)
+                            }
+                            Entwurfsstand::Bereit => (t(s, "file.ready"), Ton::Gut),
+                            Entwurfsstand::Fehler { text } => {
+                                (tf(s, "file.failed", &[text]), Ton::Fehler)
+                            }
+                        };
+                        ui.label(text(o, stand, ton).small());
+                        if icon_knopf(
+                            ui,
+                            &f,
+                            Icon::Schliessen,
+                            &tf(s, "file.remove", &[&e.name]),
+                            false,
+                        )
+                        .clicked()
+                        {
+                            aktionen.push(Aktion::Befehl(Befehl::AnhangEntfernen { nr: e.nr }));
+                        }
+                    });
+                });
+        }
+    });
+    if entwuerfe.iter().any(|e| e.stand != Entwurfsstand::Bereit) {
+        ui.label(text(o, t(s, "file.wait"), Ton::Blass).small());
+    }
+    ui.add_space(thema::SPACE_1);
+}
+
+/// Der Betrachter: ein Bild groß über dem Fenster. Was offen ist, steht im
+/// Modell (`zustand.betrachter`); Esc oder Schließen geben es dem Client zurück.
+fn betrachter(
+    ctx: &egui::Context,
+    o: &Oberflaeche,
+    speicher: &mut Zwischenspeicher,
+    datei: Dateiquelle,
+    aktionen: &mut Vec<Aktion>,
+) {
+    let Some(b) = o.zustand.betrachter.clone() else {
+        return;
+    };
+    let s = o.sprache();
+    let f = *o.thema().farben();
+    let d = &b.datei;
+    let platz = ctx.content_rect().size() * 0.85;
+    let mut zu = false;
+    let modal = egui::Modal::new(egui::Id::unique("betrachter")).show(ctx, |ui| {
+        ui.set_max_size(platz);
+        egui::Sides::new().shrink_left().truncate().show(
+            ui,
+            |ui| {
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(&d.name).font(egui::FontId::new(thema::FONT_SIZE_LG, fett())),
+                    )
+                    .truncate(),
+                );
+                ui.label(text(o, logik::groesse_text(d.groesse), Ton::Blass).small());
+            },
+            |ui| {
+                zu = icon_knopf(ui, &f, Icon::Schliessen, &t(s, "file.close"), false).clicked();
+                if icon_knopf(ui, &f, Icon::Extern, &t(s, "file.open_system"), false).clicked() {
+                    aktionen.push(Aktion::DateiExtern {
+                        nachricht: b.nachricht,
+                        datei: d.id.clone(),
+                        name: d.name.clone(),
+                    });
+                }
+                if icon_knopf(ui, &f, Icon::Herunterladen, &t(s, "file.save"), false).clicked() {
+                    aktionen.push(Aktion::DateiSpeichernUnter {
+                        nachricht: b.nachricht,
+                        datei: d.id.clone(),
+                        name: d.name.clone(),
+                    });
+                }
+            },
+        );
+        ui.add_space(thema::SPACE_2);
+        match dateibild(ctx, speicher, datei, d) {
+            Some(t) => {
+                let groesse = t.size_vec2();
+                let faktor = ((platz.x - thema::SPACE_6) / groesse.x)
+                    .min((platz.y - thema::SPACE_8) / groesse.y)
+                    .min(1.0);
+                ui.add(egui::Image::new(&t).fit_to_exact_size(groesse * faktor));
+            }
+            None => {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(ladetext(s, &d.stand).unwrap_or_default());
+                });
+            }
+        }
+        if ladetext(s, &d.stand).is_some() {
+            ui.label(text(o, ladetext(s, &d.stand).unwrap_or_default(), Ton::Blass).small());
+        }
+        // Wird das Bild geladen, solange der Betrachter offen ist, zeichnen.
+        if d.stand != Ladestand::Bereit {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(200));
+        }
+    });
+    if zu || modal.should_close() {
+        aktionen.push(Aktion::Befehl(Befehl::BetrachterSchliessen));
+    }
+}
+
+// ---- Emoji, Reaktionen, Zwischenablage -------------------------------------
+
+/// Ein Knopf, der die Emoji-Auswahl öffnet. Liefert das gewählte Emoji.
+fn emoji_knopf(
+    ui: &mut egui::Ui,
+    f: &thema::Farben,
+    icon: Icon,
+    name: &str,
+    s: Sprache,
+) -> Option<&'static str> {
+    let mut gewaehlt = None;
+    let antwort = ui
+        .menu_image_button(icon.bild(thema::FONT_SIZE_LG, f.text_muted), |ui| {
+            gewaehlt = emoji_raster(ui, s);
+            if gewaehlt.is_some() {
+                ui.close();
+            }
+        })
+        .response
+        .on_hover_text(name);
+    let name = name.to_string();
+    antwort.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
+    gewaehlt
+}
+
+/// Die Emoji-Auswahl: Gruppen untereinander, Zeichen in Reihen.
+fn emoji_raster(ui: &mut egui::Ui, s: Sprache) -> Option<&'static str> {
+    let mut gewaehlt = None;
+    ui.set_max_width(thema::SPACE_8 * 5.5);
+    egui::ScrollArea::vertical()
+        .max_height(thema::SPACE_8 * 5.0)
+        .show(ui, |ui| {
+            for (gruppe, zeichen) in logik::EMOJI {
+                ui.label(RichText::new(t(s, gruppe)).small());
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(thema::SPACE_1, thema::SPACE_1);
+                    for z in zeichen {
+                        let knopf = egui::Button::new(
+                            RichText::new(logik::darstellbar(z))
+                                .font(egui::FontId::proportional(thema::FONT_SIZE_XL)),
+                        )
+                        .frame(false)
+                        .min_size(egui::vec2(thema::SIZE_CONTROL_SM, thema::SIZE_CONTROL_SM));
+                        if ui.add(knopf).clicked() {
+                            gewaehlt = Some(*z);
+                        }
+                    }
+                });
+            }
+        });
+    gewaehlt
+}
+
+/// Fügt ein Emoji an der Cursorstelle des Eingabefelds ein und setzt den
+/// Cursor dahinter; ohne bekannte Stelle ans Ende.
+fn einfuegen_am_cursor(ctx: &egui::Context, feld: &egui::Response, text: &mut String, neu: &str) {
+    let mut zustand = egui::text_edit::TextEditState::load(ctx, feld.id).unwrap_or_default();
+    let stelle = zustand
+        .cursor
+        .char_range()
+        .map_or(text.chars().count(), |r| r.primary.index.0);
+    let danach = logik::einfuegen(text, stelle, neu);
+    zustand
+        .cursor
+        .set_char_range(Some(egui::text::CCursorRange::one(
+            egui::text::CCursor::new(danach),
+        )));
+    zustand.store(ctx, feld.id);
+    feld.request_focus();
+}
+
+/// Rechtsklick ins Eingabefeld: Ausschneiden, Kopieren, Einfügen, Alles
+/// markieren — über die Befehle des Fensters, also mit der echten
+/// Zwischenablage des Systems (wie Strg+X/C/V).
+fn bearbeitungsmenue(feld: &egui::Response, o: &Oberflaeche, s: Sprache) {
+    let ctx = feld.ctx.clone();
+    let text = o.entwurf.clone();
+    feld.context_menu(|ui| {
+        for (schluessel, befehl) in [
+            ("edit.cut", egui::ViewportCommand::RequestCut),
+            ("edit.copy", egui::ViewportCommand::RequestCopy),
+            ("edit.paste", egui::ViewportCommand::RequestPaste),
+        ] {
+            if ui.button(t(s, schluessel)).clicked() {
+                feld.request_focus();
+                ctx.send_viewport_cmd(befehl);
+                ui.close();
+            }
+        }
+        ui.separator();
+        if ui.button(t(s, "edit.select_all")).clicked() {
+            let mut zustand =
+                egui::text_edit::TextEditState::load(&ctx, feld.id).unwrap_or_default();
+            zustand
+                .cursor
+                .set_char_range(Some(egui::text::CCursorRange::select_all_str(&text)));
+            zustand.store(&ctx, feld.id);
+            feld.request_focus();
+            ui.close();
+        }
+    });
+}
+
+/// Reagieren: über einer Nachricht erscheint oben rechts ein Knopf; er
+/// öffnet die schnellen Reaktionen und darunter alle Emoji. Rechtsklick auf
+/// die Nachricht bietet dasselbe.
+fn reaktionsknopf(
+    ui: &mut egui::Ui,
+    o: &Oberflaeche,
+    s: Sprache,
+    nachricht: MessageId,
+    rect: egui::Rect,
+    speicher: &mut Zwischenspeicher,
+    aktionen: &mut Vec<Aktion>,
+) {
+    let f = *o.thema().farben();
+    let offen = speicher.reaktion == Some(nachricht);
+    // Nicht `rect_contains_pointer`: das fragt auch nach der Ebene — liegt
+    // die Maus auf dem Knopf (eigene Ebene darüber), verschwände er sonst.
+    let ueber = ui
+        .ctx()
+        .pointer_hover_pos()
+        .is_some_and(|p| rect.contains(p) && ui.clip_rect().contains(p));
+    if !offen && !ueber {
+        return;
+    }
+    let ctx = ui.ctx().clone();
+    let groesse = egui::vec2(thema::SIZE_CONTROL_SM, thema::SIZE_CONTROL_SM);
+    let ort = egui::pos2(rect.right() - groesse.x, rect.top());
+    let knopf = egui::Area::new(egui::Id::unique(("reagieren", nachricht)))
+        .order(egui::Order::Foreground)
+        .fixed_pos(ort)
+        .show(&ctx, |ui| {
+            egui::Frame::new()
+                .fill(f.bg_raised)
+                .stroke(Stroke::new(thema::SIZE_BORDER, f.border_subtle))
+                .show(ui, |ui| {
+                    icon_knopf(ui, &f, Icon::Reagieren, &t(s, "chat.react"), offen)
+                })
+                .inner
+        })
+        .inner;
+    if knopf.clicked() {
+        speicher.reaktion = if offen { None } else { Some(nachricht) };
+    }
+    if speicher.reaktion != Some(nachricht) {
+        return;
+    }
+    let auswahl = egui::Area::new(egui::Id::unique(("reaktionen", nachricht)))
+        .order(egui::Order::Foreground)
+        .pivot(egui::Align2::RIGHT_TOP)
+        .fixed_pos(egui::pos2(
+            knopf.rect.right(),
+            knopf.rect.bottom() + thema::SPACE_1,
+        ))
+        .show(&ctx, |ui| {
+            egui::Frame::popup(ui.style())
+                .show(ui, |ui| {
+                    let mut gewaehlt = None;
+                    ui.horizontal(|ui| {
+                        for z in REAKTIONEN {
+                            let k = egui::Button::new(
+                                RichText::new(z)
+                                    .font(egui::FontId::proportional(thema::FONT_SIZE_XL)),
+                            )
+                            .frame(false);
+                            if ui
+                                .add(k)
+                                .on_hover_text(t(s, &format!("react.{z}")))
+                                .clicked()
+                            {
+                                gewaehlt = Some(z);
+                            }
+                        }
+                    });
+                    ui.separator();
+                    if let Some(z) = emoji_raster(ui, s) {
+                        gewaehlt = Some(z);
+                    }
+                    gewaehlt
+                })
+                .inner
+        });
+    if let Some(z) = auswahl.inner {
+        aktionen.push(Aktion::Befehl(Befehl::Reagieren {
+            nachricht,
+            zeichen: z.to_string(),
+        }));
+        speicher.reaktion = None;
+        return;
+    }
+    // Schließen: Esc oder ein Klick daneben.
+    let daneben = ctx.input(|i| {
+        i.key_pressed(egui::Key::Escape)
+            || (i.pointer.any_pressed()
+                && i.pointer
+                    .interact_pos()
+                    .is_some_and(|p| !auswahl.response.rect.contains(p) && !knopf.rect.contains(p)))
+    });
+    if daneben {
+        speicher.reaktion = None;
+    }
 }

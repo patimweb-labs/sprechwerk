@@ -21,6 +21,8 @@ use std::time::{Duration, Instant};
 pub trait Kern {
     fn ausfuehren(&self, aktion: Aktion);
     fn audio_stand(&self) -> AudioStand;
+    /// Eine geladene Datei entschlüsselt (Bild für Vorschau und Betrachter).
+    fn datei(&self, id: &str) -> Option<Vec<u8>>;
 }
 
 impl Kern for Client {
@@ -30,6 +32,9 @@ impl Kern for Client {
     fn audio_stand(&self) -> AudioStand {
         Client::audio_stand(self)
     }
+    fn datei(&self, id: &str) -> Option<Vec<u8>> {
+        Client::datei(self, id)
+    }
 }
 
 /// Zeichenhilfen, die aus dem Modell abgeleitet und nur zwischengespeichert
@@ -37,7 +42,13 @@ impl Kern for Client {
 #[derive(Default)]
 pub struct Zwischenspeicher {
     pub bilder: HashMap<String, Option<egui::TextureHandle>>,
+    /// Für welche Nachricht die Reaktionsauswahl offen ist (sie bleibt
+    /// stehen, auch wenn die Maus die Nachricht verlässt).
+    pub reaktion: Option<sprechwerk_domain::MessageId>,
 }
+
+/// Wie die Ansichten an den Inhalt einer Datei kommen (über den `Kern`).
+pub type Dateiquelle<'a> = &'a dyn Fn(&str) -> Option<Vec<u8>>;
 
 pub struct Fenster<K: Kern> {
     kern: K,
@@ -48,8 +59,10 @@ pub struct Fenster<K: Kern> {
     speicher: Zwischenspeicher,
     /// Stand des Chats beim letzten Bild — ein Wechsel ändert die Fenstergröße.
     eingeklappt_zuletzt: Option<bool>,
-    /// Breite vor dem Einklappen (kommt beim Ausklappen zurück).
-    breite_vorher: Option<f32>,
+    /// Zuletzt gesehene Breite mit Chat und kompakt — jede kommt zurück,
+    /// wenn man wieder in diesen Zustand wechselt.
+    breite_mit_chat: Option<f32>,
+    breite_kompakt: Option<f32>,
 }
 
 /// Abstand zwischen zwei Abfragen von Betriebszahlen und Umlaufzeit.
@@ -65,7 +78,8 @@ impl<K: Kern> Fenster<K> {
             takt: None,
             speicher: Zwischenspeicher::default(),
             eingeklappt_zuletzt: None,
-            breite_vorher: None,
+            breite_mit_chat: None,
+            breite_kompakt: None,
         }
     }
 
@@ -83,6 +97,14 @@ impl<K: Kern> Fenster<K> {
         self.fenstergroesse(ctx);
 
         let mut aktionen = Vec::new();
+        aktionen.extend(self.o.sprechtest_aufraeumen());
+        if self.o.sprechtest || self.o.ansicht == Ansicht::Einstellungen {
+            // Der Pegel im Sprechtest lebt: 20 Bilder je Sekunde.
+            self.o.audio = self.kern.audio_stand();
+            if self.o.audio.laeuft {
+                ctx.request_repaint_after(Duration::from_millis(50));
+            }
+        }
         if self.o.verbunden() {
             self.o.audio = self.kern.audio_stand();
             // Pegel und „spricht" leben: zehn Bilder je Sekunde genügen.
@@ -96,6 +118,7 @@ impl<K: Kern> Fenster<K> {
             self.takt = None;
         }
         self.sprechtaste(ctx, &mut aktionen);
+        self.hineinziehen(ctx, &mut aktionen);
 
         ansichten::kopf(ui, &mut self.o, &mut aktionen);
         ansichten::fuss(ui, &self.o);
@@ -105,9 +128,13 @@ impl<K: Kern> Fenster<K> {
             .frame(egui::Frame::new().fill(self.o.thema().farben().bg_canvas))
             .show(ui, |ui| match self.o.ansicht {
                 Ansicht::Server => ansichten::server::zeigen(ui, &mut self.o, &mut aktionen),
-                Ansicht::Raeume => {
-                    ansichten::raeume::zeigen(ui, &mut self.o, &mut self.speicher, &mut aktionen)
-                }
+                Ansicht::Raeume => ansichten::raeume::zeigen(
+                    ui,
+                    &mut self.o,
+                    &mut self.speicher,
+                    &|id: &str| self.kern.datei(id),
+                    &mut aktionen,
+                ),
                 Ansicht::Protokoll => ansichten::protokoll::zeigen(ui, &mut self.o, &mut aktionen),
                 Ansicht::Sperren => ansichten::sperren::zeigen(ui, &mut self.o, &mut aktionen),
                 Ansicht::Einstellungen => {
@@ -125,7 +152,18 @@ impl<K: Kern> Fenster<K> {
     /// Einklappen auch; ausgeklappt kommt die alte Breite zurück.
     fn fenstergroesse(&mut self, ctx: &egui::Context) {
         let eingeklappt = self.o.einstellungen.chat_eingeklappt;
+        // Die Fläche, die egui zeichnet, ist die Innengröße des Fensters —
+        // anders als `viewport().inner_rect` kennt sie jedes System (unter
+        // Wayland fehlte jene, und die Höhe fiel auf die Mindesthöhe).
+        let jetzt = ctx.content_rect().size();
         if self.eingeklappt_zuletzt == Some(eingeklappt) {
+            // Wer die Breite von Hand ändert, dessen Breite gilt beim
+            // nächsten Wechsel zurück in diesen Zustand.
+            if eingeklappt {
+                self.breite_kompakt = Some(jetzt.x);
+            } else {
+                self.breite_mit_chat = Some(jetzt.x);
+            }
             return;
         }
         ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
@@ -134,15 +172,63 @@ impl<K: Kern> Fenster<K> {
         )));
         // Beim ersten Bild nur die Grenze setzen — die Größe hat der Nutzer.
         if self.eingeklappt_zuletzt.is_some() {
-            let jetzt = ctx.input(|i| i.viewport().inner_rect);
-            if eingeklappt {
-                self.breite_vorher = jetzt.map(|r| r.width());
-            }
-            let breite = logik::breite_nach_wechsel(eingeklappt, self.breite_vorher);
-            let hoehe = jetzt.map_or(logik::HOEHE_MIN, |r| r.height());
-            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(breite, hoehe)));
+            let breite =
+                logik::breite_nach_wechsel(eingeklappt, self.breite_mit_chat, self.breite_kompakt);
+            // Die Höhe bleibt, wie sie ist.
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+                breite, jetzt.y,
+            )));
         }
         self.eingeklappt_zuletzt = Some(eingeklappt);
+    }
+
+    /// Dateien ins Fenster ziehen: sie kommen in den Entwurf des Raums, in
+    /// dem man sitzt (ADR 0012 §3). Solange sie darüber schweben, sagt ein
+    /// Hinweis, was passiert.
+    fn hineinziehen(&mut self, ctx: &egui::Context, aktionen: &mut Vec<Aktion>) {
+        if !self.o.verbunden() || self.o.zustand.aktueller_raum.is_none() {
+            return;
+        }
+        let (pfade, schwebt) = ctx.input(|i| {
+            let pfade: Vec<String> = i
+                .raw
+                .dropped_files
+                .iter()
+                .map(|d| d.path().display().to_string())
+                .filter(|p| !p.is_empty())
+                .collect();
+            (pfade, !i.raw.hovered_files.is_empty())
+        });
+        if !pfade.is_empty() {
+            self.o.ansicht = Ansicht::Raeume;
+            if self.o.einstellungen.chat_eingeklappt {
+                self.o.einstellungen.chat_eingeklappt = false;
+                aktionen.push(self.o.speichern());
+            }
+            aktionen.push(Aktion::Befehl(Befehl::AnhaengeHinzufuegen { pfade }));
+        }
+        if schwebt {
+            let f = self.o.thema().farben();
+            let flaeche = ctx.content_rect();
+            let maler = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::unique("hineinziehen"),
+            ));
+            maler.rect_filled(flaeche, 0.0, f.bg_canvas.gamma_multiply(0.85));
+            maler.rect_stroke(
+                flaeche.shrink(thema::SPACE_4),
+                0.0,
+                egui::Stroke::new(thema::SIZE_FOCUS, f.accent_default),
+                egui::StrokeKind::Inside,
+            );
+            maler.text(
+                flaeche.center(),
+                egui::Align2::CENTER_CENTER,
+                crate::texte::t(self.o.sprache(), "file.drop"),
+                egui::FontId::new(thema::FONT_SIZE_XL, thema::fett()),
+                f.text_default,
+            );
+        }
     }
 
     /// Push-to-Talk: Taste oder Maus 4/5, nur solange das Fenster den Fokus

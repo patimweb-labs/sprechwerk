@@ -19,6 +19,7 @@ if [ -z "${OHNE_BAU:-}" ]; then
 fi
 
 rm -rf dist/stage && mkdir -p dist
+# Fest `dist/stage`: so steht es auch in nfpm.yaml (dort gibt es keine Variablen).
 STAGE=$PWD/dist/stage
 for p in "${PROGRAMME[@]}"; do
   install -Dm755 "target/release/$p" "$STAGE/usr/bin/$p"
@@ -39,7 +40,7 @@ install -Dm644 crates/oberflaeche/schriften/OFL.txt "$STAGE/usr/share/doc/sprech
 tar -C "$STAGE" -czf "dist/sprechwerk-${VERSION}-linux-${ARCH}.tar.gz" usr
 
 # deb und rpm.
-export VERSION STAGE
+export VERSION
 for art in deb rpm; do
   ARCH=$DEB_ARCH "$NFPM" package --config packaging/linux/nfpm.yaml --packager "$art" --target dist/
 done

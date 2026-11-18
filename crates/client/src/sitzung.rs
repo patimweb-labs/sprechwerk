@@ -326,7 +326,9 @@ async fn ausfuehren(
             })
             .await
         }
-        Aktion::AnhaengeWaehlen | Aktion::DateiSpeichernUnter { .. } | Aktion::DateiExtern { .. } => {
+        Aktion::AnhaengeWaehlen
+        | Aktion::DateiSpeichernUnter { .. }
+        | Aktion::DateiExtern { .. } => {
             unreachable!("in Client::ausfuehren behandelt")
         }
         Aktion::EinstellungenSpeichern(einstellungen) => {
@@ -361,7 +363,11 @@ async fn anhaenge_waehlen(anwendung: &Anwendung) -> Result<Ergebnis, String> {
         .iter()
         .map(|d| d.path().display().to_string())
         .collect();
-    befehl_ergebnis(anwendung.befehl(Befehl::AnhaengeHinzufuegen { pfade }).await)
+    befehl_ergebnis(
+        anwendung
+            .befehl(Befehl::AnhaengeHinzufuegen { pfade })
+            .await,
+    )
 }
 
 /// Erst fragt der Dialog wohin (Name aus dem Umschlag als Vorschlag), dann
@@ -372,7 +378,11 @@ async fn speichern_unter(
     datei: String,
     name: String,
 ) -> Result<Ergebnis, String> {
-    let Some(ziel) = rfd::AsyncFileDialog::new().set_file_name(&name).save_file().await else {
+    let Some(ziel) = rfd::AsyncFileDialog::new()
+        .set_file_name(&name)
+        .save_file()
+        .await
+    else {
         return Ok(Ergebnis::Erledigt);
     };
     befehl_ergebnis(

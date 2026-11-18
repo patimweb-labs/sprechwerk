@@ -12,9 +12,9 @@ use eframe::egui::{self, RichText, Stroke};
 use sprechwerk_domain::Role;
 use sprechwerk_oberflaeche::bausteine::{
     auswahl, fakten, feld, feldbreite, hauptknopf_mit, icon_knopf, icon_text_knopf, karte, knopf,
-    kopierbar, leer, rand, seite, seitenkopf, status, status_klein, text, Icon,
+    kopierbar, leer, rand, rollenabzeichen, seite, seitenkopf, status, status_klein, text, Icon,
 };
-use sprechwerk_oberflaeche::texte::{rolle, t, tf, Sprache};
+use sprechwerk_oberflaeche::texte::{rolle, rolle_kurz, t, tf, Sprache};
 use sprechwerk_oberflaeche::thema::{self, fett, Thema, Ton};
 use sprechwerk_server::konfig::Konfig;
 use sprechwerk_server::mitschrift::Zeile;
@@ -186,7 +186,8 @@ pub fn zeichnen(ui: &mut egui::Ui, m: &mut Modell) -> Vec<Aktion> {
         .show(ui, |ui| {
             // Rechts Zustand und Start/Stopp in fester Breite, links der Rest:
             // nichts schiebt sich übereinander. Schmal: Reiter nur als Icon.
-            let breit = ui.available_width() >= thema::SPACE_8 * 10.0;
+            // Reiter mit Text, Marke und Zustand brauchen zusammen gut 830 px.
+            let breit = ui.available_width() >= thema::SPACE_8 * 13.0;
             // Sehr schmal: der Zustand nur als Quadrat (Text im Hinweis).
             let eng = ui.available_width() < thema::SPACE_8 * 7.0;
             let lauf = m.lauf.clone();
@@ -422,14 +423,25 @@ fn mitglieder(ui: &mut egui::Ui, m: &mut Modell, aktionen: &mut Vec<Aktion>) {
                             |ui| {
                                 ui.vertical(|ui| {
                                     ui.spacing_mut().item_spacing.y = 0.0;
-                                    ui.label(
-                                        RichText::new(&z.name)
-                                            .font(egui::FontId::new(thema::FONT_SIZE_MD, fett())),
-                                    );
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            RichText::new(&z.name).font(egui::FontId::new(
+                                                thema::FONT_SIZE_MD,
+                                                fett(),
+                                            )),
+                                        );
+                                        rollenabzeichen(
+                                            ui,
+                                            &f,
+                                            z.rolle,
+                                            &rolle_kurz(s, z.rolle),
+                                            &rolle(s, z.rolle),
+                                        );
+                                    });
                                     let ort = match (&z.verbunden, &z.raum) {
                                         (true, Some(r)) => tf(s, "admin.members.in_room", &[r]),
                                         (true, None) => t(s, "admin.members.online"),
-                                        (false, _) => "—".into(),
+                                        (false, _) => t(s, "admin.members.offline"),
                                     };
                                     let kennung = z.kennung.get(..16).unwrap_or(&z.kennung);
                                     ui.label(
@@ -541,6 +553,7 @@ fn einstellungen(ui: &mut egui::Ui, m: &mut Modell) {
                 feld(ui, &f, &t(s, "srv.default_role"), None, |ui| {
                     let wahl = &mut m.entwurf.standard_rolle;
                     egui::ComboBox::from_id_salt("standard_rolle")
+                        .width(feldbreite(ui))
                         .selected_text(rolle(s, *wahl))
                         .show_ui(ui, |ui| {
                             ui.selectable_value(wahl, Role::Mitglied, rolle(s, Role::Mitglied));
@@ -550,9 +563,8 @@ fn einstellungen(ui: &mut egui::Ui, m: &mut Modell) {
                 });
                 feld(ui, &f, &t(s, "srv.data"), None, |ui| {
                     let mut pfad = m.entwurf.daten.display().to_string();
-                    let a = ui.add(
-                        egui::TextEdit::singleline(&mut pfad).desired_width(ui.available_width()),
-                    );
+                    let a =
+                        ui.add(egui::TextEdit::singleline(&mut pfad).desired_width(feldbreite(ui)));
                     if a.changed() {
                         m.entwurf.daten = PathBuf::from(pfad);
                     }

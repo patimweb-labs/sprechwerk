@@ -150,7 +150,7 @@ pub enum Lesbar {
 /// Grund, warum nicht geschrieben werden kann.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SchreibFehler {
-    #[error("Der Schlüssel zum Schreiben fehlt noch — er kommt, sobald ein Mitglied online ist, das ihn hat.")]
+    #[error("Der Schlüssel zum Schreiben fehlt noch. Er kommt, sobald ein Mitglied online ist, das ihn hat.")]
     SchluesselFehlt,
     #[error("Nachricht ist zu lang (höchstens {max} Zeichen)", max = sprechwerk_domain::MAX_MESSAGE_LEN)]
     ZuLang,

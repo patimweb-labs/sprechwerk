@@ -22,7 +22,7 @@ sprechwerk-protocol.workspace = true
 sprechwerk-ipc = { path = "../ipc" }
 sprechwerk-client = { path = "../client" }
 sprechwerk-oberflaeche = { path = "../oberflaeche" }
-eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "accesskit", "wayland", "x11", "links"] }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "accesskit", "wayland", "x11", "links", "clipboard"] }
 serde.workspace = true
 serde_json.workspace = true
 dirs = "6"
