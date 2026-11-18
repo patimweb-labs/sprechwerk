@@ -380,6 +380,17 @@ impl Bund {
                     return Err(SchreibFehler::ZuLang);
                 }
             }
+            // Text darf fehlen, Dateien nicht.
+            Inhalt::Anhang { text, dateien } => {
+                if dateien.is_empty() {
+                    return Err(SchreibFehler::Leer);
+                }
+                if dateien.len() > sprechwerk_protocol::anhang::MAX_DATEIEN
+                    || text.chars().count() > sprechwerk_domain::MAX_MESSAGE_LEN
+                {
+                    return Err(SchreibFehler::ZuLang);
+                }
+            }
         }
         // Mit Vorschaubild kann der Umschlag wachsen — über der Grenze nähme
         // ihn der Server nicht an.
@@ -436,6 +447,7 @@ mod tests {
             text,
             zeit: 0,
             geloescht: false,
+            anhaenge: Vec::new(),
         }
     }
 

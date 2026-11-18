@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::ablage::Ablage;
 use crate::konfig::Konfig;
 
 /// Abstand zwischen zwei Bitten um denselben Serverschlüssel.
@@ -58,7 +59,16 @@ pub struct Kern {
     naechste_sprechnummer: u16,
     /// Verworfene Datagramme (falscher Kopf, kein Rederecht, kein Raum).
     verworfen: u64,
+    /// Die Dateien der Anhänge (nur Geheimtext, ADR 0012 §3).
+    pub ablage: Ablage,
+    /// Hochgeladen, aber noch an keiner Nachricht: wem sie gehören, seit wann.
+    offen: HashMap<String, (MemberId, std::time::Instant)>,
+    /// Wird gerade hochgeladen: wem, mit welcher angekündigten Größe.
+    laufend: HashMap<String, (MemberId, u64)>,
 }
+
+/// Warum ein Datenstrom abgewiesen wird.
+pub type Abweisung = (Fehlercode, &'static str);
 
 /// Zählerstand für Diagnose und Messung.
 #[derive(Debug, Clone, Copy, Default)]
@@ -77,6 +87,7 @@ impl Kern {
         let standard_rolle = konfig.standard_rolle();
         let name = konfig.server.name.clone();
         let state = store.laden(|| State::neu(name.clone(), standard_rolle, jetzt_ms()))?;
+        let konfig_anhaenge = konfig.anhaenge_verzeichnis();
         // Ein leerer Server bekommt sofort einen Raum, damit der erste Client
         // etwas zum Betreten hat.
         let mut kern = Self {
@@ -91,6 +102,9 @@ impl Kern {
             sprachrahmen_verworfen: 0,
             verworfen: 0,
             naechste_sprechnummer: 1,
+            ablage: Ablage::oeffnen(konfig_anhaenge)?,
+            offen: HashMap::new(),
+            laufend: HashMap::new(),
         };
         if kern.state.raeume.is_empty() {
             kern.state = State::neu(name, standard_rolle, jetzt_ms());
@@ -98,6 +112,10 @@ impl Kern {
         let _ = &mut store;
         kern.ende_zu_ende_umstellen()?;
         kern.speichern()?;
+        let weg = kern.anhaenge_aufraeumen();
+        if weg > 0 {
+            tracing::info!(weg, "Anhänge ohne Nachricht entfernt");
+        }
         Ok(kern)
     }
 
@@ -379,7 +397,7 @@ impl Kern {
                 }
             }
 
-            ClientFrame::Text { text } => {
+            ClientFrame::Text { text, anhaenge } => {
                 // **Nur Geheimtext** mit dem aktuellen Serverschlüssel (ADR
                 // 0012). Klartext — ein alter oder kaputter Client — kommt
                 // nicht in die Datenbank.
@@ -392,8 +410,29 @@ impl Kern {
                             .into(),
                     }];
                 }
-                match self.state.text_senden(ich, &text, jetzt) {
+                // Jede Datei muss hochgeladen sein, dem Absender gehören und
+                // noch an keiner Nachricht hängen.
+                let mut anhaenge = anhaenge;
+                anhaenge.sort();
+                anhaenge.dedup();
+                if anhaenge.len() > sprechwerk_protocol::anhang::MAX_DATEIEN
+                    || !anhaenge
+                        .iter()
+                        .all(|id| matches!(self.offen.get(id), Some((von, _)) if *von == ich))
+                {
+                    return vec![ServerFrame::Fehler {
+                        code: Fehlercode::Unbekannt,
+                        text: "Anhang nicht hochgeladen".into(),
+                    }];
+                }
+                match self
+                    .state
+                    .beitrag_senden(ich, &text, anhaenge.clone(), jetzt)
+                {
                     Ok(nachricht) => {
+                        for id in &anhaenge {
+                            self.offen.remove(id);
+                        }
                         self.rundruf(
                             None,
                             Some(nachricht.raum),
@@ -504,6 +543,7 @@ impl Kern {
                             );
                         }
                         let _ = self.speichern();
+                        self.anhaenge_aufraeumen();
                         vec![ServerFrame::Ok]
                     }
                     Err(e) => vec![Kern::fehler(match e {
@@ -653,6 +693,7 @@ impl Kern {
                             },
                         );
                         let _ = self.speichern();
+                        self.anhaenge_aufraeumen();
                         vec![ServerFrame::Raeume { raeume }]
                     }
                     Err(e) => vec![Kern::fehler(match e {
@@ -1270,6 +1311,98 @@ impl Kern {
         let _ = self.speichern();
     }
 
+    // ---- Anhänge (ADR 0012 §3) ----------------------------------------
+
+    /// Darf `ich` eine Datei mit `groesse` Byte Geheimtext unter `id`
+    /// hochladen? Reserviert die Kennung und liefert den Pfad des Teils.
+    pub fn hochladen_beginnen(
+        &mut self,
+        ich: MemberId,
+        id: &str,
+        groesse: u64,
+    ) -> Result<std::path::PathBuf, Abweisung> {
+        use sprechwerk_protocol::anhang::{ist_id, klar_groesse};
+        let darf = self.state.mitglied(ich).is_some_and(|m| {
+            sprechwerk_domain::role::darf(m.rolle, sprechwerk_domain::Capability::TextSchreiben)
+        });
+        if !darf {
+            return Err((Fehlercode::KeinRecht, "dafür fehlt das Recht"));
+        }
+        if !ist_id(id) || klar_groesse(groesse).is_none() {
+            return Err((
+                Fehlercode::UngueltigeEingabe,
+                "ungültige Kennung oder Größe",
+            ));
+        }
+        if self.ablage.gibt_es(id) || self.offen.contains_key(id) || self.laufend.contains_key(id) {
+            return Err((Fehlercode::UngueltigeEingabe, "Kennung schon vergeben"));
+        }
+        if self
+            .konfig
+            .anhaenge
+            .je_datei()
+            .is_some_and(|grenze| groesse > grenze)
+        {
+            return Err((Fehlercode::UngueltigeEingabe, "Datei zu groß"));
+        }
+        if let Some(grenze) = self.konfig.anhaenge.gesamt() {
+            let reserviert: u64 = self.laufend.values().map(|(_, g)| g).sum();
+            if self.ablage.belegt() + reserviert + groesse > grenze {
+                return Err((Fehlercode::Spaeter, "Speicher für Anhänge ist voll"));
+            }
+        }
+        self.laufend.insert(id.to_string(), (ich, groesse));
+        Ok(self.ablage.teil(id))
+    }
+
+    /// Der Upload ist zu Ende: vollständig (`gelungen`) oder nicht.
+    /// Liefert, ob die Datei jetzt abgelegt ist.
+    pub fn hochladen_beenden(&mut self, ich: MemberId, id: &str, gelungen: bool) -> bool {
+        if self.laufend.remove(id).is_none() {
+            return false;
+        }
+        if gelungen && self.ablage.abschliessen(id).is_ok() {
+            self.offen
+                .insert(id.to_string(), (ich, std::time::Instant::now()));
+            true
+        } else {
+            self.ablage.verwerfen(id);
+            false
+        }
+    }
+
+    /// Darf `ich` die Datei `id` laden? Jedes Mitglied darf, was an einer
+    /// Nachricht hängt (Räume sind offen, ADR 0009); eine offene Datei nur der,
+    /// der sie hochgeladen hat.
+    pub fn herunterladen_pruefen(
+        &self,
+        ich: MemberId,
+        id: &str,
+    ) -> Result<std::path::PathBuf, Abweisung> {
+        if !sprechwerk_protocol::anhang::ist_id(id) {
+            return Err((Fehlercode::UngueltigeEingabe, "ungültige Kennung"));
+        }
+        let erlaubt = self.state.anhaenge_in_gebrauch().contains(id)
+            || matches!(self.offen.get(id), Some((von, _)) if *von == ich);
+        if !erlaubt || !self.ablage.gibt_es(id) {
+            return Err((Fehlercode::Unbekannt, "nicht vorhanden"));
+        }
+        Ok(self.ablage.pfad(id))
+    }
+
+    /// Löscht jede Datei, auf die keine Nachricht zeigt — außer laufenden und
+    /// frisch abgelegten (bis [`sprechwerk_protocol::anhang::OFFEN_FRIST_S`]).
+    pub fn anhaenge_aufraeumen(&mut self) -> usize {
+        let frist = std::time::Duration::from_secs(sprechwerk_protocol::anhang::OFFEN_FRIST_S);
+        self.offen.retain(|_, (_, seit)| seit.elapsed() < frist);
+        let in_gebrauch = self.state.anhaenge_in_gebrauch();
+        let offen = &self.offen;
+        let laufend = &self.laufend;
+        self.ablage.aufraeumen(|id| {
+            in_gebrauch.contains(id) || offen.contains_key(id) || laufend.contains_key(id)
+        })
+    }
+
     // ---- Betreiber (Verwaltungsoberfläche) -----------------------------
 
     /// Setzt eine Rolle **als Betreiber** — aus der Verwaltung im Browser,
@@ -1383,6 +1516,7 @@ pub(crate) mod rollenmatrix {
                 ..Default::default()
             },
             verwaltung: Default::default(),
+            anhaenge: Default::default(),
         };
         let mut kern = Kern::neu(konfig).expect("Kern");
 
@@ -1445,6 +1579,7 @@ pub(crate) mod rollenmatrix {
             ada,
             ClientFrame::Text {
                 text: geheim("von Ada"),
+                anhaenge: Vec::new(),
             },
         );
         let fremde_nachricht = kern
@@ -1560,6 +1695,7 @@ pub(crate) mod rollenmatrix {
             // --- Text --------------------------------------------------
             zelle("Text", rolle, TextSchreiben, |_| ClientFrame::Text {
                 text: geheim("Matrix"),
+                anhaenge: Vec::new(),
             });
             zelle("NachrichtLoeschen (fremd)", rolle, PersonEingreifen, |w| {
                 ClientFrame::NachrichtLoeschen {
@@ -1761,9 +1897,13 @@ pub(crate) mod rollenmatrix {
             .iter()
             .any(|e| e.aktion == "serverschluessel_verworfen"));
 
-        let alt = w
-            .kern
-            .befehle(w.ada, ClientFrame::Text { text: geheim("x") });
+        let alt = w.kern.befehle(
+            w.ada,
+            ClientFrame::Text {
+                text: geheim("x"),
+                anhaenge: Vec::new(),
+            },
+        );
         assert!(
             matches!(alt.as_slice(), [ServerFrame::Fehler { .. }]),
             "{alt:?}"
@@ -1780,7 +1920,16 @@ pub(crate) mod rollenmatrix {
             vec![SCHLUESSEL_ID.to_string(), neu.clone()]
         );
         let text = sprechwerk_protocol::geheimtext::zusammensetzen(&neu, &"00".repeat(28));
-        assert!(w.kern.befehle(w.ada, ClientFrame::Text { text }).is_empty());
+        assert!(w
+            .kern
+            .befehle(
+                w.ada,
+                ClientFrame::Text {
+                    text,
+                    anhaenge: Vec::new()
+                }
+            )
+            .is_empty());
     }
 
     /// Altbestand: unverschlüsselte Nachrichten sind nach dem Start weg,
@@ -1797,6 +1946,7 @@ pub(crate) mod rollenmatrix {
             text: "Kassenstand im Klartext".into(),
             zeit: 1,
             geloescht: false,
+            anhaenge: Vec::new(),
         });
         for r in w.kern.state.raeume.values_mut() {
             r.verschluesselt = false;
@@ -1986,6 +2136,7 @@ mod protokollsweep {
                 "Text",
                 Box::new(|_| ClientFrame::Text {
                     text: geheim("hallo"),
+                    anhaenge: Vec::new(),
                 }),
             ),
             (
@@ -2271,7 +2422,10 @@ mod protokollsweep {
         // Die Grenze gilt dem **Geheimtext** (der Server sieht nur ihn).
         let rand = sprechwerk_protocol::geheimtext::MAX_GEHEIMTEXT_LEN - geheim("").len();
         let zu_lang = geheim(&"x".repeat(rand / 2 + 1));
-        let antworten = frage("sweep-text-lang", |_| ClientFrame::Text { text: zu_lang });
+        let antworten = frage("sweep-text-lang", |_| ClientFrame::Text {
+            text: zu_lang,
+            anhaenge: Vec::new(),
+        });
         assert!(
             meldet_fehler(&antworten),
             "Text über der Grenze muss abgewiesen werden: {antworten:?}"
@@ -2280,7 +2434,10 @@ mod protokollsweep {
         // Genau an der Grenze: angenommen (kein Fehler, kein Rahmen — die
         // Nachricht geht über den Rundruf).
         let genau = geheim(&"x".repeat(rand / 2));
-        let antworten = frage("sweep-text-grenze", |_| ClientFrame::Text { text: genau });
+        let antworten = frage("sweep-text-grenze", |_| ClientFrame::Text {
+            text: genau,
+            anhaenge: Vec::new(),
+        });
         assert!(
             !meldet_fehler(&antworten),
             "Text genau an der Grenze muss durchgehen: {antworten:?}"
@@ -2289,6 +2446,7 @@ mod protokollsweep {
         // Leerer Text: keine leere Nachricht im Verlauf.
         let antworten = frage("sweep-text-leer", |_| ClientFrame::Text {
             text: "   ".into(),
+            anhaenge: Vec::new(),
         });
         assert!(
             meldet_fehler(&antworten),
@@ -2298,6 +2456,7 @@ mod protokollsweep {
         // Klartext kommt nicht in die Datenbank (ADR 0012).
         let antworten = frage("sweep-text-klar", |_| ClientFrame::Text {
             text: "Guten Abend".into(),
+            anhaenge: Vec::new(),
         });
         assert!(
             meldet_fehler(&antworten),
@@ -2306,7 +2465,10 @@ mod protokollsweep {
         // Und Geheimtext mit einem anderen als dem aktuellen Schlüssel auch nicht.
         let fremd =
             sprechwerk_protocol::geheimtext::zusammensetzen(&"cd".repeat(16), &"00".repeat(28));
-        let antworten = frage("sweep-text-fremd", |_| ClientFrame::Text { text: fremd });
+        let antworten = frage("sweep-text-fremd", |_| ClientFrame::Text {
+            text: fremd,
+            anhaenge: Vec::new(),
+        });
         assert!(
             meldet_fehler(&antworten),
             "Leerer Text muss abgewiesen werden: {antworten:?}"
@@ -2601,6 +2763,134 @@ mod protokollsweep {
     ///
     /// Vorher zeigte die Ansicht im Fenster die ältesten Einträge — bei einem
     /// Protokoll genau das Gegenteil dessen, was man sehen will.
+    /// Anhänge (ADR 0012 §3): hochladen, an eine Nachricht hängen, laden,
+    /// mit der Nachricht verschwinden — und alles, was nicht passt, abweisen.
+    #[test]
+    fn anhaenge_leben_und_sterben_mit_der_nachricht() {
+        use sprechwerk_protocol::anhang::geheim_groesse;
+        let mut w = welt("anhaenge");
+        let id = "0a".repeat(16);
+        let groesse = geheim_groesse(5);
+
+        // Ungültiges wird gar nicht erst angenommen.
+        for (falsch, g) in [("../x", groesse), (id.as_str(), 3)] {
+            assert_eq!(
+                w.kern.hochladen_beginnen(w.bosse, falsch, g).unwrap_err().0,
+                Fehlercode::UngueltigeEingabe,
+                "{falsch} {g}"
+            );
+        }
+
+        // Hochladen: Teil schreiben, abschließen.
+        let teil = w.kern.hochladen_beginnen(w.bosse, &id, groesse).unwrap();
+        std::fs::write(&teil, vec![0u8; groesse as usize]).unwrap();
+        // Dieselbe Kennung ein zweites Mal: nein, auch nicht während des Ladens.
+        assert!(w.kern.hochladen_beginnen(w.ada, &id, groesse).is_err());
+        assert!(w.kern.hochladen_beenden(w.bosse, &id, true));
+        assert!(w.kern.ablage.gibt_es(&id));
+        assert!(w.kern.hochladen_beginnen(w.ada, &id, groesse).is_err());
+
+        // Offen: nur Bosse sieht die Datei, und nur Bosse darf sie verschicken.
+        assert!(w.kern.herunterladen_pruefen(w.bosse, &id).is_ok());
+        assert!(w.kern.herunterladen_pruefen(w.ada, &id).is_err());
+        let fremd = w.kern.befehle(
+            w.ada,
+            ClientFrame::Text {
+                text: geheim("fremde Datei"),
+                anhaenge: vec![id.clone()],
+            },
+        );
+        assert!(meldet_fehler(&fremd), "{fremd:?}");
+        let erfunden = w.kern.befehle(
+            w.bosse,
+            ClientFrame::Text {
+                text: geheim("erfunden"),
+                anhaenge: vec!["0f".repeat(16)],
+            },
+        );
+        assert!(meldet_fehler(&erfunden), "{erfunden:?}");
+
+        // Aufräumen lässt offene Dateien in ihrer Frist liegen.
+        assert_eq!(w.kern.anhaenge_aufraeumen(), 0);
+
+        // Verschicken: die Datei hängt an der Nachricht, jedes Mitglied lädt.
+        let ok = w.kern.befehle(
+            w.bosse,
+            ClientFrame::Text {
+                text: geheim("Fotos vom Fest"),
+                anhaenge: vec![id.clone(), id.clone()],
+            },
+        );
+        assert!(!meldet_fehler(&ok), "{ok:?}");
+        let nachricht = w
+            .kern
+            .state
+            .nachrichten
+            .iter()
+            .find(|n| n.anhaenge.contains(&id))
+            .expect("Nachricht mit Anhang")
+            .clone();
+        assert_eq!(
+            nachricht.anhaenge,
+            std::slice::from_ref(&id),
+            "doppelt zählt einmal"
+        );
+        assert!(w.kern.herunterladen_pruefen(w.ada, &id).is_ok());
+        // Ein zweites Mal verschicken geht nicht: sie ist nicht mehr offen.
+        let nochmal = w.kern.befehle(
+            w.bosse,
+            ClientFrame::Text {
+                text: geheim("nochmal"),
+                anhaenge: vec![id.clone()],
+            },
+        );
+        assert!(meldet_fehler(&nochmal));
+
+        // Löschen: die Datei ist weg.
+        w.kern.befehle(
+            w.bosse,
+            ClientFrame::NachrichtLoeschen {
+                nachricht: nachricht.id,
+            },
+        );
+        assert!(!w.kern.ablage.gibt_es(&id));
+        assert!(w.kern.herunterladen_pruefen(w.ada, &id).is_err());
+
+        // Ein abgebrochener Upload hinterlässt nichts.
+        let id2 = "0b".repeat(16);
+        let teil = w.kern.hochladen_beginnen(w.bosse, &id2, groesse).unwrap();
+        std::fs::write(&teil, b"halb").unwrap();
+        assert!(!w.kern.hochladen_beenden(w.bosse, &id2, false));
+        assert!(!teil.exists());
+        assert!(!w.kern.ablage.gibt_es(&id2));
+    }
+
+    #[test]
+    fn anhaenge_halten_die_grenzen_des_betreibers() {
+        use sprechwerk_protocol::anhang::geheim_groesse;
+        let mut w = welt("anhaenge-grenzen");
+        let mib = 1024 * 1024;
+        w.kern.konfig.anhaenge.max_mb = 1;
+        let zu_gross = w
+            .kern
+            .hochladen_beginnen(w.bosse, &"01".repeat(16), geheim_groesse(mib))
+            .unwrap_err();
+        assert_eq!(zu_gross.0, Fehlercode::UngueltigeEingabe);
+        assert!(w
+            .kern
+            .hochladen_beginnen(w.bosse, &"02".repeat(16), geheim_groesse(mib / 2))
+            .is_ok());
+
+        // Gesamt: der laufende Upload (½ MiB) zählt mit.
+        w.kern.konfig.anhaenge.max_mb = 0;
+        w.kern.konfig.anhaenge.gesamt_mb = 1;
+        let voll = w
+            .kern
+            .hochladen_beginnen(w.bosse, &"03".repeat(16), geheim_groesse(mib / 2 + 1))
+            .unwrap_err();
+        assert_eq!(voll.0, Fehlercode::Spaeter);
+    }
+
     #[test]
     fn protokoll_von_hinten_liefert_die_neuesten() {
         let mut w = welt("sweep-protokoll-hinten");

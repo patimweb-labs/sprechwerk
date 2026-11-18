@@ -15,7 +15,24 @@ pub const MAX_BYTES: usize = 120 * 1024;
 /// Liest ein Bild (JPEG, PNG, WebP, GIF), rechnet es klein und schreibt es als
 /// JPEG. `None`, wenn es kein lesbares Bild ist oder zu groß bleibt.
 pub fn verkleinern(bytes: &[u8]) -> Option<Vec<u8>> {
-    let mut leser = ImageReader::new(Cursor::new(bytes))
+    vorschaubild(bytes, KANTE, MAX_BYTES).map(|v| v.jpeg)
+}
+
+/// Ein klein gerechnetes Bild und die Maße des Originals.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Vorschaubild {
+    pub jpeg: Vec<u8>,
+    pub breite: u32,
+    pub hoehe: u32,
+}
+
+/// Wie [`verkleinern`], mit eigener Kante und Größe — für Anhänge (ADR 0012
+/// §3), deren Vorschau im Umschlag steht. Dreht das Bild nach seiner
+/// EXIF-Ausrichtung (Fotos vom Telefon stehen sonst quer) und liefert die
+/// Maße **nach** dem Drehen.
+pub fn vorschaubild(bytes: &[u8], kante: u32, max_bytes: usize) -> Option<Vorschaubild> {
+    use image::ImageDecoder;
+    let leser = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .ok()?;
     // Ein fremdes Bild darf den Speicher nicht füllen: 16 000 × 16 000 Pixel
@@ -24,12 +41,17 @@ pub fn verkleinern(bytes: &[u8]) -> Option<Vec<u8>> {
     grenzen.max_image_width = Some(12_000);
     grenzen.max_image_height = Some(12_000);
     grenzen.max_alloc = Some(256 * 1024 * 1024);
-    leser.limits(grenzen);
-    let bild = leser.decode().ok()?;
+    let mut dekoder = leser.into_decoder().ok()?;
+    dekoder.set_limits(grenzen).ok()?;
+    let ausrichtung = dekoder.orientation().ok();
+    let mut bild = DynamicImage::from_decoder(dekoder).ok()?;
+    if let Some(a) = ausrichtung {
+        bild.apply_orientation(a);
+    }
     if bild.width() == 0 || bild.height() == 0 {
         return None;
     }
-    for (kante, guete) in [(KANTE, 80), (KANTE * 2 / 3, 60)] {
+    for (kante, guete) in [(kante, 80), (kante * 2 / 3, 60)] {
         // `thumbnail` vergrößert auch — ein kleines Bild bleibt, wie es ist.
         let klein = if bild.width() > kante || bild.height() > kante {
             auf_weiss(&bild.thumbnail(kante, kante))
@@ -40,8 +62,12 @@ pub fn verkleinern(bytes: &[u8]) -> Option<Vec<u8>> {
         JpegEncoder::new_with_quality(&mut aus, guete)
             .encode_image(&klein)
             .ok()?;
-        if aus.len() <= MAX_BYTES {
-            return Some(aus);
+        if aus.len() <= max_bytes {
+            return Some(Vorschaubild {
+                jpeg: aus,
+                breite: bild.width(),
+                hoehe: bild.height(),
+            });
         }
     }
     None
@@ -109,5 +135,14 @@ mod tests {
         let mut kaputt = png(100, 100, 255);
         kaputt.truncate(60);
         assert!(verkleinern(&kaputt).is_none());
+    }
+
+    #[test]
+    fn vorschaubild_nennt_die_masse_des_originals() {
+        let v = vorschaubild(&png(1200, 800, 255), 300, 40 * 1024).unwrap();
+        assert_eq!((v.breite, v.hoehe), (1200, 800));
+        let b = image::load_from_memory(&v.jpeg).unwrap();
+        assert_eq!((b.width(), b.height()), (300, 200));
+        assert!(vorschaubild(b"kein bild", 300, 40 * 1024).is_none());
     }
 }

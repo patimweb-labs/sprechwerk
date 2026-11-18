@@ -94,6 +94,12 @@ pub enum NachrichtInhalt {
         zeichen: String,
         weg: bool,
     },
+    /// Dateien, wahlweise mit Text (ADR 0012 §3). Die Schlüssel der Dateien
+    /// bleiben im Rust-Teil — die Oberfläche bekommt nur, was sie zeigt.
+    Anhang {
+        text: String,
+        dateien: Vec<Dateiansicht>,
+    },
     /// Verschlüsselt, der Schlüssel fehlt noch (kommt von einem Mitglied).
     Wartet,
     /// Verändert, umgehängt oder beschädigt.
@@ -102,6 +108,96 @@ pub enum NachrichtInhalt {
     Neuer { art: String },
     /// Gelöscht.
     Geloescht,
+}
+
+/// Wie das Fenster eine Datei zeigt. Entschieden im Rust-Teil nach einer
+/// festen Liste von Medientypen — nicht nach dem, was der Absender behauptet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Dateiart {
+    /// JPEG, PNG, GIF, WebP: Vorschau im Verlauf, groß im Betrachter.
+    Bild,
+    /// MP4, WebM, Ogg: spielt im Betrachter.
+    Video,
+    /// Alles andere: nur herunterladen.
+    Datei,
+}
+
+/// Wie weit eine Datei auf diesem Gerät ist.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "art", rename_all = "snake_case")]
+pub enum Ladestand {
+    /// Noch nicht geladen.
+    #[default]
+    Keiner,
+    /// Wird geladen (verschlüsselt, vom Server).
+    Laedt {
+        prozent: u8,
+    },
+    /// Liegt (verschlüsselt) im Zwischenspeicher, kann gezeigt werden.
+    Bereit,
+    Fehler {
+        text: String,
+    },
+}
+
+/// Eine Datei an einer Nachricht, wie die Oberfläche sie sieht.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Dateiansicht {
+    pub id: String,
+    /// Bereinigt: ohne Pfad, ohne Steuerzeichen, gekürzt.
+    pub name: String,
+    pub art: Dateiart,
+    /// Geprüfter Medientyp (sonst `application/octet-stream`).
+    pub typ: String,
+    /// Größe im Klartext (Byte).
+    pub groesse: u64,
+    /// Vorschaubild (JPEG, Base64), vom Absender.
+    #[serde(default)]
+    pub vorschau: Option<String>,
+    #[serde(default)]
+    pub breite: Option<u32>,
+    #[serde(default)]
+    pub hoehe: Option<u32>,
+    #[serde(default)]
+    pub stand: Ladestand,
+}
+
+/// Der Betrachter (Bild, Video groß). `None` im Modell: zu.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Betrachter {
+    pub nachricht: MessageId,
+    pub datei: Dateiansicht,
+}
+
+/// Wie weit eine Datei im Entwurf ist.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "art", rename_all = "snake_case")]
+pub enum Entwurfsstand {
+    /// Wird gelesen, Vorschau gerechnet.
+    Vorbereitet,
+    /// Wird verschlüsselt hochgeladen.
+    Laedt {
+        prozent: u8,
+    },
+    /// Liegt beim Server, wartet auf das Absenden.
+    Bereit,
+    Fehler {
+        text: String,
+    },
+}
+
+/// Eine Datei im Entwurf, noch nicht verschickt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Anhangentwurf {
+    /// Laufende Nummer im Entwurf (zum Entfernen).
+    pub nr: u64,
+    pub name: String,
+    pub art: Dateiart,
+    pub groesse: u64,
+    #[serde(default)]
+    pub vorschau: Option<String>,
+    pub stand: Entwurfsstand,
 }
 
 /// Eine Nachricht im aktuellen Raum.
@@ -186,6 +282,12 @@ pub struct Zustand {
     /// Link-Vorschau des Entwurfs.
     #[serde(default)]
     pub entwurf: Linkentwurf,
+    /// Dateien im Entwurf (ADR 0012 §3).
+    #[serde(default)]
+    pub anhaenge: Vec<Anhangentwurf>,
+    /// Bild oder Video groß. `None`: zu.
+    #[serde(default)]
+    pub betrachter: Option<Betrachter>,
     /// Umlaufzeit zum Server in Millisekunden (aus Ping/Pong gemessen).
     ///
     /// Sie wird **im Rust-Teil** gemessen, nicht im Fenster: nur dort sitzt die
@@ -370,6 +472,27 @@ pub enum Befehl {
     },
     /// Die Vorschau des Entwurfs nicht mitschicken.
     VorschauVerwerfen,
+    /// Dateien an den Entwurf hängen (Pfade aus der Dateiauswahl oder vom
+    /// Hineinziehen). Sie werden sofort verschlüsselt hochgeladen.
+    AnhaengeHinzufuegen {
+        pfade: Vec<String>,
+    },
+    /// Eine Datei aus dem Entwurf nehmen.
+    AnhangEntfernen {
+        nr: u64,
+    },
+    /// Eine Datei groß zeigen (lädt sie, falls nötig).
+    DateiOeffnen {
+        nachricht: MessageId,
+        datei: String,
+    },
+    BetrachterSchliessen,
+    /// Eine Datei entschlüsselt speichern (`ziel` aus dem Speichern-Dialog).
+    DateiSpeichern {
+        nachricht: MessageId,
+        datei: String,
+        ziel: String,
+    },
     NachrichtLoeschen {
         nachricht: MessageId,
     },

@@ -84,7 +84,10 @@ impl Sitzung {
             .bund
             .verschluesseln(raum, self.verbindung.ich, &Inhalt::text(text))?;
         self.verbindung
-            .sende(ClientFrame::Text { text: geheim })
+            .sende(ClientFrame::Text {
+                text: geheim,
+                anhaenge: Vec::new(),
+            })
             .await
     }
 
@@ -454,6 +457,16 @@ fn lesbar(l: Lesbar) -> String {
                 "{} {zeichen} auf {ziel}",
                 if weg { "nimmt zurück:" } else { "reagiert" }
             )
+        }
+        // Der Referenzclient lädt keine Dateien; er sagt, dass welche da sind.
+        Lesbar::Inhalt(Inhalt::Anhang { text, dateien }) => {
+            let namen: Vec<String> = dateien
+                .iter()
+                .map(|d| format!("{} ({} Byte)", d.name, d.groesse))
+                .collect();
+            format!("{text} [Dateien: {}]", namen.join(", "))
+                .trim()
+                .to_string()
         }
         Lesbar::Unbekannt { art } => format!("(„{art}“ — neuere Version nötig)"),
         Lesbar::SchluesselFehlt => "(verschlüsselt — Schlüssel fehlt noch)".into(),

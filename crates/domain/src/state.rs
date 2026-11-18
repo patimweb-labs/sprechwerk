@@ -133,6 +133,11 @@ pub struct Message {
     pub zeit: i64,
     #[serde(default)]
     pub geloescht: bool,
+    /// Kennungen der Dateien an dieser Nachricht (ADR 0012 §3). Der Server
+    /// kennt nur sie — Name, Typ und Schlüssel stehen im Geheimtext. Wer die
+    /// Nachricht löscht, löscht die Dateien.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub anhaenge: Vec<String>,
 }
 
 /// Ein Eintrag im Prüfprotokoll.
@@ -774,6 +779,15 @@ impl State {
         Ok(())
     }
 
+    /// Alle Dateien, auf die eine Nachricht zeigt. Was hier nicht steht,
+    /// darf der Server wegräumen.
+    pub fn anhaenge_in_gebrauch(&self) -> std::collections::HashSet<&str> {
+        self.nachrichten
+            .iter()
+            .flat_map(|n| n.anhaenge.iter().map(String::as_str))
+            .collect()
+    }
+
     /// Der Standardraum: der erste Raum der Liste.
     ///
     /// **Dorthin kommt jeder beim Verbinden**, und dorthin führt auch
@@ -939,6 +953,19 @@ impl State {
         text: &str,
         jetzt_ms: i64,
     ) -> Result<Message, Error> {
+        self.beitrag_senden(wer, text, Vec::new(), jetzt_ms)
+    }
+
+    /// Wie [`State::text_senden`], mit Dateien. Dass es die Dateien gibt und
+    /// sie dem Verfasser gehören, prüft der Server vorher — die Domain kennt
+    /// keine Ablage.
+    pub fn beitrag_senden(
+        &mut self,
+        wer: MemberId,
+        text: &str,
+        anhaenge: Vec<String>,
+        jetzt_ms: i64,
+    ) -> Result<Message, Error> {
         let (handelnder_name, raum) = {
             let m = self.mitglieder.get(&wer).ok_or(Error::MitgliedUnbekannt)?;
             (m.name.clone(), m.raum)
@@ -991,6 +1018,7 @@ impl State {
             text,
             zeit: jetzt_ms,
             geloescht: false,
+            anhaenge,
         };
         self.nachrichten.push(nachricht.clone());
         self.protokolliere(Protokollzeile {
@@ -1046,6 +1074,8 @@ impl State {
             let n = &mut self.nachrichten[index];
             n.geloescht = true;
             n.text = String::new();
+            // Der Platzhalter bleibt, die Dateien nicht.
+            n.anhaenge.clear();
             self.protokolliere(Protokollzeile {
                 zeit: jetzt_ms,
                 handelnder: Some(wer),
@@ -1711,6 +1741,36 @@ mod tests {
         let hart = s.nachricht_loeschen(m, n3.id, 2_004).unwrap();
         assert!(hart);
         assert!(s.nachrichten.iter().all(|n| n.id != n3.id));
+    }
+
+    /// Löschen nimmt die Dateien mit — weich wie hart, und auch mit dem Raum.
+    #[test]
+    fn loeschen_gibt_die_anhaenge_frei() {
+        let mut s = zustand();
+        let a = admin(&mut s);
+        let empfang = s.wurzel_raum().unwrap();
+        s.betreten(a, empfang, 1_000).unwrap();
+        let n1 = s
+            .beitrag_senden(a, "eins", vec!["a1".into(), "a2".into()], 1_001)
+            .unwrap();
+        assert_eq!(n1.anhaenge, ["a1", "a2"]);
+        let n2 = s
+            .beitrag_senden(a, "zwei", vec!["b1".into()], 1_002)
+            .unwrap();
+        assert_eq!(
+            s.anhaenge_in_gebrauch(),
+            ["a1", "a2", "b1"].into_iter().collect()
+        );
+
+        // Weich: der Platzhalter bleibt, die Dateien nicht.
+        s.nachricht_loeschen(a, n1.id, 1_003).unwrap();
+        assert_eq!(s.anhaenge_in_gebrauch(), ["b1"].into_iter().collect());
+
+        // Hart: ein Moderator löscht fremd.
+        let m = s.anmelden("k-mod", "Mira", 2_000).unwrap();
+        s.rolle_setzen(a, m, Role::Moderator, 2_001).unwrap();
+        s.nachricht_loeschen(m, n2.id, 2_002).unwrap();
+        assert!(s.anhaenge_in_gebrauch().is_empty());
     }
 
     #[test]

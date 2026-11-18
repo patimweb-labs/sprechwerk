@@ -72,7 +72,8 @@ CREATE TABLE IF NOT EXISTS nachrichten (
   verfasser_name  TEXT NOT NULL,
   text            TEXT NOT NULL,
   zeit            INTEGER NOT NULL,
-  geloescht       INTEGER NOT NULL DEFAULT 0
+  geloescht       INTEGER NOT NULL DEFAULT 0,
+  anhaenge        TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_nachrichten_raum_zeit ON nachrichten (raum, zeit);
 CREATE TABLE IF NOT EXISTS protokoll (
@@ -167,6 +168,11 @@ fn migrieren(conn: &Connection, pfad: &Path) -> Ergebnis<()> {
                 }
                 version = 2;
             }
+            // v2 → v3: Anhänge an Nachrichten (ADR 0012 §3).
+            2 => {
+                anhaenge_nachruesten(conn)?;
+                version = 3;
+            }
             anderes => {
                 return Err(Error::Format(anderes, SCHEMA_VERSION));
             }
@@ -211,13 +217,41 @@ fn nachruesten(conn: &Connection) -> Ergebnis<()> {
     if spalte_fehlt(conn, "protokoll", "grund")? {
         conn.execute("ALTER TABLE protokoll ADD COLUMN grund TEXT", [])?;
     }
+    anhaenge_nachruesten(conn)
+}
+
+/// Spalte `anhaenge` an `nachrichten` — nur, wenn es die Tabelle schon gibt
+/// (eine sehr alte Datei kennt sie noch nicht; dann legt das Schema sie an).
+fn anhaenge_nachruesten(conn: &Connection) -> Ergebnis<()> {
+    let tabelle: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'nachrichten'",
+        [],
+        |r| r.get(0),
+    )?;
+    if tabelle > 0 && spalte_fehlt(conn, "nachrichten", "anhaenge")? {
+        conn.execute(
+            "ALTER TABLE nachrichten ADD COLUMN anhaenge TEXT NOT NULL DEFAULT ''",
+            [],
+        )?;
+    }
     Ok(())
+}
+
+/// Anhänge in einer Spalte: Kennungen durch Leerzeichen getrennt. Eine
+/// Kennung ist Hex (`protocol::anhang::ist_id`), enthält also keins.
+fn anhaenge_schreiben(ids: &[String]) -> String {
+    ids.join(" ")
+}
+
+fn anhaenge_lesen(text: &str) -> Vec<String> {
+    text.split_whitespace().map(str::to_string).collect()
 }
 
 /// Kennung der aktuellen Datenbankstruktur.
 ///
 /// 1 → 2: Spalte `grund` im Prüfprotokoll.
-pub const SCHEMA_VERSION: u32 = 2;
+/// 2 → 3: Spalte `anhaenge` an den Nachrichten.
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// Ein Store auf einer SQLite-Datei.
 pub struct Store {
@@ -376,7 +410,7 @@ impl Store {
 
         // Nachrichten
         let mut stmt = self.conn.prepare(
-            "SELECT id, raum, verfasser, verfasser_name, text, zeit, geloescht FROM nachrichten ORDER BY zeit, id",
+            "SELECT id, raum, verfasser, verfasser_name, text, zeit, geloescht, anhaenge FROM nachrichten ORDER BY zeit, id",
         )?;
         let mut zeilen = stmt.query([])?;
         let mut nachrichten = Vec::new();
@@ -389,6 +423,7 @@ impl Store {
                 text: z.get(4)?,
                 zeit: z.get(5)?,
                 geloescht: z.get::<_, i64>(6)? != 0,
+                anhaenge: anhaenge_lesen(&z.get::<_, String>(7)?),
             });
         }
         state.nachrichten = nachrichten;
@@ -552,9 +587,10 @@ impl Store {
         // Nachrichten: nur ergänzen und den Löschzustand nachziehen.
         for n in &state.nachrichten {
             tx.execute(
-                "INSERT INTO nachrichten (id, raum, verfasser, verfasser_name, text, zeit, geloescht) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
-                 ON CONFLICT(id) DO UPDATE SET text = excluded.text, geloescht = excluded.geloescht",
+                "INSERT INTO nachrichten (id, raum, verfasser, verfasser_name, text, zeit, geloescht, anhaenge) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
+                 ON CONFLICT(id) DO UPDATE SET text = excluded.text, geloescht = excluded.geloescht, \
+                 anhaenge = excluded.anhaenge",
                 params![
                     n.id.text(),
                     n.raum.text(),
@@ -562,7 +598,8 @@ impl Store {
                     n.verfasser_name,
                     n.text,
                     n.zeit,
-                    n.geloescht as i64
+                    n.geloescht as i64,
+                    anhaenge_schreiben(&n.anhaenge)
                 ],
             )?;
         }
@@ -751,6 +788,10 @@ mod tests {
             1_013,
         )
         .unwrap();
+        // Eigene Zeit: bei gleicher Zeit entschiede die Kennung (Zufall) über
+        // die Reihenfolge.
+        s.beitrag_senden(a, "Fotos", vec!["0a".repeat(16), "0b".repeat(16)], 1_014)
+            .unwrap();
         s
     }
 
@@ -1095,5 +1136,39 @@ mod tests {
             "ein neueres Format darf nicht geöffnet werden"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// v2 → v3: die Spalte `anhaenge` kommt dazu, vorhandene Nachrichten
+    /// bleiben und haben keine Anhänge.
+    #[test]
+    fn migration_von_stand_zwei() {
+        let dir = std::env::temp_dir().join(format!("sprechwerk-mig2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let datei = dir.join("alt.sqlitedb");
+        {
+            let conn = rusqlite::Connection::open(&datei).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE meta (schluessel TEXT PRIMARY KEY, wert TEXT NOT NULL);
+                 INSERT INTO meta VALUES ('schema_version', '2');
+                 CREATE TABLE nachrichten (
+                   id TEXT PRIMARY KEY, raum TEXT NOT NULL, verfasser TEXT NOT NULL,
+                   verfasser_name TEXT NOT NULL, text TEXT NOT NULL, zeit INTEGER NOT NULL,
+                   geloescht INTEGER NOT NULL DEFAULT 0);",
+            )
+            .unwrap();
+        }
+        let store = Store::oeffnen(&datei).unwrap();
+        assert_eq!(store.schema_version().unwrap(), SCHEMA_VERSION);
+        assert!(!spalte_fehlt(&store.conn, "nachrichten", "anhaenge").unwrap());
+        assert!(datei.with_extension("vor-v2.sqlite").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn anhaenge_in_der_spalte() {
+        let ids = vec!["0a".repeat(16), "0b".repeat(16)];
+        assert_eq!(anhaenge_lesen(&anhaenge_schreiben(&ids)), ids);
+        assert!(anhaenge_lesen("").is_empty());
     }
 }

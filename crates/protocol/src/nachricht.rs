@@ -221,7 +221,15 @@ pub enum ClientFrame {
     /// `text` ist **Geheimtext** (`geheimtext::zerlegen`), verschlüsselt mit
     /// dem aktuellen Serverschlüssel. Klartext nimmt der Server nicht an
     /// (ADR 0012).
-    Text { text: String },
+    ///
+    /// `anhaenge` nennt die Dateien, die der Absender vorher auf einem
+    /// Datenstrom hochgeladen hat ([`crate::anhang`]). Der Server hängt sie an
+    /// die Nachricht — löscht man die Nachricht, löscht er die Dateien.
+    Text {
+        text: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        anhaenge: Vec<String>,
+    },
     /// Einen Serverschlüssel festlegen, wenn es keinen aktuellen gibt.
     ///
     /// Der Server nimmt den **ersten** an; kommt ein zweiter, antwortet er mit
@@ -486,6 +494,7 @@ mod tests {
     fn client_frame_hat_stabilen_text() {
         let f = ClientFrame::Text {
             text: "hallo".into(),
+            anhaenge: Vec::new(),
         };
         let json = serde_json::to_string(&f).unwrap();
         assert!(json.contains("\"typ\":\"text\""), "{json}");
@@ -606,6 +615,7 @@ mod tests {
                     text: "hallo".into(),
                     zeit: 1,
                     geloescht: false,
+                    anhaenge: Vec::new(),
                 },
             },
             ServerFrame::NachrichtGeloescht {
@@ -723,6 +733,7 @@ mod tests {
     fn zu_grosse_nutzlast_wird_abgelehnt() {
         let zu_gross = ClientFrame::Text {
             text: "x".repeat(crate::frame::MAX_RAHMEN + 1),
+            anhaenge: Vec::new(),
         };
         assert!(crate::frame::schreibe_rahmen(&zu_gross).is_err());
     }

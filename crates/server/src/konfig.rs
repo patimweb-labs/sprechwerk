@@ -26,6 +26,30 @@ pub struct Konfig {
     pub server: Server,
     pub sicherung: Sicherung,
     pub verwaltung: Verwaltung,
+    pub anhaenge: Anhaenge,
+}
+
+/// Grenzen für Anhänge (ADR 0012 §3). **Vorgabe: keine** (Entscheidung des
+/// Nutzers) — ohne Grenze kann jedes Mitglied den Datenträger füllen.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Anhaenge {
+    /// Höchstgröße je Datei in MiB (verschlüsselt); 0 = unbegrenzt.
+    pub max_mb: u64,
+    /// Höchstgröße aller Dateien zusammen in MiB; 0 = unbegrenzt.
+    pub gesamt_mb: u64,
+}
+
+impl Anhaenge {
+    /// Grenze je Datei in Byte (`None` = keine).
+    pub fn je_datei(&self) -> Option<u64> {
+        (self.max_mb > 0).then(|| self.max_mb.saturating_mul(1024 * 1024))
+    }
+
+    /// Grenze für alle zusammen in Byte (`None` = keine).
+    pub fn gesamt(&self) -> Option<u64> {
+        (self.gesamt_mb > 0).then(|| self.gesamt_mb.saturating_mul(1024 * 1024))
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -235,6 +259,12 @@ impl Konfig {
         if let Some(w) = zahl("SPRECHWERK_VERWALTUNG_PORT")? {
             self.verwaltung.port = w;
         }
+        if let Some(w) = zahl("SPRECHWERK_ANHAENGE_MAX_MB")? {
+            self.anhaenge.max_mb = w;
+        }
+        if let Some(w) = zahl("SPRECHWERK_ANHAENGE_GESAMT_MB")? {
+            self.anhaenge.gesamt_mb = w;
+        }
         Ok(())
     }
 
@@ -311,6 +341,11 @@ impl Konfig {
         self.server.daten.join("sprechwerk.sqlitedb")
     }
 
+    /// Verzeichnis der Anhänge (nur Geheimtext).
+    pub fn anhaenge_verzeichnis(&self) -> PathBuf {
+        self.server.daten.join("anhaenge")
+    }
+
     /// Beispielkonfiguration zum Hineinkopieren.
     pub fn beispiel() -> String {
         r#"# sprechwerk — Konfiguration
@@ -341,6 +376,12 @@ behalten = 14
 # `sprechwerk protokoll`. Nur 127.0.0.1; Zugang über <daten>/verwaltung.schluessel.
 aktiv = true
 port = 7444               # TCP, nur dieser Rechner bzw. dieser Container
+
+[anhaenge]
+# Dateien im Chat liegen verschlüsselt unter <daten>/anhaenge; der Server kann
+# sie nicht lesen. Ohne Grenze kann jedes Mitglied den Datenträger füllen.
+max_mb = 0                # je Datei; 0 = unbegrenzt
+gesamt_mb = 0             # alle zusammen; 0 = unbegrenzt
 "#
         .to_string()
     }
@@ -424,6 +465,22 @@ mod tests {
         let pfad = datei(&Konfig::beispiel());
         let k = Konfig::laden(&pfad).unwrap();
         assert_eq!(k.verwaltung.port, 7444);
+        // Anhänge: in der Vorgabe ohne Grenze (Entscheidung des Nutzers).
+        assert_eq!((k.anhaenge.je_datei(), k.anhaenge.gesamt()), (None, None));
+        let _ = std::fs::remove_file(&pfad);
+    }
+
+    #[test]
+    fn anhaenge_grenzen_in_mib() {
+        let pfad = datei("[anhaenge]\nmax_mb = 100\ngesamt_mb = 2048\n");
+        let k = Konfig::laden(&pfad).unwrap();
+        assert_eq!(k.anhaenge.je_datei(), Some(100 * 1024 * 1024));
+        assert_eq!(k.anhaenge.gesamt(), Some(2048 * 1024 * 1024));
+        assert_eq!(
+            k.anhaenge_verzeichnis(),
+            k.server.daten.join("anhaenge"),
+            "Anhänge liegen im Datenverzeichnis (ein Volume)"
+        );
         let _ = std::fs::remove_file(&pfad);
     }
 

@@ -148,7 +148,10 @@ async fn zwei_clients_sehen_sich_und_texten() {
         .verschluesseln(raum, ada.v.ich, &Inhalt::text("Guten Abend"))
         .unwrap();
     ada.v
-        .sende(ClientFrame::Text { text: geheim })
+        .sende(ClientFrame::Text {
+            text: geheim,
+            anhaenge: Vec::new(),
+        })
         .await
         .unwrap();
     let nachricht = warte_auf(&mut bosse.v, |f| matches!(f, ServerFrame::Text { .. })).await;
@@ -171,6 +174,7 @@ async fn zwei_clients_sehen_sich_und_texten() {
     ada.v
         .sende(ClientFrame::Text {
             text: "Klartext".into(),
+            anhaenge: Vec::new(),
         })
         .await
         .unwrap();
@@ -187,6 +191,158 @@ async fn zwei_clients_sehen_sich_und_texten() {
             );
         }
     }
+}
+
+/// Anhänge (ADR 0012 §3) über einen echten Server: Ada lädt verschlüsselt
+/// hoch, Bosse lädt und entschlüsselt mit dem Schlüssel aus dem Umschlag —
+/// beim Server liegt nur Geheimtext, und mit der Nachricht ist die Datei weg.
+#[tokio::test]
+async fn anhang_geht_ende_zu_ende_ueber_den_server() {
+    use sprechwerk_adapters::anhang::{self, Dateischluessel, Geheimdatei};
+    use sprechwerk_protocol::anhang::{geheim_groesse, Datenanfrage, Datenantwort};
+    use sprechwerk_protocol::inhalt::Datei;
+
+    let server = Testserver::starten("anhang", &[]);
+    let (ada_k, bosse_k) = (Schluessel::neu(), Schluessel::neu());
+    let ada = Verbindung::oeffnen(server.adresse, &ada_k, "Ada", None)
+        .await
+        .unwrap();
+    let bosse = Verbindung::oeffnen(server.adresse, &bosse_k, "Bosse", None)
+        .await
+        .unwrap();
+    let raum = ada.raeume.first().expect("ein Raum").id;
+    let mut ada = Teil::neu(ada, ada_k);
+    let mut bosse = Teil::neu(bosse, bosse_k);
+    for t in [&mut ada, &mut bosse] {
+        t.v.sende(ClientFrame::Betreten { raum }).await.unwrap();
+        warte_auf(&mut t.v, |f| matches!(f, ServerFrame::Betreten { .. })).await;
+    }
+    ada.anfangen().await;
+    ada.anfangen().await;
+    bediene_beide(&mut ada, &mut bosse, |a, _| a.bund.kann_schreiben()).await;
+    bosse.anfangen().await;
+    bediene_beide(&mut ada, &mut bosse, |_, b| b.bund.kann_schreiben()).await;
+
+    // Ada lädt hoch: drei Blöcke und ein Rest, mit einem Merkwort darin.
+    let mut klar: Vec<u8> = (0..200_000u32).map(|i| (i % 251) as u8).collect();
+    klar[1000..1018].copy_from_slice(b"Vereinsfoto-geheim");
+    let id = anhang::neue_id();
+    let s = Dateischluessel::neu();
+    let mut stand = 0;
+    anhang::hochladen(
+        &ada.v.leitung(),
+        &id,
+        &s,
+        &klar[..],
+        klar.len() as u64,
+        |n| stand = n,
+    )
+    .await
+    .expect("hochladen");
+    assert_eq!(stand, klar.len() as u64);
+
+    // Noch hängt sie an keiner Nachricht: Bosse bekommt sie nicht.
+    let ziel = server.verzeichnis.join("bosse-cache").join(&id);
+    assert!(
+        anhang::herunterladen(&bosse.v.leitung(), &id, &ziel, |_, _| {})
+            .await
+            .is_err()
+    );
+
+    // Ada verschickt sie — Name, Typ und Schlüssel nur im Umschlag.
+    let inhalt = Inhalt::Anhang {
+        text: "Fotos vom Fest".into(),
+        dateien: vec![Datei {
+            id: id.clone(),
+            name: "fest.jpg".into(),
+            typ: "image/jpeg".into(),
+            groesse: klar.len() as u64,
+            schluessel: s.hex(),
+            vorschau: None,
+            breite: None,
+            hoehe: None,
+        }],
+    };
+    let geheim = ada.bund.verschluesseln(raum, ada.v.ich, &inhalt).unwrap();
+    ada.v
+        .sende(ClientFrame::Text {
+            text: geheim,
+            anhaenge: vec![id.clone()],
+        })
+        .await
+        .unwrap();
+    let nachricht = match warte_auf(&mut bosse.v, |f| matches!(f, ServerFrame::Text { .. })).await {
+        ServerFrame::Text { nachricht } => nachricht,
+        _ => unreachable!(),
+    };
+    assert_eq!(nachricht.anhaenge, std::slice::from_ref(&id));
+    let Lesbar::Inhalt(Inhalt::Anhang { dateien, .. }) = bosse.bund.lesen(&nachricht) else {
+        panic!("kein Anhang");
+    };
+    let schluessel = Dateischluessel::aus_hex(&dateien[0].schluessel).unwrap();
+
+    // Bosse lädt und entschlüsselt.
+    anhang::herunterladen(&bosse.v.leitung(), &id, &ziel, |_, _| {})
+        .await
+        .expect("herunterladen");
+    let mut d = Geheimdatei::oeffnen(&ziel, schluessel, &id).unwrap();
+    assert_eq!(d.lesen(0, klar.len() as u64).unwrap(), klar);
+
+    // Beim Server: nur Geheimtext, ohne Namen.
+    let abgelegt = server.verzeichnis.join("anhaenge").join(&id);
+    let bytes = std::fs::read(&abgelegt).expect("Datei beim Server");
+    assert_eq!(bytes.len() as u64, geheim_groesse(klar.len() as u64));
+    assert!(!bytes.windows(18).any(|w| w == b"Vereinsfoto-geheim"));
+    for datei in std::fs::read_dir(&server.verzeichnis).unwrap().flatten() {
+        if let Ok(b) = std::fs::read(datei.path()) {
+            assert!(
+                !b.windows(8).any(|w| w == b"fest.jpg"),
+                "{:?}",
+                datei.path()
+            );
+        }
+    }
+
+    // Wer weniger schickt als angekündigt, bekommt eine Absage und
+    // hinterlässt nichts.
+    let id2 = anhang::neue_id();
+    let (mut send, mut recv) = ada.v.leitung().open_bi().await.unwrap();
+    let anfrage = sprechwerk_protocol::schreibe_rahmen(&Datenanfrage::Hochladen {
+        id: id2.clone(),
+        groesse: geheim_groesse(10),
+    })
+    .unwrap();
+    send.write_all(&anfrage).await.unwrap();
+    send.write_all(&[0u8; 5]).await.unwrap();
+    send.finish().unwrap();
+    let antwort = recv.read_to_end(4096).await.unwrap();
+    let (antwort, _): (Datenantwort, usize) =
+        sprechwerk_protocol::lese_rahmen(&antwort).unwrap().unwrap();
+    assert!(
+        matches!(antwort, Datenantwort::Fehler { .. }),
+        "{antwort:?}"
+    );
+    assert!(!server.verzeichnis.join("anhaenge").join(&id2).exists());
+
+    // Ada löscht die Nachricht: die Datei ist weg.
+    ada.v
+        .sende(ClientFrame::NachrichtLoeschen {
+            nachricht: nachricht.id,
+        })
+        .await
+        .unwrap();
+    warte_auf(&mut bosse.v, |f| {
+        matches!(f, ServerFrame::NachrichtGeloescht { .. })
+    })
+    .await;
+    // Die Meldung kann vor dem Aufräumen ankommen (andere Aufgabe) — kurz warten.
+    for _ in 0..50 {
+        if !abgelegt.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(!abgelegt.exists(), "Anhang muss mit der Nachricht gehen");
 }
 
 /// Ein Client mit Serverschlüsselbund — beantwortet Schlüsselrahmen wie der
