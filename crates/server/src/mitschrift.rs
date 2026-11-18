@@ -11,7 +11,7 @@
 //! dem Puffer gefallen sind (dann beginnt die Antwort bei der ältesten, die es
 //! noch gibt).
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -21,14 +21,14 @@ use std::sync::{Arc, Mutex};
 pub const ZEILEN: usize = 5_000;
 
 /// Eine Zeile mit ihrer laufenden Nummer.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Zeile {
     pub nr: u64,
     pub text: String,
 }
 
 /// Antwort auf „was ist neu ab Nummer N".
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Auszug {
     pub zeilen: Vec<Zeile>,
     /// Damit fragt man beim nächsten Mal.

@@ -2,8 +2,8 @@
 //!
 //! **Festlegung (SPEC §2):** Konfiguration ist eine Datei im Volume, einzelne
 //! Werte lassen sich über Umgebungsvariablen überschreiben (für Docker). Die
-//! Verwaltungsoberfläche (`[verwaltung]`, SPEC §2 Nachtrag 2026-11-17) zeigt
-//! Protokoll und Rollen, ändert aber keine Konfiguration — die bleibt hier.
+//! Verwaltung (`[verwaltung]`, ADR 0013) zeigt Protokoll und Rollen, ändert
+//! aber keine Konfiguration — die bleibt hier.
 
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -18,9 +18,6 @@ pub enum Fehler {
     #[error("ungültiger Wert: {0}")]
     Wert(String),
 }
-
-/// Mindestlänge eines selbst gewählten Zugangscodes der Verwaltung.
-pub const MINDESTLAENGE_CODE: usize = 16;
 
 /// Die vollständige Konfiguration.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -80,32 +77,33 @@ pub struct Sicherung {
     pub verzeichnis: PathBuf,
 }
 
-/// Die Verwaltungsoberfläche im Browser (`crates/server/src/verwaltung.rs`).
+/// Verwaltung durch den Betreiber (`crates/server/src/verwaltung.rs`):
+/// Steuerkanal für die Konsole auf `127.0.0.1:port`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Verwaltung {
-    /// Oberfläche anbieten.
+    /// Steuerkanal anbieten (`sprechwerk stand`, `sprechwerk rolle …`).
     pub aktiv: bool,
-    /// Adresse für HTTP. Vorgabe `127.0.0.1`: nur auf diesem Rechner. Im
-    /// Container `0.0.0.0`, der Port wird dort nur an `127.0.0.1` des Hosts
-    /// gebunden (`docker-compose.yml`).
-    pub bind: String,
-    /// TCP-Port.
+    /// TCP-Port, nur auf `127.0.0.1`.
     pub port: u16,
-    /// Zugangscode; leer = bei jedem Start ein neuer (steht im Protokoll).
-    pub code: String,
-    /// Beim Start den Browser öffnen — nur, wenn es einen Bildschirm gibt.
-    pub browser: bool,
+    /// Veraltet (Verwaltung im Browser, bis 1.3): wird gelesen, damit alte
+    /// Dateien nicht scheitern, und beim Start als wirkungslos gemeldet.
+    #[serde(default)]
+    pub bind: Option<String>,
+    #[serde(default)]
+    pub code: Option<String>,
+    #[serde(default)]
+    pub browser: Option<bool>,
 }
 
 impl Default for Verwaltung {
     fn default() -> Self {
         Self {
             aktiv: true,
-            bind: "127.0.0.1".to_string(),
             port: 7444,
-            code: String::new(),
-            browser: true,
+            bind: None,
+            code: None,
+            browser: None,
         }
     }
 }
@@ -234,23 +232,14 @@ impl Konfig {
         if let Some(w) = ja("SPRECHWERK_VERWALTUNG_AKTIV") {
             self.verwaltung.aktiv = w;
         }
-        if let Some(w) = text("SPRECHWERK_VERWALTUNG_BIND") {
-            self.verwaltung.bind = w;
-        }
         if let Some(w) = zahl("SPRECHWERK_VERWALTUNG_PORT")? {
             self.verwaltung.port = w;
-        }
-        if let Some(w) = text("SPRECHWERK_VERWALTUNG_CODE") {
-            self.verwaltung.code = w;
-        }
-        if let Some(w) = ja("SPRECHWERK_VERWALTUNG_BROWSER") {
-            self.verwaltung.browser = w;
         }
         Ok(())
     }
 
     /// Prüft Werte, die sonst erst im Betrieb auffallen.
-    fn pruefen(&mut self) -> Result<(), Fehler> {
+    pub fn pruefen(&mut self) -> Result<(), Fehler> {
         if self.server.port == 0 {
             return Err(Fehler::Wert("port darf nicht 0 sein".into()));
         }
@@ -289,16 +278,6 @@ impl Konfig {
         if self.verwaltung.port == 0 {
             return Err(Fehler::Wert("verwaltung.port darf nicht 0 sein".into()));
         }
-        // Ein selbst gewählter Code ersetzt den zufälligen (128 Bit). Kurze
-        // Codes lassen sich durchprobieren — die Oberfläche kann Rollen
-        // vergeben, also auch den Administrator.
-        let code = self.verwaltung.code.trim();
-        if !code.is_empty() && code.chars().count() < MINDESTLAENGE_CODE {
-            return Err(Fehler::Wert(format!(
-                "verwaltung.code muss mindestens {MINDESTLAENGE_CODE} Zeichen haben (leer = zufällig)"
-            )));
-        }
-        self.verwaltung.code = code.to_string();
         Ok(())
     }
 
@@ -313,9 +292,18 @@ impl Konfig {
         format!("{}:{}", self.server.bind, self.server.port)
     }
 
-    /// Adresse der Verwaltungsoberfläche.
-    pub fn verwaltung_adresse(&self) -> String {
-        format!("{}:{}", self.verwaltung.bind, self.verwaltung.port)
+    /// Einträge aus der Zeit der Verwaltung im Browser, die nichts mehr
+    /// bewirken (für eine Warnung beim Start).
+    pub fn veraltet(&self) -> Vec<&'static str> {
+        let v = &self.verwaltung;
+        [
+            (v.bind.is_some(), "verwaltung.bind"),
+            (v.code.is_some(), "verwaltung.code"),
+            (v.browser.is_some(), "verwaltung.browser"),
+        ]
+        .into_iter()
+        .filter_map(|(gesetzt, name)| gesetzt.then_some(name))
+        .collect()
     }
 
     /// Pfad der Datenbankdatei.
@@ -349,12 +337,10 @@ behalten = 14
 # verzeichnis = "/data/sicherungen"
 
 [verwaltung]
-# Verwaltung im Browser: Protokoll, Mitglieder, Rollen (http://127.0.0.1:7444).
+# Steuerkanal für die Konsole: `sprechwerk stand`, `sprechwerk rolle <wer> <rolle>`,
+# `sprechwerk protokoll`. Nur 127.0.0.1; Zugang über <daten>/verwaltung.schluessel.
 aktiv = true
-bind = "127.0.0.1"        # nur dieser Rechner; im Container 0.0.0.0 (siehe docker-compose.yml)
-port = 7444               # TCP
-code = ""                 # leer = bei jedem Start neu, steht im Protokoll; sonst mind. 16 Zeichen
-browser = true            # beim Start öffnen, wenn ein Bildschirm da ist
+port = 7444               # TCP, nur dieser Rechner bzw. dieser Container
 "#
         .to_string()
     }
@@ -417,22 +403,19 @@ mod tests {
     }
 
     #[test]
-    fn verwaltung_ist_vorgabe_nur_lokal() {
+    fn verwaltung_vorgabe() {
         let k = Konfig::laden("/gibt/es/nicht.toml").unwrap();
         assert!(k.verwaltung.aktiv);
-        assert_eq!(k.verwaltung_adresse(), "127.0.0.1:7444");
-        assert!(k.verwaltung.code.is_empty());
+        assert_eq!(k.verwaltung.port, 7444);
+        assert!(k.veraltet().is_empty());
     }
 
     #[test]
-    fn kurzer_verwaltungscode_wird_abgelehnt() {
-        let pfad = datei("[verwaltung]\ncode = \"kurz\"\n");
-        assert!(matches!(Konfig::laden(&pfad), Err(Fehler::Wert(_))));
-        let _ = std::fs::remove_file(&pfad);
-        let pfad = datei("[verwaltung]\ncode = \"  ein-langer-code-1234  \"\nport = 9001\n");
+    fn alte_browser_eintraege_scheitern_nicht() {
+        let pfad = datei("[verwaltung]\ncode = \"kurz\"\nbind = \"0.0.0.0\"\nport = 9001\n");
         let k = Konfig::laden(&pfad).unwrap();
-        assert_eq!(k.verwaltung.code, "ein-langer-code-1234");
         assert_eq!(k.verwaltung.port, 9001);
+        assert_eq!(k.veraltet(), vec!["verwaltung.bind", "verwaltung.code"]);
         let _ = std::fs::remove_file(&pfad);
     }
 

@@ -1,0 +1,27 @@
+[package]
+name = "sprechwerk-server-fenster"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "sprechwerk: Server mit Fenster (egui) — derselbe Dienst wie `sprechwerk`, verwaltet ohne Konsole"
+
+[[bin]]
+name = "sprechwerk-server-fenster"
+path = "src/main.rs"
+
+[lib]
+name = "sprechwerk_server_fenster"
+path = "src/lib.rs"
+
+[dependencies]
+sprechwerk-server = { path = "../server" }
+sprechwerk-domain.workspace = true
+sprechwerk-oberflaeche = { path = "../oberflaeche" }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "accesskit", "wayland", "x11"] }
+tokio.workspace = true
+dirs = "6"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[dev-dependencies]
+egui_kittest = { version = "0.37", features = ["wgpu"] }
+image = { version = "0.25", default-features = false, features = ["png"] }

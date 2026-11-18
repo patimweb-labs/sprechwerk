@@ -770,74 +770,54 @@ async fn gleichzeitiges_betreten_laesst_niemanden_verschwinden() {
     );
 }
 
-/// Die Verwaltung im Browser läuft im echten Prozess: Anmeldelink setzt den
-/// Keks, mit dem Keks kommt der Stand (ADR 0011). Roh über TCP, ohne
-/// HTTP-Client als Abhängigkeit.
+/// Die Verwaltung auf der Konsole spricht den echten Prozess an (ADR 0013):
+/// `sprechwerk stand` mit demselben Datenverzeichnis zeigt Name und „noch
+/// niemand da"; eine falsche Rolle wird abgelehnt.
 #[test]
-fn verwaltung_antwortet_im_echten_prozess() {
+fn verwaltung_auf_der_konsole() {
     let port = std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
         .local_addr()
         .unwrap()
         .port()
         .to_string();
-    let code = "rundlauf-verwaltung-code";
-    let _server = Testserver::starten(
+    let server = Testserver::starten(
         "verwaltung",
         &[
             ("SPRECHWERK_VERWALTUNG_AKTIV", "1"),
-            ("SPRECHWERK_VERWALTUNG_BROWSER", "0"),
             ("SPRECHWERK_VERWALTUNG_PORT", &port),
-            ("SPRECHWERK_VERWALTUNG_CODE", code),
         ],
     );
-
-    let frage = |anfrage: String| -> Option<String> {
-        use std::io::{Read, Write};
-        let mut tcp = std::net::TcpStream::connect(format!("127.0.0.1:{port}")).ok()?;
-        tcp.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
-        tcp.write_all(anfrage.as_bytes()).ok()?;
-        let mut antwort = String::new();
-        tcp.read_to_string(&mut antwort).ok()?;
-        Some(antwort)
+    let befehl = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_sprechwerk"))
+            .args(args)
+            .env("SPRECHWERK_KONFIG", "/gibt/es/nicht.toml")
+            .env("SPRECHWERK_DATEN", &server.verzeichnis)
+            .env("SPRECHWERK_VERWALTUNG_PORT", &port)
+            .output()
+            .unwrap()
     };
-
-    // Die Verwaltung startet kurz nach „lauscht" — ein paar Versuche.
-    let mut link = None;
+    // Der Steuerkanal startet kurz nach „lauscht" — ein paar Versuche.
+    let mut stand = befehl(&["stand"]);
     for _ in 0..50 {
-        link = frage(format!(
-            "GET /anmelden?code={code} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
-        ));
-        if link.is_some() {
+        if stand.status.success() {
             break;
         }
         std::thread::sleep(Duration::from_millis(100));
+        stand = befehl(&["stand"]);
     }
-    let link = link.expect("Verwaltung antwortet");
-    assert!(link.starts_with("HTTP/1.1 303"), "{link}");
-    let keks = link
-        .lines()
-        .find_map(|z| z.strip_prefix("set-cookie: "))
-        .and_then(|w| w.split(';').next())
-        .expect("Keks gesetzt")
-        .to_string();
-
-    let ohne = frage(
-        "GET /api/stand HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n".to_string(),
-    )
-    .unwrap();
-    assert!(ohne.starts_with("HTTP/1.1 401"), "{ohne}");
-
-    let stand = frage(format!(
-        "GET /api/stand HTTP/1.1\r\nHost: 127.0.0.1\r\nCookie: {keks}\r\nConnection: close\r\n\r\n"
-    ))
-    .unwrap();
-    assert!(stand.starts_with("HTTP/1.1 200"), "{stand}");
-    assert!(stand.contains("\"name\":\"Rundlauftest\""), "{stand}");
+    let text = String::from_utf8_lossy(&stand.stdout);
     assert!(
-        stand.contains("\"erster_wird_administrator\":true"),
-        "{stand}"
+        stand.status.success(),
+        "{text}{}",
+        String::from_utf8_lossy(&stand.stderr)
     );
+    assert!(text.contains("Rundlauftest"), "{text}");
+    assert!(text.contains("Noch niemand da"), "{text}");
+
+    let falsch = befehl(&["rolle", "niemand", "administrator"]);
+    assert!(!falsch.status.success());
+    assert!(String::from_utf8_lossy(&falsch.stderr).contains("niemand passt"));
 }
 
 /// `docker stop` schickt SIGTERM: der Server beendet sich sofort und sauber,

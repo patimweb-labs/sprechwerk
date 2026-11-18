@@ -1636,5 +1636,95 @@
     "en": "Copy text",
     "es": "Copiar texto",
     "fr": "Copier le texte"
+  },
+  "srv.title": {
+    "de": "Server",
+    "en": "Server",
+    "es": "Servidor",
+    "fr": "Serveur"
+  },
+  "srv.start": {
+    "de": "Server starten",
+    "en": "Start server",
+    "es": "Iniciar servidor",
+    "fr": "Démarrer le serveur"
+  },
+  "srv.stop": {
+    "de": "Server anhalten",
+    "en": "Stop server",
+    "es": "Detener servidor",
+    "fr": "Arrêter le serveur"
+  },
+  "srv.state.stopped": {
+    "de": "angehalten",
+    "en": "stopped",
+    "es": "detenido",
+    "fr": "arrêté"
+  },
+  "srv.state.starting": {
+    "de": "startet …",
+    "en": "starting …",
+    "es": "iniciando …",
+    "fr": "démarrage …"
+  },
+  "srv.state.running": {
+    "de": "läuft",
+    "en": "running",
+    "es": "en marcha",
+    "fr": "en marche"
+  },
+  "srv.overview": {
+    "de": "Übersicht",
+    "en": "Overview",
+    "es": "Resumen",
+    "fr": "Vue d’ensemble"
+  },
+  "srv.settings": {
+    "de": "Einstellungen",
+    "en": "Settings",
+    "es": "Ajustes",
+    "fr": "Réglages"
+  },
+  "srv.settings.sub": {
+    "de": "Gilt beim nächsten Start. Während der Server läuft, ist nichts änderbar.",
+    "en": "Applies on the next start. Nothing can be changed while the server is running.",
+    "es": "Se aplica en el próximo inicio. No se puede cambiar nada mientras el servidor está en marcha.",
+    "fr": "S’applique au prochain démarrage. Rien n’est modifiable pendant que le serveur tourne."
+  },
+  "srv.data": {
+    "de": "Datenverzeichnis",
+    "en": "Data directory",
+    "es": "Directorio de datos",
+    "fr": "Répertoire de données"
+  },
+  "srv.password": {
+    "de": "Serverpasswort (leer = offen)",
+    "en": "Server password (empty = open)",
+    "es": "Contraseña (vacía = abierto)",
+    "fr": "Mot de passe (vide = ouvert)"
+  },
+  "srv.default_role": {
+    "de": "Rolle neuer Mitglieder",
+    "en": "Role of new members",
+    "es": "Rol de nuevos miembros",
+    "fr": "Rôle des nouveaux membres"
+  },
+  "srv.not_running": {
+    "de": "Der Server läuft nicht. Starte ihn oben rechts.",
+    "en": "The server is not running. Start it at the top right.",
+    "es": "El servidor no está en marcha. Inícialo arriba a la derecha.",
+    "fr": "Le serveur ne tourne pas. Démarre-le en haut à droite."
+  },
+  "srv.copy": {
+    "de": "Kopieren",
+    "en": "Copy",
+    "es": "Copiar",
+    "fr": "Copier"
+  },
+  "srv.port_udp": {
+    "de": "Port (UDP)",
+    "en": "Port (UDP)",
+    "es": "Puerto (UDP)",
+    "fr": "Port (UDP)"
   }
 }

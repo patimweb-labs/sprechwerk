@@ -15,6 +15,7 @@ members = [
     "crates/client",
     "crates/oberflaeche",
     "crates/fenster",
+    "crates/server-fenster",
 ]
 
 [workspace.package]

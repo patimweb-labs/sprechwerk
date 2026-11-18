@@ -4,17 +4,9 @@
 //! Startablauf: Konfiguration lesen, Datenbank öffnen, Zustand laden,
 //! Sicherung planen, lauschen.
 
-mod gesundheit;
-mod kern;
-mod konfig;
-mod mitschrift;
-mod netz;
-mod tls;
-mod verwaltung;
-
 use anyhow::Context;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use sprechwerk_server::verwaltung::{self, Antwort, Auftrag};
+use sprechwerk_server::{dienst, gesundheit, kern, konfig};
 
 /// Unterbefehl `beispiel` gibt eine Konfigurationsdatei aus.
 const BEISPIEL: &str = "beispiel";
@@ -27,6 +19,12 @@ const HILFE: &str = r#"sprechwerk — Server
   sprechwerk import <datei>          Zustand aus Text einspielen
   sprechwerk sicherung               Sofortsicherung anlegen
   sprechwerk --gesundheit            Lebenszeichen prüfen (für den Healthcheck)
+
+Verwaltung des laufenden Servers (im Container: docker exec … sprechwerk …):
+  sprechwerk stand                   Übersicht: Adresse, Fingerabdruck, Mitglieder
+  sprechwerk rolle <wer> <rolle>     Rolle setzen (wer: Name, Kennungsanfang oder mitglied_…;
+                                     rolle: administrator, moderator, mitglied, gast)
+  sprechwerk protokoll [ab]          Protokollzeilen (ab laufender Nummer)
 
 Konfiguration über Datei und Umgebungsvariablen (SPRECHWERK_*), siehe `beispiel`.
 "#;
@@ -182,6 +180,22 @@ fn main() -> anyhow::Result<()> {
             return betrieb_import(&quelle);
         }
         Some("sicherung") => return betrieb_sicherung(),
+        Some("stand") | Some("mitglieder") => return verwalten(Auftrag::Stand),
+        Some("protokoll") => {
+            let ab = args.next().and_then(|a| a.parse().ok()).unwrap_or(0);
+            return verwalten(Auftrag::Protokoll { ab });
+        }
+        Some("rolle") => {
+            let (Some(wer), Some(rolle)) = (args.next(), args.next()) else {
+                anyhow::bail!("Aufruf: sprechwerk rolle <wer> <rolle>");
+            };
+            let rolle = sprechwerk_domain::Role::aus_text(&rolle).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "unbekannte Rolle „{rolle}“ (administrator, moderator, mitglied, gast)"
+                )
+            })?;
+            return verwalten(Auftrag::Rolle { wer, rolle });
+        }
         Some("gesundheit") | Some("--gesundheit") => return betrieb_gesundheit(),
         Some("hilfe") | Some("--hilfe") | Some("-h") => {
             print!("{}", HILFE);
@@ -194,199 +208,45 @@ fn main() -> anyhow::Result<()> {
         .ok()
         .or(erster)
         .unwrap_or_else(|| "sprechwerk.toml".to_string());
-
-    // Protokollierung: Text, filterbar über SPRECHWERK_LOG.
-    //
-    // Der Vorgabefilter muss den **Modulpfad des Programms** treffen. Bis
-    // 2026-11-13 stand hier `sprechwerk_server=info` — das ist der Name des
-    // *Crate-Verzeichnisses*, nicht der des Programms; Ziel jedes
-    // `tracing::info!` ist aber `sprechwerk::…`. Folge: ohne gesetztes
-    // `SPRECHWERK_LOG` erschien **keine** Zeile (kein Start, kein „lauscht",
-    // keine Sprachrahmen-Zähler) — in `docker logs` war der Server stumm
-    // (gefunden von `scripts/lastprobe.sh`, 2026-11-13).
-    //
-    // Jede Zeile geht außerdem in die Mitschrift, die die Verwaltungsoberfläche
-    // zeigt — dieselben Zeilen wie in `docker logs`, keine zweite Quelle.
-    let filter = tracing_subscriber::EnvFilter::try_from_env("SPRECHWERK_LOG")
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("sprechwerk=info"));
-    let mitschrift = mitschrift::Mitschrift::neu();
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .with_writer(mitschrift.schreiber())
-        .init();
-
+    let mitschrift = dienst::protokoll_einrichten();
     let konfig = konfig::Konfig::laden(&konfig_pfad)
         .with_context(|| format!("Konfiguration {konfig_pfad}"))?;
-    tracing::info!(
-        name = %konfig.server.name,
-        port = konfig.server.port,
-        daten = %konfig.server.daten.display(),
-        sicherung = konfig.sicherung.aktiv,
-        "sprechwerk startet"
-    );
 
     let laufzeit = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
-
     laufzeit.block_on(async move {
-        let kern = Arc::new(Mutex::new(kern::Kern::neu(konfig.clone())?));
-        let zert = tls::laden_oder_erzeugen(&konfig.server.daten)?;
-
-        // Verwaltung im Browser (SPEC §2, Nachtrag 2026-11-17). Scheitert sie
-        // (Port belegt), läuft der Sprachdienst trotzdem — sie ist Beiwerk.
-        if konfig.verwaltung.aktiv {
-            let code = verwaltung::code_waehlen(&konfig.verwaltung.code);
-            let link = verwaltung::anmeldelink(
-                &konfig.verwaltung.bind,
-                konfig.verwaltung.port,
-                &code,
-            );
-            let v = verwaltung::Verwaltung {
-                kern: kern.clone(),
-                mitschrift: mitschrift.clone(),
-                code: code.into(),
-                fingerabdruck: zert.fingerabdruck.clone().into(),
-                gestartet: kern::jetzt_ms(),
-            };
-            let adresse = konfig.verwaltung_adresse();
-            let browser = konfig.verwaltung.browser;
-            tokio::spawn(async move {
-                let bedienen = verwaltung::bedienen(v, &adresse);
-                tokio::pin!(bedienen);
-                // Erst lauschen, dann den Link nennen und den Browser öffnen —
-                // sonst landet der Browser vor einer geschlossenen Tür.
-                tokio::select! {
-                    ergebnis = &mut bedienen => {
-                        if let Err(fehler) = ergebnis {
-                            tracing::error!(adresse = %adresse, fehler = %fehler, "Verwaltung nicht gestartet");
-                        }
-                        return;
-                    }
-                    _ = tokio::time::sleep(Duration::from_millis(200)) => {}
-                }
-                tracing::info!(adresse = %adresse, "Verwaltung bereit: {link}");
-                if browser {
-                    verwaltung::browser_oeffnen(&link);
-                }
-                if let Err(fehler) = bedienen.await {
-                    tracing::error!(fehler = %fehler, "Verwaltung beendet");
-                }
-            });
-        }
-
-        // Lebenszeichen für den Container-Healthcheck (siehe `gesundheit.rs`).
-        // Sofort einmal schreiben: sonst gilt der Dienst in den ersten Sekunden
-        // als krank, und ein Neustart kurz nach dem Start sähe wie ein Ausfall
-        // aus.
-        {
-            let daten = konfig.server.daten.clone();
-            let _ = gesundheit::schreibe(&daten, kern::jetzt_ms());
-            tokio::spawn(async move {
-                let mut takt = tokio::time::interval(gesundheit::TAKT);
-                loop {
-                    takt.tick().await;
-                    if let Err(fehler) = gesundheit::schreibe(&daten, kern::jetzt_ms()) {
-                        tracing::warn!(fehler = %fehler, "Lebenszeichen nicht schreibbar");
-                    }
-                }
-            });
-        }
-
-        // Sicherung nach Zeitplan (**Festlegung SPEC §2**).
-        if konfig.sicherung.aktiv {
-            let kern_sicherung = kern.clone();
-            let intervall = Duration::from_secs(konfig.sicherung.intervall_minuten.max(1) * 60);
-            tokio::spawn(async move {
-                let mut takt = tokio::time::interval(intervall);
-                takt.tick().await; // erster Takt verstreicht sofort
-                loop {
-                    takt.tick().await;
-                    let (state, verzeichnis, behalten) = {
-                        let k = kern_sicherung.lock().expect("Sperre");
-                        (
-                            k.state.clone(),
-                            k.konfig.sicherung.verzeichnis.clone(),
-                            k.konfig.sicherung.behalten,
-                        )
-                    };
-                    match sprechwerk_store::Store::sichern(
-                        &state,
-                        &verzeichnis,
-                        behalten,
-                        kern::jetzt_ms(),
-                    ) {
-                        Ok(pfad) => {
-                            tracing::info!(datei = %pfad.display(), "Sicherung geschrieben")
-                        }
-                        Err(fehler) => {
-                            tracing::error!(fehler = %fehler, "Sicherung fehlgeschlagen")
-                        }
-                    }
-                }
-            });
-        }
-
-        // Aufräumen: Aufbewahrungsfrist für Nachrichten.
-        if konfig.server.aufbewahrung_tage > 0 {
-            let kern_aufraeumen = kern.clone();
-            tokio::spawn(async move {
-                let mut takt = tokio::time::interval(Duration::from_secs(3_600));
-                loop {
-                    takt.tick().await;
-                    let mut k = kern_aufraeumen.lock().expect("Sperre");
-                    let grenze =
-                        kern::jetzt_ms() - (k.konfig.server.aufbewahrung_tage as i64) * 86_400_000;
-                    let vorher = k.state.nachrichten.len();
-                    k.state.nachrichten.retain(|n| n.zeit >= grenze);
-                    let entfernt = vorher - k.state.nachrichten.len();
-                    if entfernt > 0 {
-                        tracing::info!(entfernt, "Nachrichten nach Aufbewahrungsfrist entfernt");
-                        let _ = k.speichern();
-                    }
-                }
-            });
-        }
-
-        // Messung: Zählerstand im Takt protokollieren, wenn gewünscht.
-        if std::env::var("SPRECHWERK_MESSUNG").is_ok() {
-            let kern_messung = kern.clone();
-            tokio::spawn(async move {
-                let mut takt = tokio::time::interval(Duration::from_secs(10));
-                let (mut vor_rahmen, mut vor_verteilt, mut vor_verworfen) = (0u64, 0u64, 0u64);
-                loop {
-                    takt.tick().await;
-                    let z = {
-                        let k = kern_messung.lock().expect("Sperre");
-                        k.zaehler()
-                    };
-                    tracing::info!(
-                        rahmen = z.sprachrahmen - vor_rahmen,
-                        verteilt = z.verteilt - vor_verteilt,
-                        verloren = z.verworfen - vor_verworfen,
-                        abgelehnt = z.abgelehnt,
-                        verbundene = z.verbundene,
-                        "Sprachrahmen je 10 s"
-                    );
-                    vor_rahmen = z.sprachrahmen;
-                    vor_verteilt = z.verteilt;
-                    vor_verworfen = z.verworfen;
-                }
-            });
-        }
-
-        // Signalbehandlung: bei SIGTERM/Ctrl-C noch einmal speichern.
-        let kern_signal = kern.clone();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        // Bei SIGTERM/Ctrl-C noch einmal speichern.
         tokio::spawn(async move {
+            let Ok(v) = rx.await else { return };
             ende_abwarten().await;
             tracing::info!("beende, Zustand wird gespeichert");
-            if let Ok(mut k) = kern_signal.lock() {
-                let _ = k.speichern();
-            }
+            dienst::speichern(&v);
             std::process::exit(0);
         });
-
-        netz::lauschen(kern, zert).await
+        dienst::laufen(konfig, mitschrift, move |v| {
+            let _ = tx.send(v);
+        })
+        .await
     })
+}
+
+/// Ein Auftrag an den laufenden Server (Konsole).
+fn verwalten(auftrag: Auftrag) -> anyhow::Result<()> {
+    let konfig = konfig_laden()?;
+    if !konfig.verwaltung.aktiv {
+        anyhow::bail!("Verwaltung ist abgeschaltet (verwaltung.aktiv = false)");
+    }
+    match verwaltung::fragen(&konfig.server.daten, konfig.verwaltung.port, auftrag)? {
+        Antwort::Stand { stand } => print!("{}", verwaltung::stand_als_text(&stand)),
+        Antwort::Protokoll { auszug } => {
+            for z in auszug.zeilen {
+                println!("{:>6}  {}", z.nr, z.text);
+            }
+        }
+        Antwort::Rollenfehler { fehler } => anyhow::bail!("{fehler}"),
+        Antwort::Abgelehnt { grund } => anyhow::bail!("abgelehnt: {grund}"),
+    }
+    Ok(())
 }
