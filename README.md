@@ -18,7 +18,7 @@ Betreiber, der die Daten selbst in der Hand haben will.
 [Stand heute](#stand-heute) ·
 [Installation](#installation) ·
 [Das erste Mal verbinden](#das-erste-mal-verbinden) ·
-[Verwaltung im Browser](#verwaltung-im-browser) ·
+[Verwaltung](#verwaltung) ·
 [Sicherheit und Daten](#sicherheit-und-daten) ·
 [Betrieb](#betrieb) ·
 [Selbst prüfen](#selbst-prüfen) ·
@@ -79,10 +79,11 @@ werfen, vom Server werfen, sperren. Jede Änderung steht mit vorher/nachher im
 **Prüfprotokoll**, auch abgelehnte Versuche; die **Sperrliste** nennt Grund und
 Urheber und lässt sich aufheben.
 
-**Verwaltung im Browser.** Jeder Server bringt eine Verwaltungsseite mit, die er
-selbst ausliefert: Serverzustand, Mitglieder samt Rollen, Live-Protokoll. Hier
-wird man Administrator, ohne einen Schlüssel aus der Hand zu geben — siehe
-[Verwaltung im Browser](#verwaltung-im-browser).
+**Verwaltung ohne Browser.** Auf der Konsole (`sprechwerk stand`,
+`sprechwerk rolle Ada administrator`, im Container per `docker exec`) oder im
+**Server-Fenster**, das den Dienst gleich mitstartet: Serverzustand, Mitglieder
+samt Rollen, Live-Protokoll. Hier wird man Administrator, ohne einen Schlüssel
+aus der Hand zu geben — siehe [Verwaltung](#verwaltung).
 
 **Betrieb.** Ein Container mit einem Volume und einem UDP-Port — kein
 Reverse-Proxy, kein Zertifikatsantrag. Alternativ der Server als Programm unter
@@ -117,12 +118,13 @@ gesetzt.
 Sperrliste, Einstellungen und alle Bilder in **mono** liegen in
 [`docs/bilder/`](docs/bilder/).
 
-Die Bilder sind **erzeugt**, nicht abgelegt: `npm --prefix ui run bilder` startet
-die Oberfläche mit dem eingebauten Klickdummy (kein Server, keine Soundkarte),
-klickt sich durch alle Ansichten und nimmt jede in allen drei Schemata auf — mit
-fester Uhrzeit, deshalb liefert jeder Lauf auf derselben Maschine dieselben
-Bytes. Dabei prüft es im echten Browser, was ein Test ohne Browser nicht sieht
-(etwa, dass jeder Name in der Raumliste sichtbar ist).
+Die Bilder sind **erzeugt**, nicht abgelegt: die Oberflächentests
+(`crates/fenster/tests/oberflaeche.rs`, `egui_kittest`) zeichnen jede Ansicht
+mit einem Beispielmodell — ohne Server, ohne Soundkarte — in allen drei
+Schemata; mit `SPRECHWERK_BILDER=docs/bilder` landen sie hier. Dieselben Tests
+bedienen das Fenster über die Barrierefreiheits-Schnittstelle (AccessKit): ein
+Knopf ohne Namen oder ein Zeichen, das keine Schrift darstellen kann, lässt sie
+scheitern.
 
 Was das Fenster anders macht als TeamSpeak:
 
@@ -146,15 +148,15 @@ dass Funktionen fehlen, sondern durch das, was drumherum gewachsen ist.
 |---|---|---|
 | Lizenz | proprietär; kostenlose Lizenz mit begrenzter Platzanzahl, Lizenzdatei nötig | MIT, keine Platzgrenze, keine Lizenzdatei |
 | Quellcode | geschlossen (Client und Server) | offen: Server, Client, Protokoll, Oberfläche |
-| Ports | UDP 9987 Sprache, TCP 10011 Abfrage, TCP 30033 Dateien | **ein** UDP-Port (QUIC) plus TCP 7444 für die Verwaltung auf dem Server selbst |
+| Ports | UDP 9987 Sprache, TCP 10011 Abfrage, TCP 30033 Dateien | **ein** UDP-Port (QUIC); die Verwaltung bleibt auf 127.0.0.1 des Servers |
 | Verschlüsselung | eigene Krypto zwischen Client und Server; der Server kann Sprache entschlüsseln | TLS 1.3 mit angeheftetem Zertifikat, hybrid quantensicher im Transport; Text und Sprache **Ende zu Ende** |
 | Kennung | dauerhafte UID, kopierbar | Ed25519-Besitznachweis je Verbindung, mitnehmbare Schlüsseldatei |
 | Rechte | einige hundert Einzelrechte, Vererbung | vier Rollen, feste Tabelle |
 | Protokoll | binär, nicht dokumentiert (nachgebaut) | JSON-Rahmen, längenpräfixiert, versioniert ([`SPEC.md`](SPEC.md) §7, [`docs/datenfluss.md`](docs/datenfluss.md)) |
-| Oberfläche | Windows/macOS/Linux; Mobil-App kostenpflichtig | Fenster (Tauri 2, Linux/Windows/macOS), drei Farbschemata, vier Sprachen; Browser später über WebTransport |
+| Oberfläche | Windows/macOS/Linux; Mobil-App kostenpflichtig | Fenster in reinem Rust (egui, Linux/Windows/macOS), drei Farbschemata, vier Sprachen; Browser später über WebTransport |
 | Text | dauerhaft, serverseitig gespeichert und lesbar | dauerhaft, aber der Server speichert nur Geheimtext — lesen können die Mitglieder |
 | Reaktionen, Effekte, Link-Vorschau | nicht vorhanden (nur Text) | Reaktionen, Effekte, Vorschau; die Seite ruft der Absender ab |
-| Betriebswerkzeug | Abfrage-Schnittstelle, Hoster-Panels | Datei + Umgebungsvariablen + Unterbefehle (`beispiel`, `export`, `import`, `sicherung`, `--gesundheit`), dazu eine Verwaltung im Browser |
+| Betriebswerkzeug | Abfrage-Schnittstelle, Hoster-Panels | Datei + Umgebungsvariablen + Unterbefehle (`stand`, `rolle`, `protokoll`, `beispiel`, `export`, `import`, `sicherung`, `--gesundheit`), dazu eine Verwaltung im Browser |
 | Prüfprotokoll im Client | nein | ja, für Administrator und Moderator |
 | Dateien, Status, Video, Plugins | vorhanden (teils seit Jahren) | **nicht vorhanden** — bewusst „später", nicht „gestrichen" |
 | Reife | 20 Jahre, großes Ökosystem | 1.2, ein Projekt, ein Maintainer |
@@ -170,9 +172,9 @@ Lizenzbedingungen (Stand 2026) und können sich ändern.
 
 ## Stand heute
 
-Lauffähig und geprüft: **284 Tests** im Arbeitsbereich, **43** in der
-Fensteranwendung, **84** in der Oberfläche, dazu die Ansichten im echten Browser
-und Messskripte, die einen echten Server starten.
+Lauffähig und geprüft: **360 Tests** in einem Arbeitsbereich — Server,
+Client-Kern und beide Fenster samt Oberflächentests (über AccessKit, ohne Server
+und Soundkarte) — dazu Messskripte, die einen echten Server starten.
 
 * **Durchsatz und Antwortzeit** — Durchlauf einer Nachricht durch den Server
   p99 **21–29 µs**, Beitritt p95 **1,8–2,8 ms**, Aufpreis der Quantensicherheit
@@ -182,8 +184,10 @@ und Messskripte, die einen echten Server starten.
   (ChaCha20-Poly1305), Text mit einem Serverschlüssel, den nur die Mitglieder
   haben. In Datenbank und Sicherung steht ausschließlich Geheimtext, Klartext
   nimmt der Server nicht an — auch Reaktionen und Vorschauen nicht.
-* **Verwaltung** — im Browser, mitgeliefert, nur auf dem Rechner des Servers
-  erreichbar.
+* **Verwaltung** — auf der Konsole oder im Server-Fenster, nur auf dem
+  Rechner des Servers, ohne Port nach außen.
+* **Reines Rust** — Server, Fenster und Server-Fenster ohne Web-Technik: kein
+  Browser im Fenster, kein Node, kein CSS ([ADR 0013](docs/adr/0013-alles-in-rust.md)).
 
 Noch nicht gebaut (bewusst): Dateien und Bilder im Chat (geplant,
 [ADR 0012](docs/adr/0012-alles-ende-zu-ende.md) Stufe 3), GIF-Suche,
@@ -203,28 +207,28 @@ Jedes [Release](https://github.com/patimweb-labs/sprechwerk/releases) bringt mit
 
 | Datei | Für |
 |---|---|
-| `Sprechwerk_<version>_amd64.deb` | Fenster — Debian, Ubuntu (ab 24.04) |
-| `Sprechwerk-<version>-1.x86_64.rpm` | Fenster — Fedora, openSUSE |
-| `Sprechwerk_<version>_amd64.AppImage` | Fenster — jedes andere Linux, ohne Installation |
-| `Sprechwerk_<version>_x86_64.flatpak` | Fenster — als Flatpak (Silverblue, Steam Deck, …) |
-| `Sprechwerk_<version>_x64-setup.exe` | Fenster — Windows 10/11, Installation ohne Administratorrechte |
-| `Sprechwerk_<version>_x64_en-US.msi` | Fenster — Windows, für die Verteilung über Gruppenrichtlinien |
-| `Sprechwerk_<version>_universal.dmg` | Fenster — macOS 11 oder neuer, Apple Silicon und Intel |
-| `sprechwerk-server-<version>-linux-x86_64.tar.gz` | Server + `sprechwerk-cli`, PC/Server |
+| `sprechwerk_<version>_amd64.deb` | Debian, Ubuntu (ab 22.04): Fenster, Server-Fenster, Server, CLI |
+| `sprechwerk-<version>-1.x86_64.rpm` | dasselbe für Fedora, openSUSE |
+| `Sprechwerk-<version>-x86_64.AppImage` | Fenster — jedes andere Linux, ohne Installation |
+| `Sprechwerk-<version>-x86_64.flatpak` | Fenster — als Flatpak (Silverblue, Steam Deck, …) |
+| `sprechwerk-<version>-linux-x86_64.tar.gz` | alle vier Programme zum Auspacken |
+| `Sprechwerk-<version>-windows-x64.msi` | Windows 10/11: Fenster und Server-Fenster im Startmenü, Server und CLI daneben |
+| `Sprechwerk-<version>-windows-x64.zip` | dasselbe ohne Installation |
+| `Sprechwerk-<version>-macos-universal.dmg` | macOS 11 oder neuer, Apple Silicon und Intel: „Sprechwerk" und „Sprechwerk Server" |
+| `sprechwerk-server-<version>-linux-x86_64.tar.gz` | nur Server + `sprechwerk-cli`, für Server ohne Bildschirm |
 | `sprechwerk-server-<version>-linux-aarch64.tar.gz` | dasselbe für ARM (Raspberry Pi 4/5, 64 Bit) |
-| `sprechwerk-server-<version>-windows-x86_64.zip` | Server für Windows 10/11 — entpacken, `sprechwerk.exe` starten |
-| `sprechwerk-server-<version>-macos-universal.tar.gz` | Server für macOS 11 oder neuer, Apple Silicon und Intel |
 | `SHA256SUMS` | Prüfsummen aller Dateien (`sha256sum -c SHA256SUMS`) |
 
-Jeder Server bringt seine [Verwaltung im Browser](#verwaltung-im-browser) mit.
+Die Programme: **`sprechwerk-fenster`** (mitreden), **`sprechwerk-server-fenster`**
+(einen Server mit Fenster betreiben), **`sprechwerk`** (Server für Konsole,
+Dienst und Container), **`sprechwerk-cli`** (Referenzclient).
 
-`.deb` und `.rpm` ziehen Opus und `parec`/`pacat` als Abhängigkeit nach; beim
-AppImage müssen beide vorhanden sein (auf fast jedem Linux-Schreibtisch sind
-sie es). Die Server-Programme brauchen glibc 2.39 oder neuer (Debian 13,
-Ubuntu 24.04, aktuelle Fedora) — für ältere Systeme den Container nehmen.
+`.deb` und `.rpm` ziehen Opus als Abhängigkeit nach; beim AppImage muss es
+vorhanden sein (auf fast jedem Linux-Schreibtisch ist es das). Die Programme
+brauchen glibc 2.35 oder neuer (Ubuntu 22.04, Debian 12, aktuelle Fedora).
 
 **Flatpak:** `flatpak install --user Sprechwerk_<version>_x86_64.flatpak` —
-die GNOME-Laufzeit kommt dabei von Flathub mit. Schlüssel und Einstellungen
+die freedesktop-Laufzeit kommt dabei von Flathub mit. Schlüssel und Einstellungen
 liegen dann unter `~/.var/app/de.weppelmann.Sprechwerk/`.
 
 **Windows und macOS sind nicht signiert** (dafür bräuchte es ein
@@ -244,19 +248,15 @@ Opus liegt bei Windows und macOS im Paket; nichts weiter zu installieren.
 ### Server im Container (der übliche Weg)
 
 ```bash
-npm --prefix ui run verwaltung  # Verwaltung bauen (wird ins Programm eingebettet)
 docker compose up -d --build
-docker compose logs -f          # Fingerabdruck und Link zur Verwaltung
+docker compose logs -f                        # Fingerabdruck
+docker compose exec sprechwerk sprechwerk stand
 ```
-
-Ohne den ersten Schritt läuft alles, nur zeigt die Verwaltung statt der
-Oberfläche eine Seite mit der Bauanleitung; das fertige Abbild aus dem Release
-hat sie eingebaut.
 
 Ohne eigenen Bau: `docker run` mit dem Abbild aus dem Release —
 
 ```bash
-docker run -d --name sprechwerk -p 7443:7443/udp -p 127.0.0.1:7444:7444/tcp \
+docker run -d --name sprechwerk -p 7443:7443/udp \
   -v sprechwerk-daten:/data ghcr.io/patimweb-labs/sprechwerk:1.2
 ```
 
@@ -267,7 +267,8 @@ bleiben soll: ein Update migriert die Daten ohne Rückweg
 Ein Volume (`/data`), ein Port nach außen (`7443/udp`), sonst nichts. Weitere
 Einstellungen in `docker-compose.yml` oder als Umgebungsvariablen (siehe
 [Betrieb](#betrieb)). In der Firewall nur **UDP** 7443 freigeben; TCP braucht
-QUIC nicht. Die Verwaltung (7444/tcp) ist nur auf dem Host selbst erreichbar.
+QUIC nicht. Die Verwaltung läuft nur innerhalb des Containers
+(`docker exec`), es gibt keinen zweiten Port.
 
 Mit **Podman**: `podman build --format docker -t sprechwerk .` — im
 Standardformat (OCI) verwirft Podman die `HEALTHCHECK`-Anweisung.
@@ -280,7 +281,6 @@ Platz nicht belegen.
 ### Server ohne Container
 
 ```bash
-npm --prefix ui run verwaltung  # optional: Verwaltung im Browser einbetten
 cargo build --release -p sprechwerk-server
 SPRECHWERK_DATEN=./data ./target/release/sprechwerk
 ```
@@ -290,74 +290,42 @@ selbst) und einen C-Compiler für den TLS-Anbieter (`aws-lc-rs`); `cmake` ist
 nicht nötig. `sprechwerk beispiel > sprechwerk.toml` erzeugt eine vollständige
 Konfiguration zum Anpassen.
 
-**Unter Windows und macOS** das Archiv aus dem Release entpacken und
-`sprechwerk.exe` (Windows) bzw. `sprechwerk` (macOS) starten: ein Konsolenfenster
-zeigt das Protokoll, der Browser öffnet die Verwaltung. Daten, Zertifikat und
-Sicherungen landen in `daten/` neben dem Programm; Schließen des Fensters beendet
-den Server. Auch hier warnen SmartScreen bzw. Gatekeeper beim ersten Start (unter
-macOS: `xattr -d com.apple.quarantine sprechwerk sprechwerk-cli`). Die Firewall
+**Mit Fenster (Windows, macOS, Linux-Schreibtisch):** „Sprechwerk Server"
+starten — Name, Port und Datenverzeichnis prüfen, „Server starten". Das Fenster
+zeigt Fingerabdruck, Mitglieder mit Rollenwahl und das Protokoll; Schließen
+speichert und beendet den Server. Daten liegen im Profil
+(`~/.local/share/de.weppelmann.Sprechwerk/server`, unter Windows in
+`%APPDATA%`, unter macOS in `~/Library/Application Support`). Die Firewall
 fragt nach UDP 7443; für Mitglieder von außen muss der Router diesen Port
 weiterleiten.
 
-### Fenster aus dem Quellbaum
+### Aus dem Quellbaum
 
-Voraussetzungen auf jeder Plattform: Rust (über `rustup`), Node.js 22 und die
-Komponentenbibliothek [`weppelmann-ui`](https://github.com/Smotherer007/weppelmann-ui)
-**neben** diesem Verzeichnis (`../weppelmann-ui`, dort einmal
-`npm ci && npm run tokens`).
-
-```bash
-cd ui && npm ci && cd ..
-cargo build --release --manifest-path crates/desktop/Cargo.toml --features custom-protocol
-# Programm: crates/desktop/target/release/sprechwerk-desktop
-```
-
-`--features custom-protocol` bettet die Oberfläche ein; ohne das Merkmal lädt
-das Fenster die Entwicklungsadresse (Port 1423).
-
-Pakete wie im Release baut `npm --prefix ui run pakete` — die Tauri-CLI kommt
-dabei aus `ui/node_modules`, festgelegt auf eine Version; nichts weiter zu
-installieren. Ergebnis unter `crates/desktop/target/release/bundle/`. Welche
-Pakete auf welchem System entstehen, steht in
-`crates/desktop/tauri.<system>.conf.json`; das Flatpak entsteht aus dem `.deb`
-(Anleitung im Kopf von
-`crates/desktop/packaging/flatpak/de.weppelmann.Sprechwerk.yml`).
-
-**Linux — Fedora** (so geprüft):
+Nur Rust (über `rustup`; die Fassung legt `rust-toolchain.toml` fest) und ein
+C-Compiler — kein Node, keine Web-Bibliotheken, keine `-devel`-Pakete für das
+Fenster:
 
 ```bash
-sudo dnf install gcc pkgconf-pkg-config webkit2gtk4.1-devel gtk3-devel \
-  libsoup3-devel javascriptcoregtk4.1-devel librsvg2-devel opus pulseaudio-utils
+cargo run --release -p sprechwerk-fenster          # mitreden
+cargo run --release -p sprechwerk-server-fenster   # Server mit Fenster
 ```
 
-**Linux — Debian/Ubuntu** (so in der CI, Ubuntu 24.04):
+Das Fenster zeichnet mit OpenGL (egui über `glow`) und lädt X11/Wayland zur
+Laufzeit; Ton läuft unter Linux über das vorhandene PipeWire/PulseAudio
+(`parec`/`pacat`), Opus wird zur Laufzeit geladen
+([`docs/AUDIO.md`](docs/AUDIO.md)). Unter Windows liegt `opus.dll` neben der
+`.exe`, unter macOS genügt zum Ausprobieren `brew install opus`.
 
-```bash
-sudo apt install build-essential pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev \
-  libsoup-3.0-dev libjavascriptcoregtk-4.1-dev librsvg2-dev patchelf \
-  libopus0 pulseaudio-utils
-```
+Zwei Fenster mit zwei Kennungen auf einem Rechner (zum Ausprobieren):
+`SPRECHWERK_PROFIL=/tmp/ada cargo run -p sprechwerk-fenster` — das Profil hält
+Schlüssel und Einstellungen.
 
-Ton läuft unter Linux über das vorhandene PipeWire/PulseAudio (`parec`/`pacat`);
-ALSA-Entwicklungspakete braucht es nur für `--features cpal`
-([`docs/AUDIO.md`](docs/AUDIO.md)).
-
-**Windows 10/11:** Rust mit der MSVC-Werkzeugkette (Visual Studio Build Tools),
-CMake, WebView2 (in Windows 11 enthalten). Geräte über WASAPI, ohne
-Zusatzpakete. `crates/desktop/opus/opus.dll` muss vor dem Bau da sein — Tauri
-legt sie neben die `.exe` und prüft schon beim `cargo build`, dass es sie gibt.
-Wie sie entsteht (Opus aus den Quellen, statische C-Laufzeit), steht im Schritt
-„Opus bauen" in `.github/workflows/pakete.yml`.
-
-**macOS:** Xcode-Befehlszeilenwerkzeuge (`xcode-select --install`), CMake.
-Geräte über CoreAudio. Für den Bau gehört `libopus.0.dylib` nach
-`crates/desktop/opus/` (Tauri packt sie in `Contents/Frameworks`); zum
-Ausprobieren ohne Paket genügt `brew install opus`.
-
-Windows und macOS bauen **in der CI bei jedem PR** (`pakete.yml`, mit Clippy
-auf der jeweiligen Plattform), der Server ebenso (`server.yml`). Auf echten
-Geräten ist dort noch niemand gewesen — Rückmeldungen von Windows und macOS sind
-willkommen.
+**Pakete wie im Release** bauen die Skripte unter `packaging/`, je System eines
+(`packaging/linux/paket.sh` mit nfpm und appimagetool,
+`packaging/macos/paket.sh`, `packaging/windows/paket.ps1` mit WiX v5);
+Ergebnis in `dist/`. Die CI (`pakete.yml`) ruft dieselben Skripte auf, bei
+jedem PR auf Linux, Windows und macOS. Auf echten Windows- und Mac-Geräten ist
+noch niemand gewesen — Rückmeldungen sind willkommen.
 
 ## Das erste Mal verbinden
 
@@ -374,42 +342,46 @@ willkommen.
    die Leitung gehen.
 3. Der **erste** Client wird Administrator. Wer zuerst kommt, verwaltet — also
    zuerst du, dann die anderen. War jemand schneller, oder soll noch jemand
-   Administrator werden: in der [Verwaltung](#verwaltung-im-browser) beim Namen
-   die Rolle wählen.
+   Administrator werden: in der [Verwaltung](#verwaltung) die Rolle setzen.
 
 Wurde der Server neu aufgesetzt (neues Zertifikat), muss der gemerkte Wert
 einmal ausdrücklich vergessen werden: Serverliste → „Zertifikat vergessen" →
 neu verbinden.
 
-## Verwaltung im Browser
+## Verwaltung
 
-Jeder Server bringt eine Verwaltungsseite mit — dieselben Bausteine und Themes
-wie das Fenster:
+Zwei Wege, dieselbe Verwaltung ([ADR 0013](docs/adr/0013-alles-in-rust.md)):
 
-* **Server:** Name, Port, Laufzeit, Verbundene, letzte Sicherung und der
+**Auf der Konsole** — für Container und Server ohne Bildschirm. Die Befehle
+sprechen den laufenden Server über `127.0.0.1` an; Zugang hat, wer das
+Datenverzeichnis lesen kann (Schlüsseldatei `verwaltung.schluessel`, bei jedem
+Start neu, nur für den Eigentümer lesbar):
+
+```bash
+sprechwerk stand                       # Adresse, Fingerabdruck, Sicherung, Mitglieder
+sprechwerk rolle Ada administrator     # wer: Name, Kennungsanfang oder mitglied_…
+sprechwerk protokoll                   # dieselben Zeilen wie auf der Konsole
+
+# im Container
+docker compose exec sprechwerk sprechwerk stand
+```
+
+**Im Server-Fenster** (`sprechwerk-server-fenster`) — startet den Dienst im
+eigenen Prozess und zeigt:
+
+* **Übersicht:** Name, Adresse, Laufzeit, Verbundene, letzte Sicherung und der
   Fingerabdruck des Zertifikats zum Weitergeben an die Mitglieder.
-* **Mitglieder und Rollen:** wer da ist und war, mit Rolle. Hier wird man
-  **Administrator**, ohne einen Schlüssel aus der Hand zu geben: mit der App
-  verbinden, dann hier beim eigenen Namen „Administrator" wählen. Die Änderung
-  gilt sofort, auch für Verbundene. Der letzte Administrator bleibt es.
-* **Protokoll:** live, dieselben Zeilen wie auf der Konsole bzw. in
-  `docker compose logs`.
+* **Mitglieder und Rollen:** wer da ist und war, mit Rollenwahl.
+* **Protokoll:** live.
+* **Einstellungen:** Name, Port, Passwort, Rolle neuer Mitglieder,
+  Datenverzeichnis — vor dem Start.
 
-Erreichbar unter `http://127.0.0.1:7444` — **nur auf dem Rechner des Servers**.
-Den Zugangscode schreibt der Server beim Start ins Protokoll, als fertigen Link:
+Administrator wird man so: mit der App verbinden, dann die Rolle setzen. Die
+Änderung gilt sofort, auch für Verbundene; der letzte Administrator bleibt es.
+Räume, Sperren und Konfiguration ändert die Verwaltung nicht — das bleibt bei
+Fenster und Datei.
 
-```
-INFO Verwaltung bereit: http://127.0.0.1:7444/anmelden?code=3f9c…
-```
-
-Als Programm unter Windows/macOS (und Linux mit Bildschirm) öffnet sich dieser
-Link von selbst. Auf einem Server ohne Bildschirm von einem anderen Rechner aus:
-`ssh -L 7444:127.0.0.1:7444 <server>`, dann den Link im eigenen Browser öffnen.
-
-Der Code ist bei jedem Start neu (128 Bit Zufall); ein fester lässt sich setzen
-(`verwaltung.code`, mindestens 16 Zeichen). Räume, Sperren und Konfiguration
-ändert die Verwaltung nicht — das bleibt bei Fenster und Datei
-([`docs/adr/0011-verwaltung-im-browser.md`](docs/adr/0011-verwaltung-im-browser.md)).
+![Server-Fenster, Mitglieder und Rollen](docs/bilder/server-fenster-mitglieder-dark.png)
 
 ## Sicherheit und Daten
 
@@ -504,11 +476,8 @@ als Umgebungsvariable — `sprechwerk beispiel` gibt eine vollständige Vorlage 
 | `sicherung.intervall_minuten` | `SPRECHWERK_SICHERUNG_INTERVALL_MINUTEN` | Abstand (Vorgabe 1440 = täglich) |
 | `sicherung.behalten` | `SPRECHWERK_SICHERUNG_BEHALTEN` | Anzahl der Sicherungen (Vorgabe 14) |
 | `sicherung.verzeichnis` | `SPRECHWERK_SICHERUNG_VERZEICHNIS` | Ziel der Sicherungen (Vorgabe `<daten>/sicherungen`) |
-| `verwaltung.aktiv` | `SPRECHWERK_VERWALTUNG_AKTIV` | Verwaltung im Browser anbieten (Vorgabe ja) |
-| `verwaltung.bind` | `SPRECHWERK_VERWALTUNG_BIND` | Adresse (Vorgabe `127.0.0.1`; im Container `0.0.0.0`, auf dem Host nur `127.0.0.1`) |
-| `verwaltung.port` | `SPRECHWERK_VERWALTUNG_PORT` | TCP-Port (Vorgabe 7444) |
-| `verwaltung.code` | `SPRECHWERK_VERWALTUNG_CODE` | fester Zugangscode, mind. 16 Zeichen; leer = bei jedem Start neu |
-| `verwaltung.browser` | `SPRECHWERK_VERWALTUNG_BROWSER` | beim Start den Browser öffnen, wenn es einen Bildschirm gibt (Vorgabe ja) |
+| `verwaltung.aktiv` | `SPRECHWERK_VERWALTUNG_AKTIV` | Steuerkanal für `sprechwerk stand`/`rolle`/`protokoll` (Vorgabe ja) |
+| `verwaltung.port` | `SPRECHWERK_VERWALTUNG_PORT` | TCP-Port, nur auf 127.0.0.1 (Vorgabe 7444) |
 | — | `SPRECHWERK_LOG` | Protokollstufe, z. B. `sprechwerk=debug` (Vorgabe `sprechwerk=info`) |
 
 Betriebswerkzeuge:
@@ -528,7 +497,7 @@ statt halb gelesen.
 ## Selbst prüfen
 
 ```bash
-scripts/pruefen.sh              # alles: Form, Werkzeuge, Tests, Ansichten im Browser, Sprachproben
+scripts/pruefen.sh              # alles: Form, Werkzeuge, Tests, Bilder, Sprachproben
 scripts/pruefen.sh --nur-tests  # schnell
 scripts/latenz.sh               # p50/p95/p99 durch den Server
 scripts/lastprobe.sh            # Antwort und Rundruf unter Last
@@ -536,11 +505,11 @@ scripts/rundlauf.sh             # Server + zwei Clients von Hand
 scripts/sprechprobe.sh          # Ton durch den Server, ohne Mikrofon
 scripts/verlustprobe.sh         # Verlust und Jitter, über einen Proxy
 scripts/audio-ende-zu-ende.sh   # echter Gerätepfad mit virtuellen Geräten
-npm --prefix ui run bilder      # alle Ansichten in drei Schemata → docs/bilder/
+SPRECHWERK_BILDER=docs/bilder cargo test -p sprechwerk-fenster -p sprechwerk-server-fenster --test oberflaeche
 ```
 
-Dieselben Schritte laufen bei jedem Push (`.github/workflows/pruefen.yml`; die
-Bilder legt die CI als Artefakt ab), und ein Haken hält vor dem Push an
+Dieselben Schritte laufen bei jedem Push (`.github/workflows/pruefen.yml`),
+und ein Haken hält vor dem Push an
 (`git config core.hooksPath .githooks`).
 
 ## Mitentwickeln
@@ -548,12 +517,13 @@ Bilder legt die CI als Artefakt ab), und ein Haken hält vor dem Push an
 Die verbindlichen Regeln stehen in [`AGENTS.md`](AGENTS.md) — für Menschen wie
 für Werkzeuge. Das Wichtigste in Kürze:
 
-* **Oberfläche ohne Backend:** `npm --prefix ui run dev` startet sie allein
-  (Port 1423, Klickdummy über `?mock=1`). Wer für eine Oberflächenaufgabe einen
-  Server oder eine Soundkarte braucht, hat die Grenze falsch gezogen.
-* **Keine Farben, Größen oder Abstände im Code**, nur Tokens aus
-  `@weppelmann/tokens`; ein Test prüft, dass jedes benutzte Token existiert und
-  kein `px` in den Stilen steht.
+* **Oberfläche ohne Backend:** die Fenster hängen über ein Trait (`Kern`) am
+  Client; die Oberflächentests setzen ein Beispielmodell ein und bedienen das
+  Fenster über AccessKit. Wer für eine Oberflächenaufgabe einen Server oder
+  eine Soundkarte braucht, hat die Grenze falsch gezogen.
+* **Keine Farben, Größen oder Abstände im Code**, nur Tokens: `build.rs` in
+  `crates/oberflaeche` erzeugt sie aus den Token-Dateien von `weppelmann-ui`
+  (`crates/oberflaeche/tokens/`).
 * **Tests sind Teil der Lieferung** — ein Fix ohne Test ist ein Fix auf Probe.
 * **Immer über Branch und Pull Request**, Conventional Commits.
 * **Releases macht niemand von Hand.** Nach jedem Merge auf `master` hält
@@ -572,12 +542,16 @@ crates/adapters      Netz: QUIC, Anmeldung, Zertifikatsprüfung, Ende-zu-Ende, K
 crates/audio         Aufnahme/Wiedergabe, Opus, Verlustausgleich
 crates/linkvorschau  Link-Vorschau: Seite abrufen, Bild verkleinern (nur im Client)
 crates/ipc           Vertrag zum Fenster: Befehle, Ereignisse, Modellstand
-crates/server        Dienst: Listener, Befehlsausführung, Mitschrift, Sicherung, Verwaltung
+crates/client        Client-Kern ohne Oberfläche: Verbindung, Sprechpfad, Schlüssel, Einstellungen
+crates/oberflaeche   Bausatz der Fenster: Themes aus Tokens, Texte (4 Sprachen), Schriften
+crates/fenster       Fenster zum Mitreden (egui)
+crates/server        Dienst als Bibliothek + Programm `sprechwerk`: Netz, Mitschrift, Sicherung, Verwaltung
+crates/server-fenster  Server mit Fenster (egui)
 crates/cli           Referenzclient auf der Kommandozeile
-crates/desktop       Fensteranwendung (Tauri 2, eigene Sperrdatei) + ui/ (Vue 3)
+packaging/           Paketskripte je System (deb/rpm/AppImage/Flatpak, msi, dmg)
 ```
 
-Richtung der Abhängigkeiten: `domain ← adapters ← ipc ← ui`. `domain` kennt kein
+Richtung der Abhängigkeiten: `domain ← adapters ← ipc ← client ← fenster`. `domain` kennt kein
 Netz — deshalb sind Rechte, Räume und Verläufe ohne Sockets prüfbar. Der Server
 baut weder HTTP-Client noch Bilddecoder mit; die Link-Vorschau liegt deshalb in
 einem eigenen Crate, das nur die Clients ziehen. Mehr in

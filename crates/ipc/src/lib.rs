@@ -6,8 +6,8 @@
 //! keinen eigenen Zustand, der nicht im Modell steht.
 //!
 //! Befehle sind die zweite Hälfte: sie ändern etwas und antworten mit
-//! [`Antwort`]. Jeder Befehl hat ein Gegenstück in `ui/src/api.ts` — die
-//! Vertragsprüfung (`tests/vertrag.rs`) hält beide Seiten zusammen.
+//! [`Antwort`]. Das Fenster erzeugt sie als `Aktion::Befehl` über die Fassade
+//! in `crates/client` — derselbe Rust-Typ auf beiden Seiten (ADR 0013).
 
 pub mod abbilden;
 

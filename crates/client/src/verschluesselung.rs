@@ -1006,8 +1006,8 @@ mod tests {
 
     /// Startet den **echten** Server aus dem Arbeitsbereich.
     ///
-    /// `crates/desktop` liegt außerhalb des Arbeitsbereichs (Tauri hat eine
-    /// eigene Sperrdatei), deshalb wird das Programm über seinen Pfad gesucht.
+    /// Das Programm liegt in einem anderen Crate (`crates/server`), deshalb
+    /// wird es über seinen Pfad gesucht (`cargo test --workspace` baut es mit).
     /// Fehlt es, sagt der Test, was zu tun ist — statt still zu überspringen.
     fn server_starten(name: &str) -> Pruefserver {
         let sperre = E2E.lock().unwrap_or_else(|g| g.into_inner());

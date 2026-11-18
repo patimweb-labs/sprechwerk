@@ -952,9 +952,9 @@ mod tests {
 
     /// Startet den echten Server aus dem Arbeitsbereich.
     ///
-    /// `crates/desktop` liegt außerhalb des Arbeitsbereichs (Tauri hat eine
-    /// eigene Sperrdatei); fehlt das Programm, sagt der Test, was zu tun ist,
-    /// statt still zu überspringen.
+    /// Das Programm liegt in `crates/server` (`cargo test --workspace` baut es
+    /// mit); fehlt es, sagt der Test, was zu tun ist, statt still zu
+    /// überspringen.
     struct Pruefserver {
         kind: std::process::Child,
         verzeichnis: std::path::PathBuf,

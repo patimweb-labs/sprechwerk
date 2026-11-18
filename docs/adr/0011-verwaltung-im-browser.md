@@ -1,6 +1,6 @@
 # ADR 0011 — Verwaltung im Browser
 
-**Status:** umgesetzt (2026-11-17)
+**Status:** umgesetzt (2026-11-17), **ersetzt durch [ADR 0013](0013-alles-in-rust.md)** (2026-11-18): Verwaltung auf der Konsole (`sprechwerk stand/rolle/protokoll`) und im Server-Fenster, kein HTTP, kein Port 7444 nach außen.
 **Betrifft:** `crates/server` (`verwaltung.rs`, `mitschrift.rs`, `build.rs`),
 `crates/domain` (`rolle_setzen_als_betreiber`), `ui/src/verwaltung/`,
 `Dockerfile`, `docker-compose.yml`, `.github/workflows/server.yml`

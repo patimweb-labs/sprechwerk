@@ -1,6 +1,6 @@
 # ADR 0007 — Pakete je System und Betrieb
 
-**Status:** entworfen (2026-11-04), Pakete und Releases umgesetzt (2026-11-16)
+**Status:** entworfen (2026-11-04), Pakete und Releases umgesetzt (2026-11-16); **Paketteil überholt durch [ADR 0013](0013-alles-in-rust.md)** (2026-11-18): Skripte unter `packaging/` statt Tauri-Bundler, Container und Betrieb gelten weiter.
 **Betrifft:** `crates/desktop`, `flatpak/`, `packaging/`, OCI-Image
 
 ## Fenster

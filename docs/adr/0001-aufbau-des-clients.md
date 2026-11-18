@@ -1,6 +1,6 @@
 # ADR 0001 — Aufbau des Clients: Tauri 2 + Vue, Schichten wie im Hexwerk-Repo
 
-**Status:** entschieden (2026-11-04)
+**Status:** entschieden (2026-11-04), **überholt durch [ADR 0013](0013-alles-in-rust.md)** (2026-11-18): Fenster mit egui, kein Tauri und kein Vue mehr. Die Schichtung (`domain ← adapters ← ipc ← Oberfläche`) gilt weiter.
 **Betrifft:** `crates/desktop`, `crates/ipc`, `ui/`
 
 ## Zusammenhang

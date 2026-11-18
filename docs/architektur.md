@@ -6,14 +6,16 @@ unter sich.**
 
 ```mermaid
 flowchart TB
-    subgraph Client["Fensteranwendung (Tauri 2)"]
-        UI["ui/ — Vue 3, dünn<br/>render(modell)"]
-        DESK["crates/desktop<br/>Befehle übersetzen"]
+    subgraph Fenster["Fenster (egui, ADR 0013)"]
+        FEN["crates/fenster<br/>render(modell) → Aktionen"]
+        OB["crates/oberflaeche<br/>Themes aus Tokens, Texte"]
     end
 
-    subgraph Mitte["Vertrag und Netz"]
-        IPC["crates/ipc<br/>Befehle, Ereignisse, Modell"]
-        AD["crates/adapters<br/>QUIC, Anmeldung, später Audio"]
+    subgraph Kern["Client-Kern"]
+        CL["crates/client<br/>Fassade: Aktion → Meldung"]
+        IPC["crates/ipc<br/>Befehle, Modell"]
+        AD["crates/adapters<br/>QUIC, Anmeldung, Ende zu Ende"]
+        AU["crates/audio<br/>Geräte, Opus"]
     end
 
     subgraph Unten["Grundlage"]
@@ -21,17 +23,20 @@ flowchart TB
         DOM["crates/domain<br/>Räume, Rollen, Nachrichten, Protokoll"]
     end
 
-    subgraph Server["Server"]
-        SRV["crates/server<br/>QUIC-Dienst, Verteilung"]
+    subgraph Server["Server (Bibliothek + zwei Programme)"]
+        SRV["crates/server<br/>dienst::laufen, Verteilung"]
+        VERW["server::verwaltung<br/>Stand, Rollen, Protokoll"]
         STORE["crates/store<br/>SQLite, Export, Sicherung"]
-        VERW["crates/server::verwaltung<br/>HTTP 127.0.0.1:7444"]
+        KONS["sprechwerk stand/rolle<br/>(Konsole, 127.0.0.1)"]
+        SFEN["crates/server-fenster<br/>(egui)"]
     end
 
-    BROWSER["ui/src/verwaltung — Vue 3<br/>im Browser des Betreibers"]
-
-    UI -->|invoke/event| DESK
-    DESK --> IPC
-    IPC --> AD
+    FEN --> OB
+    FEN -->|Aktion| CL
+    CL -->|Meldung| FEN
+    CL --> IPC
+    CL --> AD
+    CL --> AU
     IPC --> DOM
     AD --> PROTO
     PROTO --> DOM
@@ -39,7 +44,9 @@ flowchart TB
     SRV --> DOM
     SRV --> STORE
     STORE --> DOM
-    BROWSER -->|"HTTP, JSON"| VERW
+    KONS -->|"JSON-Zeile + Schlüsseldatei"| VERW
+    SFEN -->|direkt| VERW
+    SFEN --> OB
     VERW --> SRV
 ```
 
@@ -51,13 +58,16 @@ flowchart TB
 | `protocol` | Bytes zu Feldern, Felder zu Bytes | Verbindungen aufbauen |
 | `adapters` | QUIC, Schlüssel, Geräte | Fachlogik (Rechte, Räume) |
 | `ipc` | Modell für die Oberfläche bauen | Fenster, Sockets |
-| `desktop` | Befehle weiterreichen, Ereignisse senden | Rechnen |
-| `ui` | Darstellen, Ereignisse auslösen | Eigene Wahrheit halten |
-| `server::verwaltung` | Stand zeigen, Rollen als Betreiber setzen (ADR 0011) | Räume, Sperren, Konfiguration ändern |
+| `client` | Aktionen ausführen, Zustand melden | zeichnen |
+| `oberflaeche` | Themes, Texte, Bausteine | Netz, Client, Server kennen |
+| `fenster` | Modell zeichnen, Aktionen erzeugen, reine Logik in `logik.rs` | eigene Wahrheit über Server, Räume, Chat halten |
+| `server::verwaltung` | Stand zeigen, Rollen als Betreiber setzen (ADR 0013) | Räume, Sperren, Konfiguration ändern |
 
-Die letzte Zeile ist die wichtigste: die Oberfläche hat **einen** Zustand, und
-der kommt vollständig aus dem Rust-Teil (`crates/ipc::Zustand`). Ein Klick löst
-einen Befehl aus; die Antwort ist ein neuer Modellstand.
+Die wichtigste Zeile ist die des Fensters: es hat **einen** Zustand über den
+Server, und der kommt vollständig aus dem Client-Kern (`crates/ipc::Zustand`).
+Daneben hält es nur, was allein die Oberfläche betrifft (offene Ansicht,
+offener Dialog, Text im Eingabefeld) — als Summentypen in `modell.rs`. Ein
+Klick erzeugt eine `Aktion`; die Antwort ist ein neuer Modellstand.
 
 ## Warum der Server keinen Zustand doppelt hält
 
