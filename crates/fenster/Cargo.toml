@@ -1,0 +1,39 @@
+[package]
+name = "sprechwerk-fenster"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "sprechwerk: Fensteranwendung in reinem Rust (egui)"
+
+[[bin]]
+name = "sprechwerk-fenster"
+path = "src/main.rs"
+
+[lib]
+name = "sprechwerk_fenster"
+path = "src/lib.rs"
+
+# Oberfläche in reinem Rust (ADR 0013): egui wie ArtCraft/FigCraft. `glow`
+# (OpenGL) statt wgpu: kleiner, schneller gebaut, reicht für Text und Flächen.
+# `accesskit`: Rollen und Namen für Screenreader (AGENTS.md §5).
+[dependencies]
+sprechwerk-domain.workspace = true
+sprechwerk-protocol.workspace = true
+sprechwerk-ipc = { path = "../ipc" }
+sprechwerk-client = { path = "../client" }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "accesskit", "wayland", "x11", "links"] }
+# Emoji (Reaktionen, Schloss, Herz) und Zeichen wie ● ⋯: ohne dieses Merkmal
+# fehlen sie in den eingebauten Schriften (die Oberflächentests fallen dann um).
+egui = { version = "0.37", default-features = false, features = ["monochrome_emoji_fonts"] }
+serde.workspace = true
+serde_json.workspace = true
+dirs = "6"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+
+[dev-dependencies]
+egui_kittest = { version = "0.37", features = ["snapshot", "wgpu"] }
+
+[build-dependencies]
+serde_json.workspace = true

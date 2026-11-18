@@ -1,0 +1,226 @@
+{
+  "color": {
+    "$type": "color",
+    "neutral": {
+      "1000": {
+        "$value": "#05070A"
+      },
+      "950": {
+        "$value": "#090C10"
+      },
+      "900": {
+        "$value": "#0E1319"
+      },
+      "850": {
+        "$value": "#131A22"
+      },
+      "800": {
+        "$value": "#18202A"
+      },
+      "700": {
+        "$value": "#1F2831"
+      },
+      "600": {
+        "$value": "#2E3A46"
+      },
+      "500": {
+        "$value": "#3E4C5A"
+      },
+      "400": {
+        "$value": "#78838F"
+      },
+      "300": {
+        "$value": "#98A3AF"
+      },
+      "200": {
+        "$value": "#C9C3B7"
+      },
+      "100": {
+        "$value": "#E9E5DC"
+      },
+      "50": {
+        "$value": "#F6F2EA"
+      },
+      "0": {
+        "$value": "#FFFDF8"
+      }
+    },
+    "accent": {
+      "700": {
+        "$value": "#8C520C"
+      },
+      "600": {
+        "$value": "#A96410"
+      },
+      "500": {
+        "$value": "#C9862C"
+      },
+      "400": {
+        "$value": "#F2A63B"
+      },
+      "300": {
+        "$value": "#FFC873"
+      }
+    },
+    "warn": {
+      "strong": {
+        "$value": "#A86A0E"
+      },
+      "default": {
+        "$value": "#F2A63B"
+      }
+    },
+    "error": {
+      "strong": {
+        "$value": "#A8321E"
+      },
+      "default": {
+        "$value": "#D9614A"
+      }
+    },
+    "ok": {
+      "strong": {
+        "$value": "#4F7A2E"
+      },
+      "default": {
+        "$value": "#86B26A"
+      }
+    }
+  },
+  "space": {
+    "$type": "dimension",
+    "0": {
+      "$value": "0"
+    },
+    "1": {
+      "$value": "4px"
+    },
+    "2": {
+      "$value": "8px"
+    },
+    "3": {
+      "$value": "12px"
+    },
+    "4": {
+      "$value": "16px"
+    },
+    "5": {
+      "$value": "24px"
+    },
+    "6": {
+      "$value": "32px"
+    },
+    "7": {
+      "$value": "48px"
+    },
+    "8": {
+      "$value": "64px"
+    }
+  },
+  "radius": {
+    "none": {
+      "$value": "0"
+    },
+    "sm": {
+      "$value": "0"
+    },
+    "md": {
+      "$value": "0"
+    },
+    "lg": {
+      "$value": "0"
+    },
+    "pill": {
+      "$value": "0"
+    }
+  },
+  "font": {
+    "family": {
+      "$type": "fontFamily",
+      "sans": {
+        "$value": "'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif"
+      },
+      "display": {
+        "$value": "Archivo, 'IBM Plex Sans', system-ui, sans-serif"
+      },
+      "mono": {
+        "$value": "'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace"
+      }
+    },
+    "size": {
+      "$type": "dimension",
+      "xs": {
+        "$value": "11px"
+      },
+      "sm": {
+        "$value": "12px"
+      },
+      "md": {
+        "$value": "14px"
+      },
+      "lg": {
+        "$value": "16px"
+      },
+      "xl": {
+        "$value": "20px"
+      },
+      "2xl": {
+        "$value": "28px"
+      }
+    },
+    "weight": {
+      "$type": "fontWeight",
+      "regular": {
+        "$value": 400
+      },
+      "medium": {
+        "$value": 500
+      },
+      "semibold": {
+        "$value": 600
+      }
+    },
+    "line": {
+      "$type": "number",
+      "tight": {
+        "$value": 1.2
+      },
+      "normal": {
+        "$value": 1.5
+      },
+      "mono": {
+        "$value": 1.35
+      }
+    }
+  },
+  "size": {
+    "$type": "dimension",
+    "control-sm": {
+      "$value": "28px"
+    },
+    "control-md": {
+      "$value": "32px"
+    },
+    "control-lg": {
+      "$value": "40px"
+    },
+    "border": {
+      "$value": "1px"
+    },
+    "focus": {
+      "$value": "2px"
+    },
+    "titlebar-macos": {
+      "$value": "68px"
+    }
+  },
+  "duration": {
+    "$type": "duration",
+    "fast": {
+      "$value": "120ms"
+    },
+    "normal": {
+      "$value": "200ms"
+    }
+  }
+}
