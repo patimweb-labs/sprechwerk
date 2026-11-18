@@ -161,7 +161,7 @@ fn main() -> eframe::Result {
             .with_app_id("de.weppelmann.Sprechwerk.Server")
             .with_icon(std::sync::Arc::new(symbol))
             .with_inner_size([1000.0, 680.0])
-            .with_min_inner_size([640.0, 420.0]),
+            .with_min_inner_size([thema::SPACE_8 * 5.0, thema::SPACE_8 * 6.0]),
         ..Default::default()
     };
     eframe::run_native(

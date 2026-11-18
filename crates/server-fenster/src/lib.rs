@@ -11,7 +11,8 @@
 use eframe::egui::{self, RichText, Stroke};
 use sprechwerk_domain::Role;
 use sprechwerk_oberflaeche::bausteine::{
-    hauptknopf_mit, icon_knopf, icon_text_knopf, karte, knopf, leer, seitenkopf, text, Icon,
+    auswahl, fakten, feld, feldbreite, hauptknopf_mit, icon_knopf, icon_text_knopf, karte, knopf,
+    kopierbar, leer, seite, seitenkopf, status, status_klein, text, Icon,
 };
 use sprechwerk_oberflaeche::texte::{rolle, t, tf, Sprache};
 use sprechwerk_oberflaeche::thema::{self, fett, Thema, Ton};
@@ -185,7 +186,9 @@ pub fn zeichnen(ui: &mut egui::Ui, m: &mut Modell) -> Vec<Aktion> {
         .show(ui, |ui| {
             // Rechts Zustand und Start/Stopp in fester Breite, links der Rest:
             // nichts schiebt sich übereinander. Schmal: Reiter nur als Icon.
-            let breit = ui.available_width() >= thema::SPACE_8 * 12.0;
+            let breit = ui.available_width() >= thema::SPACE_8 * 10.0;
+            // Sehr schmal: der Zustand nur als Quadrat (Text im Hinweis).
+            let eng = ui.available_width() < thema::SPACE_8 * 7.0;
             let lauf = m.lauf.clone();
             let mut rechts = Vec::new();
             egui::Sides::new()
@@ -195,13 +198,15 @@ pub fn zeichnen(ui: &mut egui::Ui, m: &mut Modell) -> Vec<Aktion> {
                 .show(
                     ui,
                     |ui| {
-                        ui.label(
-                            RichText::new("sprechwerk")
-                                .font(egui::FontId::new(thema::FONT_SIZE_LG, fett()))
-                                .color(f.accent_default),
-                        );
-                        ui.label(text(&f, t(s, "srv.title"), Ton::Leise));
-                        ui.add_space(thema::SPACE_3);
+                        if breit {
+                            ui.label(
+                                RichText::new("sprechwerk")
+                                    .font(egui::FontId::new(thema::FONT_SIZE_LG, fett()))
+                                    .color(f.accent_default),
+                            );
+                            ui.label(text(&f, t(s, "srv.title"), Ton::Leise));
+                            ui.add_space(thema::SPACE_3);
+                        }
                         for (seite, bild, k) in [
                             (Seite::Uebersicht, Icon::Server, "srv.overview"),
                             (Seite::Mitglieder, Icon::Leute, "admin.members.title"),
@@ -219,22 +224,38 @@ pub fn zeichnen(ui: &mut egui::Ui, m: &mut Modell) -> Vec<Aktion> {
                             }
                         }
                     },
-                    |ui| match &lauf {
-                        Lauf::Gestoppt | Lauf::Fehler(_) => {
-                            if hauptknopf_mit(ui, &f, Icon::Start, &t(s, "srv.start")).clicked() {
-                                rechts.push(Aktion::Starten);
+                    |ui| {
+                        // Schmal: Start/Stopp nur als Icon, der Zustand als Schild bleibt.
+                        let schmal = !breit;
+                        match &lauf {
+                            Lauf::Gestoppt | Lauf::Fehler(_) => {
+                                let name = t(s, "srv.start");
+                                let a = if schmal {
+                                    icon_knopf(ui, &f, Icon::Start, &name, true)
+                                } else {
+                                    hauptknopf_mit(ui, &f, Icon::Start, &name)
+                                };
+                                if a.clicked() {
+                                    rechts.push(Aktion::Starten);
+                                }
+                                zustand(ui, &f, eng, Ton::Blass, &t(s, "srv.state.stopped"));
                             }
-                            ui.label(text(&f, t(s, "srv.state.stopped"), Ton::Blass));
-                        }
-                        Lauf::Startet => {
-                            ui.spinner();
-                            ui.label(text(&f, t(s, "srv.state.starting"), Ton::Warnung));
-                        }
-                        Lauf::Laeuft(_) => {
-                            if knopf(ui, &f, Icon::Stopp, &t(s, "srv.stop")).clicked() {
-                                rechts.push(Aktion::Anhalten);
+                            Lauf::Startet => {
+                                ui.spinner();
+                                zustand(ui, &f, eng, Ton::Warnung, &t(s, "srv.state.starting"));
                             }
-                            ui.label(text(&f, t(s, "srv.state.running"), Ton::Gut));
+                            Lauf::Laeuft(_) => {
+                                let name = t(s, "srv.stop");
+                                let a = if schmal {
+                                    icon_knopf(ui, &f, Icon::Stopp, &name, false)
+                                } else {
+                                    knopf(ui, &f, Icon::Stopp, &name)
+                                };
+                                if a.clicked() {
+                                    rechts.push(Aktion::Anhalten);
+                                }
+                                zustand(ui, &f, eng, Ton::Gut, &t(s, "srv.state.running"));
+                            }
                         }
                     },
                 );
@@ -252,25 +273,33 @@ pub fn zeichnen(ui: &mut egui::Ui, m: &mut Modell) -> Vec<Aktion> {
                 )),
         )
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
-                if let Some(st) = &m.stand {
-                    ui.label(text(
-                        &f,
-                        tf(
-                            s,
-                            "admin.status.counts",
-                            &[&st.verbundene, &st.mitglieder.len()],
-                        ),
-                        Ton::Leise,
-                    ));
-                }
-                if let Lauf::Fehler(x) = &m.lauf {
-                    ui.label(text(&f, x, Ton::Fehler));
-                } else if let Some((x, gut)) = &m.meldung {
-                    ui.label(text(&f, x, if *gut { Ton::Gut } else { Ton::Fehler }));
-                }
+            ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
+            let zahlen = m.stand.as_ref().map(|st| {
+                tf(
+                    s,
+                    "admin.status.counts",
+                    &[&st.verbundene, &st.mitglieder.len()],
+                )
             });
+            let meldung = match (&m.lauf, &m.meldung) {
+                (Lauf::Fehler(x), _) => Some((x.clone(), Ton::Fehler)),
+                (_, Some((x, gut))) => Some((x.clone(), if *gut { Ton::Gut } else { Ton::Fehler })),
+                _ => None,
+            };
+            egui::Sides::new().shrink_right().truncate().show(
+                ui,
+                |ui| {
+                    if let Some(z) = zahlen {
+                        ui.add(egui::Label::new(text(&f, z, Ton::Leise)).truncate());
+                    }
+                },
+                |ui| {
+                    if let Some((x, ton)) = meldung {
+                        ui.add(egui::Label::new(text(&f, &x, ton)).truncate())
+                            .on_hover_text(x);
+                    }
+                },
+            );
         });
 
     egui::CentralPanel::default()
@@ -288,139 +317,167 @@ pub fn zeichnen(ui: &mut egui::Ui, m: &mut Modell) -> Vec<Aktion> {
     aktionen
 }
 
+/// Zustand des Dienstes in der Kopfleiste: mit Text, oder eng nur das Schild.
+fn zustand(ui: &mut egui::Ui, f: &thema::Farben, eng: bool, ton: Ton, beschriftung: &str) {
+    if eng {
+        status_klein(ui, f, ton, beschriftung);
+    } else {
+        status(ui, f, ton, beschriftung);
+    }
+}
+
 fn uebersicht(ui: &mut egui::Ui, m: &mut Modell) {
     let s = m.sprache;
     let f = *m.thema.farben();
-    ui.add_space(thema::SPACE_2);
-    seitenkopf(
-        ui,
-        &f,
-        &t(s, "admin.server.title"),
-        &t(s, "admin.server.fingerprint_hint"),
-    );
-    let Some(st) = m.stand.clone() else {
-        leer(ui, &f, &t(s, "srv.state.stopped"), &t(s, "srv.not_running"));
-        return;
-    };
-    karte(ui, &f, &st.name, None, |ui| {
-        egui::Grid::new("fakten")
-            .num_columns(2)
-            .spacing([thema::SPACE_4, thema::SPACE_2])
-            .show(ui, |ui| {
-                let zeit = |ms: i64| uhrzeit(ms);
-                let sicherung = match (st.sicherung.aktiv, st.sicherung.letzte) {
-                    (false, _) => t(s, "admin.server.backup_off"),
-                    (true, None) => t(s, "admin.server.backup_none"),
-                    (true, Some(z)) => zeit(z),
-                };
-                for (k, w) in [
-                    ("admin.server.address", st.adresse.clone()),
-                    ("admin.server.version", st.version.clone()),
-                    ("admin.server.uptime", zeit(st.gestartet)),
-                    ("admin.server.connected", st.verbundene.to_string()),
-                    ("admin.server.rooms", st.raeume.to_string()),
-                    ("admin.server.backup", sicherung),
-                ] {
-                    ui.label(text(&f, t(s, k), Ton::Leise));
-                    ui.label(w);
-                    ui.end_row();
-                }
-            });
-    });
-    ui.add_space(thema::SPACE_4);
-    karte(ui, &f, &t(s, "admin.server.fingerprint"), None, |ui| {
-        let fp = gruppiert(&st.fingerabdruck);
-        ui.label(RichText::new(&fp).monospace());
-        if knopf(ui, &f, Icon::Kopieren, &t(s, "srv.copy")).clicked() {
-            ui.ctx().copy_text(fp);
+    seite(ui, |ui| {
+        seitenkopf(ui, &f, &t(s, "srv.overview"), &t(s, "srv.overview.sub"));
+        let Some(st) = m.stand.clone() else {
+            leer(ui, &f, &t(s, "srv.state.stopped"), &t(s, "srv.not_running"));
+            return;
+        };
+        if st.erster_wird_administrator {
+            karte(
+                ui,
+                &f,
+                &t(s, "admin.first.title"),
+                Some(&t(s, "admin.first.desc")),
+                |_| {},
+            );
+            ui.add_space(thema::SPACE_4);
         }
-    });
-    if st.erster_wird_administrator {
+        karte(ui, &f, &st.name, None, |ui| {
+            let sicherung = match (st.sicherung.aktiv, st.sicherung.letzte) {
+                (false, _) => t(s, "admin.server.backup_off"),
+                (true, None) => t(s, "admin.server.backup_none"),
+                (true, Some(z)) => uhrzeit(z),
+            };
+            fakten(
+                ui,
+                &f,
+                &[
+                    (t(s, "admin.server.address"), st.adresse.clone(), true),
+                    (t(s, "admin.server.version"), st.version.clone(), false),
+                    (t(s, "admin.server.uptime"), uhrzeit(st.gestartet), false),
+                    (
+                        t(s, "admin.server.connected"),
+                        st.verbundene.to_string(),
+                        false,
+                    ),
+                    (t(s, "admin.server.rooms"), st.raeume.to_string(), false),
+                    (t(s, "admin.server.backup"), sicherung, false),
+                ],
+            );
+        });
         ui.add_space(thema::SPACE_4);
         karte(
             ui,
             &f,
-            &t(s, "admin.first.title"),
-            Some(&t(s, "admin.first.desc")),
-            |_| {},
+            &t(s, "admin.server.fingerprint"),
+            Some(&t(s, "admin.server.fingerprint_hint")),
+            |ui| kopierbar(ui, &f, &gruppiert(&st.fingerabdruck), &t(s, "srv.copy")),
         );
-    }
+    });
 }
 
 fn mitglieder(ui: &mut egui::Ui, m: &mut Modell, aktionen: &mut Vec<Aktion>) {
     let s = m.sprache;
     let f = *m.thema.farben();
-    ui.add_space(thema::SPACE_2);
-    seitenkopf(
-        ui,
-        &f,
-        &t(s, "admin.members.title"),
-        &t(s, "admin.members.hint"),
-    );
-    let Some(st) = m.stand.clone() else {
-        leer(ui, &f, &t(s, "srv.state.stopped"), &t(s, "srv.not_running"));
-        return;
-    };
-    if st.mitglieder.is_empty() {
-        leer(
+    seite(ui, |ui| {
+        seitenkopf(
             ui,
             &f,
-            &t(s, "admin.members.empty"),
-            &t(s, "admin.members.empty_desc"),
+            &t(s, "admin.members.title"),
+            &t(s, "admin.members.hint"),
         );
-        return;
-    }
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        egui::Grid::new("mitglieder")
-            .num_columns(4)
-            .striped(true)
-            .spacing([thema::SPACE_4, thema::SPACE_2])
-            .show(ui, |ui| {
-                for z in &st.mitglieder {
-                    ui.label(
-                        RichText::new(&z.name).font(egui::FontId::new(thema::FONT_SIZE_MD, fett())),
-                    );
-                    let status = match (&z.verbunden, &z.raum) {
-                        (true, Some(r)) => tf(s, "admin.members.in_room", &[r]),
-                        (true, None) => t(s, "admin.members.online"),
-                        (false, _) => "—".into(),
-                    };
-                    ui.label(text(
-                        &f,
-                        status,
-                        if z.verbunden { Ton::Gut } else { Ton::Blass },
-                    ));
-                    ui.label(RichText::new(z.kennung.get(..16).unwrap_or(&z.kennung)).monospace());
+        let Some(st) = m.stand.clone() else {
+            leer(ui, &f, &t(s, "srv.state.stopped"), &t(s, "srv.not_running"));
+            return;
+        };
+        if st.mitglieder.is_empty() {
+            leer(
+                ui,
+                &f,
+                &t(s, "admin.members.empty"),
+                &t(s, "admin.members.empty_desc"),
+            );
+            return;
+        }
+        karte(
+            ui,
+            &f,
+            &tf(
+                s,
+                "admin.status.counts",
+                &[&st.verbundene, &st.mitglieder.len()],
+            ),
+            None,
+            |ui| {
+                for (i, z) in st.mitglieder.iter().enumerate() {
+                    if i > 0 {
+                        ui.separator();
+                    }
                     let mut wahl = z.rolle;
-                    egui::ComboBox::from_id_salt(("rolle", z.id))
-                        .selected_text(rolle(s, wahl))
-                        .show_ui(ui, |ui| {
-                            for r in [
-                                Role::Administrator,
-                                Role::Moderator,
-                                Role::Mitglied,
-                                Role::Gast,
-                            ] {
-                                ui.selectable_value(&mut wahl, r, rolle(s, r));
-                            }
-                        })
-                        .response
-                        .widget_info(|| {
-                            egui::WidgetInfo::labeled(
-                                egui::Role::ComboBox,
-                                true,
-                                tf(s, "admin.members.role_for", &[&z.name]),
-                            )
-                        });
+                    egui::Sides::new()
+                        .height(thema::SIZE_CONTROL_LG)
+                        .shrink_left()
+                        .truncate()
+                        .show(
+                            ui,
+                            |ui| {
+                                ui.vertical(|ui| {
+                                    ui.spacing_mut().item_spacing.y = 0.0;
+                                    ui.label(
+                                        RichText::new(&z.name)
+                                            .font(egui::FontId::new(thema::FONT_SIZE_MD, fett())),
+                                    );
+                                    let ort = match (&z.verbunden, &z.raum) {
+                                        (true, Some(r)) => tf(s, "admin.members.in_room", &[r]),
+                                        (true, None) => t(s, "admin.members.online"),
+                                        (false, _) => "—".into(),
+                                    };
+                                    let kennung = z.kennung.get(..16).unwrap_or(&z.kennung);
+                                    ui.label(
+                                        text(
+                                            &f,
+                                            format!("{ort} · {kennung}"),
+                                            if z.verbunden { Ton::Gut } else { Ton::Blass },
+                                        )
+                                        .small(),
+                                    );
+                                });
+                            },
+                            |ui| {
+                                egui::ComboBox::from_id_salt(("rolle", z.id))
+                                    .selected_text(rolle(s, wahl))
+                                    .show_ui(ui, |ui| {
+                                        for r in [
+                                            Role::Administrator,
+                                            Role::Moderator,
+                                            Role::Mitglied,
+                                            Role::Gast,
+                                        ] {
+                                            ui.selectable_value(&mut wahl, r, rolle(s, r));
+                                        }
+                                    })
+                                    .response
+                                    .widget_info(|| {
+                                        egui::WidgetInfo::labeled(
+                                            egui::Role::ComboBox,
+                                            true,
+                                            tf(s, "admin.members.role_for", &[&z.name]),
+                                        )
+                                    });
+                            },
+                        );
                     if wahl != z.rolle {
                         aktionen.push(Aktion::Rolle {
                             mitglied: z.id.text(),
                             rolle: wahl,
                         });
                     }
-                    ui.end_row();
                 }
-            });
+            },
+        );
     });
 }
 
@@ -433,17 +490,21 @@ fn protokoll(ui: &mut egui::Ui, m: &mut Modell) {
         leer(ui, &f, &t(s, "admin.log.empty"), "");
         return;
     }
+    // Zeilen brechen um — so verschwindet auch im schmalen Fenster nichts.
     egui::Frame::new()
         .fill(f.bg_input)
         .stroke(Stroke::new(thema::SIZE_BORDER, f.border_subtle))
         .inner_margin(egui::Margin::same(thema::SPACE_3 as i8))
         .show(ui, |ui| {
-            egui::ScrollArea::both()
+            egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = thema::SPACE_1;
                     for z in &m.zeilen {
-                        ui.label(RichText::new(entfaerbt(&z.text)).monospace());
+                        ui.add(
+                            egui::Label::new(RichText::new(entfaerbt(&z.text)).monospace()).wrap(),
+                        );
                     }
                 });
         });
@@ -453,27 +514,31 @@ fn einstellungen(ui: &mut egui::Ui, m: &mut Modell) {
     let s = m.sprache;
     let f = *m.thema.farben();
     let frei = matches!(m.lauf, Lauf::Gestoppt | Lauf::Fehler(_));
-    ui.add_space(thema::SPACE_2);
-    seitenkopf(ui, &f, &t(s, "srv.settings"), &t(s, "srv.settings.sub"));
-    karte(ui, &f, &t(s, "admin.server.title"), None, |ui| {
-        ui.add_enabled_ui(frei, |ui| {
-            egui::Grid::new("einstellungen")
-                .num_columns(2)
-                .spacing([thema::SPACE_4, thema::SPACE_2])
-                .show(ui, |ui| {
-                    let l = ui.label(t(s, "admin.server.name"));
-                    ui.text_edit_singleline(&mut m.entwurf.name)
-                        .labelled_by(l.id);
-                    ui.end_row();
-                    let l = ui.label(t(s, "srv.port_udp"));
-                    ui.add(egui::DragValue::new(&mut m.entwurf.port).range(1..=65535))
-                        .labelled_by(l.id);
-                    ui.end_row();
-                    let l = ui.label(t(s, "srv.password"));
-                    ui.add(egui::TextEdit::singleline(&mut m.entwurf.passwort).password(true))
-                        .labelled_by(l.id);
-                    ui.end_row();
-                    let l = ui.label(t(s, "srv.default_role"));
+    seite(ui, |ui| {
+        seitenkopf(ui, &f, &t(s, "srv.settings"), &t(s, "srv.settings.sub"));
+        karte(ui, &f, &t(s, "admin.server.title"), None, |ui| {
+            ui.add_enabled_ui(frei, |ui| {
+                feld(ui, &f, &t(s, "admin.server.name"), None, |ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut m.entwurf.name)
+                            .desired_width(feldbreite(ui)),
+                    )
+                });
+                feld(ui, &f, &t(s, "srv.port_udp"), None, |ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut m.entwurf.port)
+                            .range(1..=65535)
+                            .speed(0.0),
+                    )
+                });
+                feld(ui, &f, &t(s, "srv.password"), None, |ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut m.entwurf.passwort)
+                            .password(true)
+                            .desired_width(feldbreite(ui)),
+                    )
+                });
+                feld(ui, &f, &t(s, "srv.default_role"), None, |ui| {
                     let wahl = &mut m.entwurf.standard_rolle;
                     egui::ComboBox::from_id_salt("standard_rolle")
                         .selected_text(rolle(s, *wahl))
@@ -482,41 +547,37 @@ fn einstellungen(ui: &mut egui::Ui, m: &mut Modell) {
                             ui.selectable_value(wahl, Role::Gast, rolle(s, Role::Gast));
                         })
                         .response
-                        .labelled_by(l.id);
-                    ui.end_row();
-                    let l = ui.label(t(s, "srv.data"));
+                });
+                feld(ui, &f, &t(s, "srv.data"), None, |ui| {
                     let mut pfad = m.entwurf.daten.display().to_string();
-                    if ui
-                        .text_edit_singleline(&mut pfad)
-                        .labelled_by(l.id)
-                        .changed()
-                    {
+                    let a = ui.add(
+                        egui::TextEdit::singleline(&mut pfad).desired_width(ui.available_width()),
+                    );
+                    if a.changed() {
                         m.entwurf.daten = PathBuf::from(pfad);
                     }
-                    ui.end_row();
+                    a
                 });
+            });
         });
-    });
-    ui.add_space(thema::SPACE_4);
-    karte(ui, &f, &t(s, "set.appearance"), None, |ui| {
-        ui.horizontal(|ui| {
-            ui.label(t(s, "set.scheme"));
-            for th in Thema::ALLE {
-                if ui
-                    .selectable_label(m.thema == th, t(s, th.text_schluessel()))
-                    .clicked()
-                {
-                    m.thema = th;
-                }
-            }
-        });
-        ui.horizontal(|ui| {
-            ui.label(t(s, "set.language"));
-            for sp in Sprache::ALLE {
-                if ui.selectable_label(m.sprache == sp, sp.anzeige()).clicked() {
-                    m.sprache = sp;
-                }
-            }
+        ui.add_space(thema::SPACE_4);
+        karte(ui, &f, &t(s, "set.appearance"), None, |ui| {
+            feld(ui, &f, &t(s, "set.scheme"), None, |ui| {
+                let moeglich: Vec<(Thema, String)> = Thema::ALLE
+                    .iter()
+                    .map(|th| (*th, t(s, th.text_schluessel())))
+                    .collect();
+                ui.horizontal_wrapped(|ui| auswahl(ui, &mut m.thema, &moeglich))
+                    .response
+            });
+            feld(ui, &f, &t(s, "set.language"), None, |ui| {
+                let moeglich: Vec<(Sprache, String)> = Sprache::ALLE
+                    .iter()
+                    .map(|sp| (*sp, sp.anzeige().to_string()))
+                    .collect();
+                ui.horizontal_wrapped(|ui| auswahl(ui, &mut m.sprache, &moeglich))
+                    .response
+            });
         });
     });
 }

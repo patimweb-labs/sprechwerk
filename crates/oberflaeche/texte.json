@@ -1708,5 +1708,17 @@
     "en": "Rooms and people",
     "es": "Salas y personas",
     "fr": "Salons et personnes"
+  },
+  "srv.overview.sub": {
+    "de": "Was der Server gerade tut — und was Mitglieder zum Verbinden brauchen.",
+    "en": "What the server is doing — and what members need to connect.",
+    "es": "Qué hace el servidor y qué necesitan los miembros para conectarse.",
+    "fr": "Ce que fait le serveur — et ce dont les membres ont besoin pour se connecter."
+  },
+  "srv.share": {
+    "de": "Zum Weitergeben",
+    "en": "To share",
+    "es": "Para compartir",
+    "fr": "À partager"
   }
 }

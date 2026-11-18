@@ -127,3 +127,62 @@ fn alle_seiten_in_allen_themes() {
         }
     }
 }
+
+/// Beim Verkleinern bleibt jedes Bedienelement waagerecht im Fenster.
+#[test]
+fn verkleinern_laesst_nichts_verschwinden() {
+    use egui_kittest::kittest::{By, NodeT};
+    use sprechwerk_oberflaeche::egui::accesskit::Role as R;
+    for breite in [320.0, 480.0, 800.0] {
+        for seite in [
+            Seite::Uebersicht,
+            Seite::Mitglieder,
+            Seite::Protokoll,
+            Seite::Einstellungen,
+        ] {
+            let m = Modell {
+                seite,
+                stand: Some(beispielstand()),
+                zeilen: vec![Zeile {
+                    nr: 1,
+                    text: "12:00:01  INFO sprechwerk startet name=Schachclub Nord port=7443 daten=/sehr/langer/pfad/zum/datenverzeichnis/des/servers".into(),
+                }],
+                ..Default::default()
+            };
+            let mut h = Harness::builder()
+                .with_size((breite, 700.0))
+                .with_context_setup(sprechwerk_oberflaeche::einrichten)
+                .build_ui_state(
+                    |ui, (m, aktionen): &mut Stand2| {
+                        sprechwerk_oberflaeche::thema::anwenden(ui.ctx(), m.thema);
+                        aktionen.extend(zeichnen(ui, m));
+                    },
+                    (m, Vec::new()),
+                );
+            h.run();
+            if let Some(ziel) = std::env::var_os("SPRECHWERK_SCHMALBILDER") {
+                let bild = h.render().expect("zeichnen (wgpu)");
+                bild.save(std::path::Path::new(&ziel).join(format!("srv-{seite:?}-{breite}.png")))
+                    .unwrap();
+            }
+            for rolle in [
+                R::Button,
+                R::TextInput,
+                R::PasswordInput,
+                R::ComboBox,
+                R::SpinButton,
+            ] {
+                for k in h.query_all(By::new().role(rolle)) {
+                    let r = k.rect();
+                    assert!(
+                        r.left() >= -0.5 && r.right() <= breite + 0.5,
+                        "{seite:?} bei {breite} px: {rolle:?} „{}“ reicht von {} bis {}",
+                        k.accesskit_node().label().unwrap_or_default(),
+                        r.left(),
+                        r.right()
+                    );
+                }
+            }
+        }
+    }
+}

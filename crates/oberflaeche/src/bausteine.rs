@@ -312,14 +312,7 @@ pub fn feld(
     let nebeneinander = ui.available_width() >= FORMULAR_NEBENEINANDER;
     let antwort = if nebeneinander {
         ui.horizontal(|ui| {
-            let (rect, _) = ui.allocate_exact_size(
-                egui::vec2(BESCHRIFTUNG, thema::SIZE_CONTROL_SM),
-                Sense::hover(),
-            );
-            let l = ui.put(
-                rect,
-                egui::Label::new(text(f, beschriftung, Ton::Leise)).truncate(),
-            );
+            let l = beschriftungsspalte(ui, f, beschriftung, thema::SIZE_CONTROL_SM);
             ui.vertical(|ui| {
                 let a = inhalt(ui).labelled_by(l.id);
                 if let Some(h) = hinweis {
@@ -345,6 +338,24 @@ pub fn feld(
     antwort
 }
 
+/// Die linke Spalte eines Formulars: feste Breite, Text linksbündig, gekürzt.
+fn beschriftungsspalte(
+    ui: &mut egui::Ui,
+    f: &Farben,
+    beschriftung: &str,
+    hoehe: f32,
+) -> egui::Response {
+    ui.allocate_ui_with_layout(
+        egui::vec2(BESCHRIFTUNG, hoehe),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.set_min_size(egui::vec2(BESCHRIFTUNG, hoehe));
+            ui.add(egui::Label::new(text(f, beschriftung, Ton::Leise)).truncate())
+        },
+    )
+    .inner
+}
+
 /// Breite für Eingabefelder: so breit wie Platz ist, höchstens eine Spalte.
 pub fn feldbreite(ui: &egui::Ui) -> f32 {
     ui.available_width().min(thema::SPACE_8 * 6.0)
@@ -362,11 +373,7 @@ pub fn fakten(ui: &mut egui::Ui, f: &Farben, zeilen: &[(String, String, bool)]) 
         };
         if nebeneinander {
             ui.horizontal_top(|ui| {
-                let (rect, _) = ui.allocate_exact_size(
-                    egui::vec2(BESCHRIFTUNG, thema::FONT_SIZE_LG),
-                    Sense::hover(),
-                );
-                ui.put(rect, egui::Label::new(text(f, k, Ton::Leise)).truncate());
+                beschriftungsspalte(ui, f, k, thema::FONT_SIZE_LG);
                 ui.add(egui::Label::new(wert).wrap());
             });
         } else {
@@ -411,6 +418,17 @@ pub fn status(ui: &mut egui::Ui, f: &Farben, ton: Ton, beschriftung: &str) -> eg
         ui.label(text(f, beschriftung, ton));
     })
     .response
+}
+
+/// Dasselbe Schild ohne Text (wenn der Platz fehlt) — der Text steht im
+/// Hinweis und ist der zugängliche Name.
+pub fn status_klein(ui: &mut egui::Ui, f: &Farben, ton: Ton, beschriftung: &str) -> egui::Response {
+    let (rect, antwort) =
+        ui.allocate_exact_size(egui::vec2(thema::SPACE_2, thema::SPACE_2), Sense::hover());
+    ui.painter().rect_filled(rect, 0.0, thema::ton(f, ton));
+    let name = beschriftung.to_string();
+    antwort.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &name));
+    antwort.on_hover_text(beschriftung)
 }
 
 /// Ein Wert zum Weitergeben (Fingerabdruck, Kennung): umbrechend, daneben

@@ -483,6 +483,11 @@ fn verkleinern_laesst_nichts_verschwinden() {
             o.einstellungen.chat_eingeklappt = eingeklappt;
             let (mut h, _) = fenster(o, (breite, 700.0));
             h.run();
+            if let Some(ziel) = std::env::var_os("SPRECHWERK_SCHMALBILDER") {
+                let bild = h.render().expect("zeichnen (wgpu)");
+                bild.save(std::path::Path::new(&ziel).join(format!("{name}-{breite}.png")))
+                    .unwrap();
+            }
             alles_im_fenster(&h, breite, name);
         }
     }
