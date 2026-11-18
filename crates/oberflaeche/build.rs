@@ -74,7 +74,7 @@ fn main() {
     let grund = lesen("primitives.tokens.json");
     let mut rs = String::from(
         "// Erzeugt von build.rs aus tokens/*.tokens.json — nicht von Hand ändern.\n\
-         use eframe::egui::Color32;\n\n\
+         use egui::Color32;\n\n\
          /// Die semantischen Farben eines Themes.\n\
          #[derive(Debug, Clone, Copy, PartialEq)]\npub struct Farben {\n",
     );

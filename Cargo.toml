@@ -13,6 +13,7 @@ members = [
     "crates/audio",
     "crates/linkvorschau",
     "crates/client",
+    "crates/oberflaeche",
     "crates/fenster",
 ]
 

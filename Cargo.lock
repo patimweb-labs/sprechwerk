@@ -4806,7 +4806,6 @@ dependencies = [
  "chrono",
  "dirs",
  "eframe",
- "egui",
  "egui_kittest",
  "image",
  "serde",
@@ -4814,6 +4813,7 @@ dependencies = [
  "sprechwerk-client",
  "sprechwerk-domain",
  "sprechwerk-ipc",
+ "sprechwerk-oberflaeche",
  "sprechwerk-protocol",
 ]
 
@@ -4838,6 +4838,15 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "sprechwerk-oberflaeche"
+version = "1.3.0"
+dependencies = [
+ "egui",
+ "serde_json",
+ "sprechwerk-domain",
 ]
 
 [[package]]

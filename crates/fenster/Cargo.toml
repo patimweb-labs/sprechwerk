@@ -21,10 +21,8 @@ sprechwerk-domain.workspace = true
 sprechwerk-protocol.workspace = true
 sprechwerk-ipc = { path = "../ipc" }
 sprechwerk-client = { path = "../client" }
+sprechwerk-oberflaeche = { path = "../oberflaeche" }
 eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "accesskit", "wayland", "x11", "links"] }
-# Emoji (Reaktionen, Schloss, Herz) und Zeichen wie ● ⋯: ohne dieses Merkmal
-# fehlen sie in den eingebauten Schriften (die Oberflächentests fallen dann um).
-egui = { version = "0.37", default-features = false, features = ["monochrome_emoji_fonts"] }
 serde.workspace = true
 serde_json.workspace = true
 dirs = "6"
@@ -35,5 +33,3 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png"]
 [dev-dependencies]
 egui_kittest = { version = "0.37", features = ["snapshot", "wgpu"] }
 
-[build-dependencies]
-serde_json.workspace = true

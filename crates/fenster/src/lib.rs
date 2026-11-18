@@ -11,8 +11,8 @@ pub mod ansichten;
 pub mod app;
 pub mod logik;
 pub mod modell;
-pub mod texte;
-pub mod thema;
+
+pub use sprechwerk_oberflaeche::{texte, thema};
 
 use std::path::PathBuf;
 

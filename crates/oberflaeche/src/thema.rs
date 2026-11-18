@@ -5,9 +5,7 @@
 //! Token-Dateien (`build.rs`); hier wird nur zugeordnet, welcher Token welche
 //! Fläche von egui färbt.
 
-use eframe::egui::{
-    self, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, TextStyle,
-};
+use egui::{self, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, TextStyle};
 use std::sync::Arc;
 
 include!(concat!(env!("OUT_DIR"), "/tokens.rs"));
