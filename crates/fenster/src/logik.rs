@@ -142,13 +142,33 @@ pub enum Personenstatus {
     Taub,
 }
 
+/// Spreche ich gerade? Bei mir selbst weiß es das Fenster schneller als der
+/// Server: offenes Mikrofon über der Schwelle, oder Sprechtaste gedrückt und
+/// Ton da. So flackert das eigene Quadrat mit der Stimme.
+pub fn ich_spreche(
+    audio: &sprechwerk_client::AudioStand,
+    schwelle: u8,
+    push_to_talk: bool,
+    taste: bool,
+) -> bool {
+    if !audio.laeuft || audio.stumm || audio.pegel == 0 {
+        return false;
+    }
+    if push_to_talk {
+        taste
+    } else {
+        audio.pegel >= schwelle
+    }
+}
+
 /// Taub geht vor stumm geht vor sprechen: wer nichts hört, soll es sehen.
-pub fn personenstatus(m: &Mitglied) -> Personenstatus {
+/// `spricht_selbst` ersetzt für die eigene Zeile die Meldung des Servers.
+pub fn personenstatus(m: &Mitglied, spricht_selbst: Option<bool>) -> Personenstatus {
     if m.taub {
         Personenstatus::Taub
     } else if m.stumm {
         Personenstatus::Stumm
-    } else if m.spricht {
+    } else if spricht_selbst.unwrap_or(m.spricht) {
         Personenstatus::Spricht
     } else {
         Personenstatus::Still
@@ -447,11 +467,44 @@ mod tests {
             taub: false,
             ich: false,
         };
-        assert_eq!(personenstatus(&m), Personenstatus::Spricht);
+        assert_eq!(personenstatus(&m, None), Personenstatus::Spricht);
+        assert_eq!(
+            personenstatus(&m, Some(false)),
+            Personenstatus::Still,
+            "eigene Messung zählt"
+        );
         m.stumm = true;
-        assert_eq!(personenstatus(&m), Personenstatus::Stumm);
+        assert_eq!(personenstatus(&m, None), Personenstatus::Stumm);
         m.taub = true;
-        assert_eq!(personenstatus(&m), Personenstatus::Taub);
+        assert_eq!(personenstatus(&m, None), Personenstatus::Taub);
+    }
+
+    #[test]
+    fn ich_spreche_ueber_schwelle_oder_mit_taste() {
+        let a = |pegel, stumm| sprechwerk_client::AudioStand {
+            laeuft: true,
+            pegel,
+            stumm,
+            taub: false,
+        };
+        assert!(ich_spreche(&a(40, false), 30, false, false));
+        assert!(
+            !ich_spreche(&a(20, false), 30, false, false),
+            "unter der Schwelle"
+        );
+        assert!(!ich_spreche(&a(40, true), 30, false, false), "stumm");
+        assert!(
+            !ich_spreche(&a(40, false), 30, true, false),
+            "Taste nicht gedrückt"
+        );
+        assert!(
+            ich_spreche(&a(5, false), 30, true, true),
+            "Taste gedrückt, Ton da"
+        );
+        assert!(
+            !ich_spreche(&a(0, false), 30, true, true),
+            "Taste, aber kein Ton"
+        );
     }
 
     #[test]

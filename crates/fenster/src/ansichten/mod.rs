@@ -213,13 +213,6 @@ pub fn kopf(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) 
                         if icon_knopf(ui, &f, bild, &t(s, name), audio.stumm).clicked() {
                             rechts.push(Aktion::MikrofonStumm(!audio.stumm));
                         }
-                        let pegel = if audio.stumm { 0 } else { audio.pegel };
-                        let breite = if kompakt {
-                            thema::SPACE_6
-                        } else {
-                            thema::SPACE_7
-                        };
-                        pegelbalken(ui, &f, pegel, None, breite);
                     },
                 );
             if let Some(ziel) = wahl_links.or(wahl) {

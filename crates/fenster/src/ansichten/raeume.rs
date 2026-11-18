@@ -181,23 +181,65 @@ fn raumliste(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>)
         });
 }
 
-/// Eine Person im Baum: Status-Icon vorn (spricht, still, stumm, taub), Name,
+/// Das Sprechlicht vor dem Namen, wie bei TeamSpeak: ein Quadrat, das
+/// aufleuchtet, solange jemand spricht (und damit mit der Stimme flackert).
+/// Stumm und taub zeigen statt dessen ihr Icon — das ist wichtiger.
+fn sprechlicht(ui: &mut egui::Ui, f: &thema::Farben, status: logik::Personenstatus) {
+    let groesse = thema::FONT_SIZE_MD;
+    match status {
+        logik::Personenstatus::Stumm => {
+            ui.add(Icon::MikrofonAus.bild(groesse, f.status_error));
+        }
+        logik::Personenstatus::Taub => {
+            ui.add(Icon::KopfhoererAus.bild(groesse, f.status_error));
+        }
+        logik::Personenstatus::Spricht | logik::Personenstatus::Still => {
+            let (rect, _) =
+                ui.allocate_exact_size(egui::vec2(groesse, groesse), egui::Sense::hover());
+            let quadrat = egui::Rect::from_center_size(
+                rect.center(),
+                egui::vec2(thema::SPACE_3, thema::SPACE_3),
+            );
+            if status == logik::Personenstatus::Spricht {
+                ui.painter().rect_filled(quadrat, 0.0, f.status_ok);
+            } else {
+                ui.painter().rect_stroke(
+                    quadrat,
+                    0.0,
+                    Stroke::new(thema::SIZE_BORDER, f.border_strong),
+                    egui::StrokeKind::Inside,
+                );
+            }
+        }
+    }
+}
+
+/// Eine Person im Baum: Sprechlicht vorn (spricht, still, stumm, taub), Name,
 /// Rolle hinten. Das Menü zum Eingreifen nur mit Recht und nie an sich selbst.
 fn person(ui: &mut egui::Ui, o: &mut Oberflaeche, m: &Mitglied, aktionen: &mut Vec<Aktion>) {
     let s = o.sprache();
     let f = *o.thema().farben();
-    let (bild, farbe, zustand) = match logik::personenstatus(m) {
-        logik::Personenstatus::Spricht => (Icon::Mikrofon, f.status_ok, t(s, "member.speaking")),
-        logik::Personenstatus::Still => (Icon::Mikrofon, f.text_faint, String::new()),
-        logik::Personenstatus::Stumm => (Icon::MikrofonAus, f.status_error, t(s, "state.muted")),
-        logik::Personenstatus::Taub => (Icon::KopfhoererAus, f.status_error, t(s, "state.deaf")),
+    let selbst = m.ich.then(|| {
+        logik::ich_spreche(
+            &o.audio,
+            o.einstellungen.schwelle,
+            o.einstellungen.push_to_talk,
+            o.spricht,
+        )
+    });
+    let status = logik::personenstatus(m, selbst);
+    let zustand = match status {
+        logik::Personenstatus::Spricht => t(s, "member.speaking"),
+        logik::Personenstatus::Still => String::new(),
+        logik::Personenstatus::Stumm => t(s, "state.muted"),
+        logik::Personenstatus::Taub => t(s, "state.deaf"),
     };
     let breite = ui.available_width();
     let antwort = ui
         .horizontal(|ui| {
             ui.set_min_width(breite);
             ui.add_space(thema::SPACE_6);
-            ui.add(bild.bild(thema::FONT_SIZE_MD, farbe));
+            sprechlicht(ui, &f, status);
             let name = if m.ich {
                 RichText::new(format!("{} ({})", m.name, t(s, "chat.you"))).color(f.accent_default)
             } else {
