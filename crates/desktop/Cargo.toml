@@ -20,6 +20,7 @@ sprechwerk-domain = { path = "../domain" }
 sprechwerk-protocol = { path = "../protocol" }
 sprechwerk-adapters = { path = "../adapters" }
 sprechwerk-ipc = { path = "../ipc" }
+sprechwerk-client = { path = "../client" }
 # Link-Vorschau: der Absender ruft die Seite ab (ADR 0012 §2).
 sprechwerk-linkvorschau = { path = "../linkvorschau" }
 

@@ -7,12 +7,8 @@
 //! es und stellt die Befehle bereit; gerechnet wird in `crates/domain`,
 //! `crates/protocol`, `crates/adapters` und `crates/ipc`.
 
-pub mod anwendung;
-pub mod audio;
 pub mod commands;
-pub mod einstellungen;
-pub mod sprech;
-pub mod verschluesselung;
+pub use sprechwerk_client::{anwendung, audio, einstellungen, sprech, verschluesselung};
 
 use anwendung::Anwendung;
 use std::sync::Arc;

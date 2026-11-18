@@ -12,6 +12,7 @@ members = [
     "crates/cli",
     "crates/audio",
     "crates/linkvorschau",
+    "crates/client",
 ]
 
 [workspace.package]
