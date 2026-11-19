@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.3](https://github.com/patimweb-labs/sprechwerk/compare/v2.0.2...v2.0.3) (2026-11-19)
+
+
+### Bau und Pakete
+
+* Container-Abbild nach Docker Hub ([51828d9](https://github.com/patimweb-labs/sprechwerk/commit/51828d95b7c0a5ef4036e158420a74e646cc597d))
+* Container-Abbild nach Docker Hub statt ghcr.io ([51c235c](https://github.com/patimweb-labs/sprechwerk/commit/51c235c81000a5a7ad7def459ee0520ed1818b83))
+
 ## [2.0.2](https://github.com/patimweb-labs/sprechwerk/compare/v2.0.1...v2.0.2) (2026-11-19)
 
 
