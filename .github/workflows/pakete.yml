@@ -1,5 +1,11 @@
-# Pakete der Fenster (ADR 0013): Linux (tar.gz, .deb, .rpm, AppImage),
-# Flatpak, Windows (.msi, .zip), macOS (.dmg universal, Konsole als .zip).
+# Pakete der **zwei Anwendungen** (ADR 0013), getrennt nach Client und Server:
+# Linux (tar.gz, .deb, .rpm, AppImage), Flatpak je Anwendung, Windows (.msi,
+# .zip), macOS (ein .dmg je Anwendung).
+#
+#   Client  „Sprechwerk"          sprechwerk-fenster, sprechwerk-cli
+#   Server  „Sprechwerk Server"   sprechwerk, sprechwerk-server-fenster
+#
+# Der Container ist Serversache und steht in `release.yml`.
 #
 # Aufbau wie bei FigCraft: die Arbeit steht in Skripten unter `packaging/`,
 # die auch lokal laufen; dieser Workflow stellt nur Werkzeuge bereit und ruft
@@ -89,10 +95,29 @@ jobs:
             dist/*.rpm
             dist/*.AppImage
 
+  # Ein Flatpak je Anwendung: eigene Kennung, eigenes Archiv aus `linux`.
   flatpak:
-    name: Flatpak
+    name: Flatpak ${{ matrix.name }}
     needs: linux
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Client
+            id: de.weppelmann.Sprechwerk
+            manifest: packaging/flatpak/de.weppelmann.Sprechwerk.yml
+            tar: sprechwerk
+            datei: Sprechwerk
+            artefakt: pakete-flatpak
+            glob: "sprechwerk-[0-9]*-linux-x86_64.tar.gz"
+          - name: Server
+            id: de.weppelmann.Sprechwerk.Server
+            manifest: packaging/flatpak/de.weppelmann.Sprechwerk.Server.yml
+            tar: sprechwerk-server
+            datei: Sprechwerk-Server
+            artefakt: pakete-flatpak-server
+            glob: "sprechwerk-server-*-linux-x86_64.tar.gz"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -113,16 +138,16 @@ jobs:
       - name: Bauen
         run: |
           version=$(packaging/version.sh)
-          cp linux/sprechwerk-*-linux-x86_64.tar.gz packaging/flatpak/sprechwerk.tar.gz
+          cp linux/${{ matrix.glob }} "packaging/flatpak/${{ matrix.tar }}.tar.gz"
           # `--disable-rofiles-fuse` und `--keep-build-dirs` sind für den
           # Fehlerfall da: AppStream liest den Baum dann direkt statt über
           # FUSE, und `bau/files` bleibt nach einem Abbruch stehen, damit der
           # Diagnoseschritt unten hineinschauen kann.
           flatpak-builder --user --install-deps-from=flathub --repo=repo --force-clean \
             --disable-rofiles-fuse --keep-build-dirs \
-            bau packaging/flatpak/de.weppelmann.Sprechwerk.yml
-          flatpak build-bundle repo "Sprechwerk-${version}-x86_64.flatpak" de.weppelmann.Sprechwerk \
-            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+            bau "${{ matrix.manifest }}"
+          flatpak build-bundle repo "${{ matrix.datei }}-${version}-x86_64.flatpak" \
+            "${{ matrix.id }}" --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
 
       # Nur wenn der Bau scheitert: sagen, woran es lag. Die Ausgabe von
       # AppStream ist knapp — sie nennt den Dateinamen nur mit `-v`, und die
@@ -141,15 +166,15 @@ jobs:
             echo "--- compose noch einmal, ausführlich ---"
             mkdir -p /tmp/aus
             appstreamcli compose --origin=flatpak --prefix=/ \
-              --components=de.weppelmann.Sprechwerk,de.weppelmann.Sprechwerk.desktop \
+              --components="${{ matrix.id }},${{ matrix.id }}.desktop" \
               --result-root=/tmp/aus --no-net -v --print-report=full "$baum" 2>&1 | tail -40 || true
           fi
 
       - uses: actions/upload-artifact@v7
         with:
-          name: pakete-flatpak
+          name: ${{ matrix.artefakt }}
           if-no-files-found: error
-          path: Sprechwerk-*.flatpak
+          path: ${{ matrix.datei }}-*.flatpak
 
   windows:
     name: Windows (.msi, .zip)

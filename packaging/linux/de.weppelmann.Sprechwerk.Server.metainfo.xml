@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MIT -->
+<!--
+  Eigene Metainfo für die Server-Anwendung. Sie muss dieselbe Kennung tragen
+  wie die App-ID (de.weppelmann.Sprechwerk.Server) — AppStream lehnt sonst ab,
+  und das Flatpak lässt sich nicht bauen.
+-->
+<component type="desktop-application">
+  <id>de.weppelmann.Sprechwerk.Server</id>
+  <name>Sprechwerk Server</name>
+  <summary>Den eigenen sprechwerk-Server starten und verwalten</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="de.weppelmann">
+    <name>Patrick Weppelmann</name>
+  </developer>
+  <description>
+    <p>
+      Der Server für Sprach- und Texträume. Dieses Fenster zeigt, wer verbunden
+      ist, und lässt Rollen setzen, Leute verschieben und sperren — ohne
+      Browser und ohne Zugangscode.
+    </p>
+    <ul>
+      <li>Raum, Teilnehmer und Protokoll auf einen Blick</li>
+      <li>Rollen und Eingriffe an Personen</li>
+      <li>Dieselbe Verwaltung wie `sprechwerk stand | rolle | protokoll`</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">de.weppelmann.Sprechwerk.Server.desktop</launchable>
+  <url type="homepage">https://github.com/patimweb-labs/sprechwerk</url>
+  <url type="bugtracker">https://github.com/patimweb-labs/sprechwerk/issues</url>
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-chat">intense</content_attribute>
+    <content_attribute id="social-audio">intense</content_attribute>
+  </content_rating>
+  <requires>
+    <internet>always</internet>
+  </requires>
+  <recommends>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </recommends>
+</component>

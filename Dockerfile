@@ -43,20 +43,20 @@ RUN for k in domain protocol store adapters ipc audio linkvorschau client oberfl
  && echo "fn main() {}" > crates/server/src/main.rs \
  && echo "fn main() {}" > crates/fenster/src/main.rs \
  && echo "fn main() {}" > crates/server-fenster/src/main.rs \
- && echo "fn main() {}" > crates/cli/src/main.rs \
- && cargo build --release --locked -p sprechwerk-server -p sprechwerk-cli || true
+ && cargo build --release --locked -p sprechwerk-server || true
 
 COPY . .
 # `touch` auf die Quellen: sonst hält Cargo die Platzhalter für aktuell.
 RUN touch crates/*/src/*.rs \
- && cargo build --release --locked -p sprechwerk-server -p sprechwerk-cli
+ && cargo build --release --locked -p sprechwerk-server
 
 # Laufzeit: gleiche Debian-Familie wie der Bau (sonst passt die glibc nicht).
 FROM debian:trixie-slim
 RUN useradd --system --uid 10001 --home /data --shell /usr/sbin/nologin sprechwerk \
  && mkdir -p /data && chown -R sprechwerk /data
+# Nur der Dienst. Der Client (sprechwerk-fenster, sprechwerk-cli) ist eine
+# eigene Anwendung und gehört nicht in dieses Abbild.
 COPY --from=bauen /src/target/release/sprechwerk /usr/local/bin/sprechwerk
-COPY --from=bauen /src/target/release/sprechwerk-cli /usr/local/bin/sprechwerk-cli
 
 USER sprechwerk
 VOLUME ["/data"]

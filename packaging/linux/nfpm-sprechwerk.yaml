@@ -1,8 +1,11 @@
-# deb und rpm aus denselben Dateien (nfpm, https://nfpm.goreleaser.com).
+# deb und rpm der **Client**-Anwendung (nfpm, https://nfpm.goreleaser.com).
 # Aufruf über packaging/linux/paket.sh (aus dem Wurzelverzeichnis), das
 # VERSION und ARCH setzt. Umgebungsvariablen setzt nfpm nur in Feldern wie
 # `version` und `arch` ein, nicht in `contents` — deshalb steht der Pfad
 # dort fest, relativ zum Wurzelverzeichnis.
+#
+# Enthält nur den Client: sprechwerk-fenster und sprechwerk-cli. Der Server
+# ist eine eigene Anwendung (`nfpm-sprechwerk-server.yaml`).
 name: sprechwerk
 arch: ${ARCH}
 platform: linux
@@ -12,8 +15,8 @@ priority: optional
 maintainer: Patrick Weppelmann
 description: |
   Sprach- und Texträume für Vereine, selbst gehostet.
-  Fenster (sprechwerk-fenster), Server mit Fenster (sprechwerk-server-fenster),
-  Server für die Konsole (sprechwerk) und Referenzclient (sprechwerk-cli).
+  Diese Anwendung: das Fenster (sprechwerk-fenster) und der Referenzclient
+  (sprechwerk-cli). Den Server bringt das Paket sprechwerk-server mit.
 vendor: Weppelmann
 homepage: https://gitea.weppelmann.ddnss.de/patrickweppelmann/sprechwerk
 license: MIT
@@ -28,6 +31,6 @@ overrides:
     depends:
       - opus
 contents:
-  - src: dist/stage/usr/
+  - src: dist/stage/sprechwerk/usr/
     dst: /usr/
     type: tree

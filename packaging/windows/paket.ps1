@@ -1,4 +1,13 @@
-# Windows: .msi (WiX v5) und ein portables .zip.
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Patrick Weppelmann
+#
+# Windows-Pakete für die **zwei getrennten Anwendungen**:
+#
+#   Client  „Sprechwerk"          sprechwerk-fenster.exe, sprechwerk-cli.exe
+#                                 -> .msi und .zip
+#   Server  „Sprechwerk Server"   sprechwerk.exe, sprechwerk-server-fenster.exe
+#                                 -> .zip (kein .msi: der Dienst wird nicht
+#                                    als Windows-Dienst eingetragen)
 #
 # Aufruf aus dem Wurzelverzeichnis: pwsh packaging/windows/paket.ps1
 # Braucht: cargo (MSVC), WiX v5 (`dotnet tool install --global wix`),
@@ -13,14 +22,25 @@ cargo build --release --locked -p sprechwerk-fenster -p sprechwerk-server-fenste
 if ($LASTEXITCODE -ne 0) { throw "cargo build" }
 
 New-Item -ItemType Directory -Force dist | Out-Null
+
+# --- Client ----------------------------------------------------------------
 wix build packaging\windows\sprechwerk.wxs -arch x64 -d Version=$version -o "dist\Sprechwerk-$version-windows-x64.msi"
 if ($LASTEXITCODE -ne 0) { throw "wix build" }
 
-$tragbar = "dist\Sprechwerk-$version-windows-x64"
-New-Item -ItemType Directory -Force $tragbar | Out-Null
-Copy-Item target\release\sprechwerk-fenster.exe, target\release\sprechwerk-server-fenster.exe,
-          target\release\sprechwerk.exe, target\release\sprechwerk-cli.exe,
-          packaging\opus\opus.dll, LICENSE $tragbar
-Compress-Archive -Force -Path "$tragbar\*" -DestinationPath "$tragbar.zip"
-Remove-Item -Recurse $tragbar
+$client = "dist\Sprechwerk-$version-windows-x64"
+New-Item -ItemType Directory -Force $client | Out-Null
+Copy-Item target\release\sprechwerk-fenster.exe, target\release\sprechwerk-cli.exe,
+          packaging\opus\opus.dll, LICENSE $client
+Compress-Archive -Force -Path "$client\*" -DestinationPath "$client.zip"
+Remove-Item -Recurse $client
+
+# --- Server ----------------------------------------------------------------
+# Das Opus-DLL bleibt hier weg: der Server verteilt Sprache, er wandelt sie
+# nicht. Dekodiert wird beim Empfänger (docs/AUDIO.md).
+$server = "dist\Sprechwerk-Server-$version-windows-x64"
+New-Item -ItemType Directory -Force $server | Out-Null
+Copy-Item target\release\sprechwerk.exe, target\release\sprechwerk-server-fenster.exe, LICENSE $server
+Compress-Archive -Force -Path "$server\*" -DestinationPath "$server.zip"
+Remove-Item -Recurse $server
+
 Get-ChildItem dist

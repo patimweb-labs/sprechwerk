@@ -1,0 +1,29 @@
+# deb und rpm der **Server**-Anwendung (nfpm, https://nfpm.goreleaser.com).
+# Aufruf über packaging/linux/paket.sh (aus dem Wurzelverzeichnis).
+#
+# Enthält nur den Server: die Konsole `sprechwerk` (Dienst, Verwaltung) und das
+# Serverfenster `sprechwerk-server-fenster`. Der Client ist eine eigene
+# Anwendung (`nfpm-sprechwerk.yaml`).
+#
+# Kein Opus: der Server verteilt Sprache, er wandelt sie nicht. Dekodiert wird
+# beim Empfänger (`docs/AUDIO.md`).
+name: sprechwerk-server
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+section: net
+priority: optional
+maintainer: Patrick Weppelmann
+description: |
+  Der Server für sprechwerk — Sprach- und Texträume für Vereine.
+  Diese Anwendung: der Dienst samt Verwaltung auf der Konsole (`sprechwerk`)
+  und das Serverfenster (`sprechwerk-server-fenster`). Der Client heißt
+  sprechwerk und ist ein eigenes Paket.
+vendor: Weppelmann
+homepage: https://gitea.weppelmann.ddnss.de/patrickweppelmann/sprechwerk
+license: MIT
+# Gibt es auch als Container: docker.io/smotherer/sprechwerk.
+contents:
+  - src: dist/stage/sprechwerk-server/usr/
+    dst: /usr/
+    type: tree

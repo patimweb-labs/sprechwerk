@@ -10,8 +10,9 @@
 #        * Server + Referenzclient (`server.yml`), mit eingebauter
 #          Verwaltungsoberfläche: Linux x86_64 und aarch64 (`.tar.gz`),
 #          Windows (`.zip`), macOS Apple Silicon + Intel (`.tar.gz`)
-#        * Fenster (`pakete.yml`): Linux `.deb`/`.rpm`/AppImage, Flatpak,
-#          Windows `.exe`/`.msi`, macOS `.dmg` (Apple Silicon + Intel)
+#        * Client und Server getrennt (`pakete.yml`): Linux `.deb`/`.rpm`/
+#          AppImage, je ein Flatpak, Windows `.msi`/`.zip`, macOS je ein `.dmg`
+#          (Apple Silicon + Intel)
 #        * Container-Abbild `docker.io/<benutzer>/sprechwerk`, amd64 + arm64
 #        * `SHA256SUMS` über alle Dateien
 #
@@ -144,7 +145,7 @@ jobs:
   # Fenster für alle Systeme: derselbe Baustein, den `pruefen.yml` bei jedem PR
   # aufruft — was hier gebaut wird, ist dort schon einmal durchgelaufen.
   pakete:
-    name: Fenster
+    name: Pakete
     needs: ziel
     if: ${{ !cancelled() && needs.ziel.outputs.tag != '' }}
     uses: ./.github/workflows/pakete.yml
@@ -158,7 +159,7 @@ jobs:
   # Release ohne macOS ist besser als eines ohne alles. Der Lauf bleibt rot,
   # „Run workflow" mit dem Tag holt das Fehlende nach.
   pakete-hochladen:
-    name: Fenster ans Release
+    name: Pakete ans Release
     needs: [ziel, pakete]
     if: ${{ !cancelled() && needs.ziel.outputs.tag != '' }}
     runs-on: ubuntu-24.04

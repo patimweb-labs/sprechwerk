@@ -6,8 +6,12 @@
 #   * `release.yml` mit dem Tag — dort hängen dieselben Archive am Release.
 #
 # **Verwaltung** (ADR 0013): auf der Konsole (`sprechwerk stand`,
-# `sprechwerk rolle …`) — reines Rust, kein Node. Wer ein Fenster will, nimmt
-# `sprechwerk-server-fenster` aus den Fensterpaketen (`pakete.yml`).
+# `sprechwerk rolle …`) — reines Rust, kein Node.
+#
+# Das Archiv ist die **Server-Anwendung** und enthält beides: den Dienst
+# `sprechwerk` und das Fenster `sprechwerk-server-fenster`. Der Client
+# (`sprechwerk-fenster`, `sprechwerk-cli`) ist eine eigene Anwendung und liegt
+# in den Fensterpaketen (`pakete.yml`).
 #
 # Daten liegen in `daten/` neben dem Programm.
 #
@@ -76,11 +80,11 @@ jobs:
 
       - name: Werkzeuge (Clippy)
         if: inputs.pruefen && runner.os != 'Linux'
-        run: cargo clippy -p sprechwerk-server -p sprechwerk-cli --all-targets -- -D warnings
+        run: cargo clippy -p sprechwerk-server -p sprechwerk-server-fenster -p sprechwerk-client --all-targets -- -D warnings
 
       - name: Bauen (Linux, Windows)
         if: runner.os != 'macOS'
-        run: cargo build --release --locked -p sprechwerk-server -p sprechwerk-cli
+        run: cargo build --release --locked -p sprechwerk-server -p sprechwerk-server-fenster
 
       # Ein Programm für Apple Silicon und Intel: beide bauen, `lipo` fügt
       # zusammen. Rust erzeugt ab macOS 11, wie das Fenster.
@@ -91,10 +95,10 @@ jobs:
         run: |
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
           for ziel in aarch64-apple-darwin x86_64-apple-darwin; do
-            cargo build --release --locked --target "$ziel" -p sprechwerk-server -p sprechwerk-cli
+            cargo build --release --locked --target "$ziel" -p sprechwerk-server -p sprechwerk-server-fenster
           done
           mkdir -p target/release
-          for p in sprechwerk sprechwerk-cli; do
+          for p in sprechwerk sprechwerk-server-fenster; do
             lipo -create "target/aarch64-apple-darwin/release/$p" "target/x86_64-apple-darwin/release/$p" \
               -output "target/release/$p"
           done
@@ -108,7 +112,7 @@ jobs:
           mkdir -p "aus/$NAME"
           endung=""
           [ "$RUNNER_OS" = "Windows" ] && endung=".exe"
-          cp "target/release/sprechwerk$endung" "target/release/sprechwerk-cli$endung" \
+          cp "target/release/sprechwerk$endung" "target/release/sprechwerk-server-fenster$endung" \
              README.md LICENSE "aus/$NAME/"
           ./"target/release/sprechwerk$endung" beispiel > "aus/$NAME/sprechwerk.beispiel.toml"
           if [ "$RUNNER_OS" = "Windows" ]; then
