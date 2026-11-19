@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.0.0](https://github.com/patimweb-labs/sprechwerk/compare/v2.0.3...v3.0.0) (2026-11-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* Das Paket `sprechwerk` enthält nicht mehr den Server; der liegt in `sprechwerk-server`. Das Serverarchiv enthält nicht mehr `sprechwerk-cli`, dafür `sprechwerk-server-fenster`. Die Server-App hat die Kennung de.weppelmann.Sprechwerk.Server und ein eigenes Flatpak.
+
+### Neu
+
+* Client und Server sind getrennte Anwendungen ([f7dca78](https://github.com/patimweb-labs/sprechwerk/commit/f7dca782a683bd3070947539e763ca1d78618458))
+
 ## [2.0.3](https://github.com/patimweb-labs/sprechwerk/compare/v2.0.2...v2.0.3) (2026-11-19)
 
 
