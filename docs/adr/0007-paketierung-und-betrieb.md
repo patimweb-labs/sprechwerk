@@ -47,15 +47,20 @@ entscheidet.
 `.github/workflows/release.yml` mit release-please (AGENTS.md §6). Ein Merge
 des Release-PRs erzeugt Tag, Änderungsliste und hängt an das GitHub-Release:
 
-| Teil | Form | Gebaut auf |
-|---|---|---|
-| Fenster Linux | `.deb`, `.rpm`, AppImage (x86_64) | `ubuntu-24.04` |
-| Fenster Flatpak | `.flatpak` (x86_64), GNOME-Laufzeit 51 | aus dem `.deb` umgepackt |
-| Fenster Windows | NSIS-`.exe` (ohne Adminrechte), `.msi` | `windows-2025` |
-| Fenster macOS | `.dmg`, universal (arm64 + x86_64), ab macOS 11 | `macos-15` |
-| Server + CLI | Linux `.tar.gz` je x86_64 und aarch64, Windows `.zip`, macOS `.tar.gz` (universal) — mit eingebauter Verwaltung (ADR 0011) | `server.yml`, eigener Läufer je System |
-| Container | `docker.io/smotherer/sprechwerk`, amd64 + arm64 | eigener Läufer je Architektur, kein QEMU; Verwaltung aus `server.yml` |
-| Prüfsummen | `SHA256SUMS` | — |
+Client und Server sind zwei Anwendungen; jede bekommt eigene Dateien.
+
+| Anwendung | Teil | Form | Gebaut auf |
+|---|---|---|---|
+| Client | Linux | `.deb`, `.rpm`, `.tar.gz`, AppImage (x86_64) | `ubuntu-24.04` |
+| Client | Flatpak | `.flatpak` (x86_64), `de.weppelmann.Sprechwerk` | aus dem Client-Tar |
+| Client | Windows | `.msi` (ohne Adminrechte), `.zip` | `windows-2025` |
+| Client | macOS | `.dmg` (universal, ab macOS 11), `.zip` für die Konsole | `macos-15` |
+| Server | Linux | `.deb`, `.rpm`, `.tar.gz`, AppImage (x86_64 und aarch64) | `ubuntu-24.04` |
+| Server | Flatpak | `.flatpak` (x86_64), `de.weppelmann.Sprechwerk.Server` | aus dem Server-Tar |
+| Server | Windows | `.zip` | `windows-2025` |
+| Server | macOS | `.dmg` (universal), `.tar.gz` für die Konsole | `macos-15` |
+| Server | Container | `docker.io/smotherer/sprechwerk`, amd64 + arm64 | eigener Läufer je Architektur, kein QEMU |
+| beide | Prüfsummen | `SHA256SUMS` | — |
 
 Die Fenster-Pakete baut `.github/workflows/pakete.yml`; denselben Baustein ruft
 `pruefen.yml` bei **jedem PR** auf. Was im Release landet, ist also vorher schon

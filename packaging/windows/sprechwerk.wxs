@@ -1,6 +1,10 @@
-<!-- Windows-Installer (WiX v5): Fenster, Server mit Fenster, Konsolenprogramme,
-     opus.dll daneben (crates/audio sucht sie neben der .exe). Pro Rechner;
-     Startmenü-Einträge für beide Fenster. Aufruf über paket.ps1. -->
+<!-- Windows-Installer (WiX v5) der **Client**-Anwendung: Fenster und
+     Referenzclient, opus.dll daneben (crates/audio sucht sie neben der .exe).
+     Pro Rechner, Startmenü-Eintrag für das Fenster. Aufruf über paket.ps1.
+
+     Der Server ist eine eigene Anwendung und wird als .zip ausgeliefert
+     (packaging/windows/paket.ps1) — er trägt sich nicht als Windows-Dienst ein,
+     ein Installer brächte hier nichts. -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="Sprechwerk" Manufacturer="Weppelmann" Version="$(Version)"
            UpgradeCode="7d2b0f4e-5f3a-4c11-9a43-2b8c6f1e9d70" Scope="perMachine">
@@ -14,8 +18,6 @@
         <!-- Eine Datei je Komponente: nur so erzeugt WiX die GUID selbst
              (WIX0367 bei mehreren Dateien in einer Komponente). -->
         <Component Id="Fenster"><File Source="target\release\sprechwerk-fenster.exe" /></Component>
-        <Component Id="ServerFenster"><File Source="target\release\sprechwerk-server-fenster.exe" /></Component>
-        <Component Id="Server"><File Source="target\release\sprechwerk.exe" /></Component>
         <Component Id="Cli"><File Source="target\release\sprechwerk-cli.exe" /></Component>
         <Component Id="Opus"><File Source="packaging\opus\opus.dll" /></Component>
         <Component Id="Lizenz"><File Source="LICENSE" Name="LICENSE.txt" /></Component>
@@ -27,16 +29,12 @@
       <Component Id="Startmenue" Guid="3c9e8f21-6a4b-4d7e-b1c2-7f5a0e9d4b36">
         <Shortcut Id="FensterVerknuepfung" Name="Sprechwerk" Target="[INSTALLFOLDER]sprechwerk-fenster.exe"
                   WorkingDirectory="INSTALLFOLDER" Icon="sprechwerk.ico" />
-        <Shortcut Id="ServerVerknuepfung" Name="Sprechwerk Server" Target="[INSTALLFOLDER]sprechwerk-server-fenster.exe"
-                  WorkingDirectory="INSTALLFOLDER" Icon="sprechwerk.ico" />
         <RegistryValue Root="HKLM" Key="Software\Weppelmann\Sprechwerk" Name="installiert" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </StandardDirectory>
 
     <Feature Id="Alles">
       <ComponentRef Id="Fenster" />
-      <ComponentRef Id="ServerFenster" />
-      <ComponentRef Id="Server" />
       <ComponentRef Id="Cli" />
       <ComponentRef Id="Opus" />
       <ComponentRef Id="Lizenz" />

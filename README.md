@@ -201,33 +201,52 @@ jedem, der mitredet).
 
 ### Fertige Pakete
 
-Jedes [Release](https://github.com/patimweb-labs/sprechwerk/releases) bringt mit:
+Client und Server sind **zwei getrennte Anwendungen**. Jedes
+[Release](https://github.com/patimweb-labs/sprechwerk/releases) bringt für
+beide eigene Dateien mit:
 
 | Datei | Für |
 |---|---|
-| `sprechwerk_<version>_amd64.deb` | Debian, Ubuntu (ab 22.04): Fenster, Server-Fenster, Server, CLI |
-| `sprechwerk-<version>-1.x86_64.rpm` | dasselbe für Fedora, openSUSE |
-| `Sprechwerk-<version>-x86_64.AppImage` | Fenster — jedes andere Linux, ohne Installation |
-| `Sprechwerk-<version>-x86_64.flatpak` | Fenster — als Flatpak (Silverblue, Steam Deck, …) |
-| `sprechwerk-<version>-linux-x86_64.tar.gz` | alle vier Programme zum Auspacken |
-| `Sprechwerk-<version>-windows-x64.msi` | Windows 10/11: Fenster und Server-Fenster im Startmenü, Server und CLI daneben |
-| `Sprechwerk-<version>-windows-x64.zip` | dasselbe ohne Installation |
-| `Sprechwerk-<version>-macos-universal.dmg` | macOS 11 oder neuer, Apple Silicon und Intel: „Sprechwerk" und „Sprechwerk Server" |
-| `sprechwerk-server-<version>-linux-x86_64.tar.gz` | nur Server + `sprechwerk-cli`, für Server ohne Bildschirm |
-| `sprechwerk-server-<version>-linux-aarch64.tar.gz` | dasselbe für ARM (Raspberry Pi 4/5, 64 Bit) |
+| `sprechwerk_<version>_amd64.deb` | **Client** — Debian, Ubuntu (ab 22.04) |
+| `sprechwerk-<version>-1.x86_64.rpm` | **Client** — Fedora, openSUSE |
+| `Sprechwerk-<version>-x86_64.AppImage` | **Client** — jedes Linux, ohne Installation |
+| `Sprechwerk-<version>-x86_64.flatpak` | **Client** — als Flatpak (Silverblue, Steam Deck, …) |
+| `sprechwerk-<version>-linux-x86_64.tar.gz` | **Client** zum Auspacken |
+| `Sprechwerk-<version>-windows-x64.msi` | **Client** — Windows 10/11 mit Startmenü-Eintrag |
+| `Sprechwerk-<version>-windows-x64.zip` | **Client** ohne Installation |
+| `Sprechwerk-<version>-macos-universal.dmg` | **Client** — macOS 11+, Apple Silicon und Intel |
+| `Sprechwerk-Server-<version>-x86_64.AppImage` | **Server** mit Fenster, ohne Installation |
+| `Sprechwerk-Server-<version>-x86_64.flatpak` | **Server** mit Fenster als Flatpak |
+| `sprechwerk-server_<version>_amd64.deb` | **Server** — Debian, Ubuntu (ab 22.04) |
+| `sprechwerk-server-<version>-1.x86_64.rpm` | **Server** — Fedora, openSUSE |
+| `Sprechwerk-Server-<version>-windows-x64.zip` | **Server** — Windows |
+| `Sprechwerk-Server-<version>-macos-universal.dmg` | **Server** — macOS |
+| `sprechwerk-server-<version>-linux-x86_64.tar.gz` | **Server** ohne Bildschirm (x86_64) |
+| `sprechwerk-server-<version>-linux-aarch64.tar.gz` | **Server** ohne Bildschirm (ARM, Raspberry Pi 4/5) |
+| `sprechwerk-server-<version>-windows-x86_64.zip` | **Server** ohne Bildschirm (Windows) |
+| `sprechwerk-server-<version>-macos-universal.tar.gz` | **Server** ohne Bildschirm (macOS) |
+| `sprechwerk-<version>-macos-universal-konsole.zip` | **Client** als Konsolenprogramm (macOS) |
 | `SHA256SUMS` | Prüfsummen aller Dateien (`sha256sum -c SHA256SUMS`) |
 
-Die Programme: **`sprechwerk-fenster`** (mitreden), **`sprechwerk-server-fenster`**
-(einen Server mit Fenster betreiben), **`sprechwerk`** (Server für Konsole,
-Dienst und Container), **`sprechwerk-cli`** (Referenzclient).
+Die Programme und wozu sie gehören:
 
-`.deb` und `.rpm` ziehen Opus als Abhängigkeit nach; beim AppImage muss es
+* **Client „Sprechwerk"** — `sprechwerk-fenster` (mitreden) und
+  `sprechwerk-cli` (Referenzclient für die Konsole).
+* **Server „Sprechwerk Server"** — `sprechwerk-server-fenster` (den eigenen
+  Server mit Fenster betreiben) und `sprechwerk` (Dienst, Verwaltung auf der
+  Konsole, Container).
+
+`.deb` und `.rpm` des **Clients** ziehen Opus als Abhängigkeit nach; beim
+AppImage muss es
 vorhanden sein (auf fast jedem Linux-Schreibtisch ist es das). Die Programme
 brauchen glibc 2.35 oder neuer (Ubuntu 22.04, Debian 12, aktuelle Fedora).
 
-**Flatpak:** `flatpak install --user Sprechwerk_<version>_x86_64.flatpak` —
-die freedesktop-Laufzeit kommt dabei von Flathub mit. Schlüssel und Einstellungen
-liegen dann unter `~/.var/app/de.weppelmann.Sprechwerk/`.
+**Flatpak:** zwei Anwendungen, zwei Dateien —
+`flatpak install --user Sprechwerk-<version>-x86_64.flatpak` und
+`flatpak install --user Sprechwerk-Server-<version>-x86_64.flatpak`. Die
+freedesktop-Laufzeit kommt dabei von Flathub mit. Schlüssel und Einstellungen
+liegen unter `~/.var/app/de.weppelmann.Sprechwerk/`, die Serverdaten unter
+`~/.var/app/de.weppelmann.Sprechwerk.Server/sprechwerk/`.
 
 **Windows und macOS sind nicht signiert** (dafür bräuchte es ein
 Code-Signing-Zertifikat bzw. ein Apple-Entwicklerkonto). Das System warnt

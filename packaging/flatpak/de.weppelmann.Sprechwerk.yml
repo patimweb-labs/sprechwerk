@@ -1,5 +1,8 @@
-# Flatpak aus dem tar.gz von packaging/linux/paket.sh (kein zweiter Bau).
+# Flatpak der **Client**-Anwendung (de.weppelmann.Sprechwerk) aus dem Client-Tar
+# von packaging/linux/paket.sh (kein zweiter Bau).
 # Aufruf: siehe .github/workflows/pakete.yml (Job flatpak).
+#
+# Der Server ist eine eigene Anwendung: de.weppelmann.Sprechwerk.Server.yml.
 id: de.weppelmann.Sprechwerk
 runtime: org.freedesktop.Platform
 runtime-version: "25.08"
@@ -26,8 +29,10 @@ modules:
     build-commands:
       - tar -xzf sprechwerk.tar.gz
       - install -Dm755 usr/bin/sprechwerk-fenster /app/bin/sprechwerk-fenster
-      - install -Dm755 usr/bin/sprechwerk-server-fenster /app/bin/sprechwerk-server-fenster
-      - cp -a usr/share /app/
+      - install -Dm755 usr/bin/sprechwerk-cli /app/bin/sprechwerk-cli
+      - mkdir -p /app/share
+      - cp -a usr/share/applications usr/share/metainfo usr/share/doc /app/share/
+      - cp -a usr/share/icons /app/share/
       # AppStream 1.0, das `flatpak-builder` beim Bau aufruft, kann SVG nicht
       # lesen: Es geht alle Symbole im hicolor-Baum durch und bricht an der
       # .svg mit „Unrecognized image file format“ ab — der ganze Lauf fällt.

@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
-# macOS: zwei App-Bündel (Sprechwerk, Sprechwerk Server) als Universal-Binary
-# (Apple Silicon + Intel) in einem .dmg, dazu die Konsolenprogramme als .zip.
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Patrick Weppelmann
+#
+# macOS-Pakete für die **zwei getrennten Anwendungen**, als Universal-Binary
+# (Apple Silicon + Intel):
+#
+#   Client  „Sprechwerk"          Sprechwerk.app        -> eigenes .dmg
+#                                 sprechwerk-cli        -> .zip
+#   Server  „Sprechwerk Server"   Sprechwerk Server.app -> eigenes .dmg
+#
+# Den Konsolen-Server für alle vier Systeme baut `server.yml`; hier entstehen
+# nur die Bündel, die ein Doppelklick startet.
 #
 # Aufruf aus dem Wurzelverzeichnis auf macOS: packaging/macos/paket.sh
 # Braucht: rustup-Ziele aarch64-apple-darwin und x86_64-apple-darwin,
@@ -23,13 +33,14 @@ for p in "${PROGRAMME[@]}"; do
     -output "dist/universal/$p"
 done
 
-# buendel <Anzeigename> <Programm> <Bundle-ID>
+# buendel <Anzeigename> <Programm> <Bundle-ID> <Zielordner>
 buendel() {
-  local name=$1 programm=$2 kennung=$3
-  local app="dist/dmg/$name.app"
+  local name=$1 programm=$2 kennung=$3 ordner=$4
+  local app="$ordner/$name.app"
   mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Frameworks"
   cp "dist/universal/$programm" "$app/Contents/MacOS/$programm"
   # Opus wird zur Laufzeit gesucht, u. a. in Contents/Frameworks (crates/audio/src/opus.rs).
+  # Der Server braucht es nicht (er wandelt keine Sprache), schadet aber nicht.
   cp packaging/opus/libopus.0.dylib "$app/Contents/Frameworks/"
   cp packaging/icons/icon.icns "$app/Contents/Resources/sprechwerk.icns"
   sed -e "s/@NAME@/$name/g" -e "s/@PROGRAMM@/$programm/g" -e "s/@KENNUNG@/$kennung/g" \
@@ -38,16 +49,25 @@ buendel() {
   codesign --force --deep --sign - "$app"
 }
 
-rm -rf dist/dmg && mkdir -p dist/dmg
-buendel "Sprechwerk" sprechwerk-fenster de.weppelmann.Sprechwerk
-buendel "Sprechwerk Server" sprechwerk-server-fenster de.weppelmann.Sprechwerk.Server
-ln -s /Applications dist/dmg/Programme
-hdiutil create -volname "Sprechwerk $VERSION" -srcfolder dist/dmg -ov -format UDZO \
-  "dist/Sprechwerk-${VERSION}-macos-universal.dmg"
+dmg() {
+  local ordner=$1 datei=$2
+  ln -s /Applications "$ordner/Programme"
+  hdiutil create -volname "Sprechwerk $VERSION" -srcfolder "$ordner" -ov -format UDZO "$datei"
+}
 
-# Konsolenprogramme (Server ohne Fenster, Referenzclient).
-mkdir -p dist/konsole
-cp dist/universal/sprechwerk dist/universal/sprechwerk-cli packaging/opus/libopus.0.dylib dist/konsole/
-(cd dist/konsole && zip -q "../sprechwerk-${VERSION}-macos-universal-konsole.zip" ./*)
-rm -rf dist/dmg dist/universal dist/konsole
+rm -rf dist/dmg-client dist/dmg-server dist/cli && mkdir -p dist/dmg-client dist/dmg-server dist/cli
+
+# --- Client ----------------------------------------------------------------
+buendel "Sprechwerk" sprechwerk-fenster de.weppelmann.Sprechwerk dist/dmg-client
+dmg dist/dmg-client "dist/Sprechwerk-${VERSION}-macos-universal.dmg"
+
+# Referenzclient als eigenes Zip — er hat kein Fenster, also kein Bündel.
+cp dist/universal/sprechwerk-cli packaging/opus/libopus.0.dylib LICENSE dist/cli/
+(cd dist/cli && zip -q "../sprechwerk-${VERSION}-macos-universal-konsole.zip" ./*)
+
+# --- Server ----------------------------------------------------------------
+buendel "Sprechwerk Server" sprechwerk-server-fenster de.weppelmann.Sprechwerk.Server dist/dmg-server
+dmg dist/dmg-server "dist/Sprechwerk-Server-${VERSION}-macos-universal.dmg"
+
+rm -rf dist/dmg-client dist/dmg-server dist/cli dist/universal
 ls -la dist/
