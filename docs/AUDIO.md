@@ -28,7 +28,11 @@ baut überall ohne `cmake` und ohne ALSA-Header:
   `--features cpal` und braucht dann `alsa-lib-devel` (Fedora) bzw.
   `libasound2-dev` (Debian/Ubuntu) und `pkg-config`.
 * **Geräte unter Windows und macOS** über `cpal` (WASAPI bzw. CoreAudio) — dort
-  fest eingebunden, ohne Zusatzpakete. Auch Geräteliste, Pegelanzeige und
+  fest eingebunden, ohne Zusatzpakete. **Ohne Rückfall:** `parec` ist ein
+  PipeWire-Programm und gibt es dort nicht. Scheitert cpal — unter macOS etwa,
+  weil der Mikrofonzugriff verweigert wurde —, wird sein Fehler
+  durchgereicht und im Fenster gemeldet, statt hinter einem zweiten Versuch zu
+  verschwinden, der ohnehin scheitern muss. Auch Geräteliste, Pegelanzeige und
   Prüfton in den Einstellungen gehen dort über cpal
   (`sprechwerk_audio::geraet::systemgeraete`); unter Linux über
   `pactl`/`parec`/`paplay`. Das Fenster entscheidet danach, welche Werkzeuge
@@ -164,7 +168,7 @@ Der Pfad ist **gebaut und läuft** — im Fenster und als Messwerkzeug.
 | Verlustausgleich (Paritätsrahmen, Verlusttest) | `audio/src/verlust.rs` | 5 Einzeltests (1 Verlust exakt ersetzt, 5 % Verlust vollständig) |
 | Sendekette (Block → Datagramm) | `audio/src/senden.rs` | 5 Einzeltests (Vorlauf beim Öffnen, Folgenummern lückenlos, Gate) |
 | Empfang (je Sprecher Dekodierer + Jitter, Mischen) | `audio/src/empfang.rs` | 5 Einzeltests (zwei Sprecher gemischt, Doppelte verworfen) |
-| Geräte: cpal (WASAPI/CoreAudio/ALSA) mit Rückfall auf `parec`/`pacat` | `audio/src/geraet.rs` | 2 Einzeltests, Rückfall im Betrieb geprüft |
+| Geräte: cpal (WASAPI/CoreAudio/ALSA); Rückfall auf `parec`/`pacat` **nur unter Linux** | `audio/src/geraet.rs` | 2 Einzeltests, Rückfall im Betrieb geprüft |
 | Pfad (Takt, Threads, Stumm/Taub) | `audio/src/lib.rs` | 3 Einzeltests + Messung |
 | Fensteranbindung | `desktop/src/sprech.rs` | 5 Einzeltests |
 
