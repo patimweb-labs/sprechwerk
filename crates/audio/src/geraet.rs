@@ -24,6 +24,10 @@
 //! und bekommt nur den Rückfallweg. Was gerade benutzt wird, sagt
 //! [`Pfad::geraete`] und damit auch die Oberfläche.
 
+// Nur der PipeWire-Weg unter Linux liest aus einem Kindprozess; unter
+// Windows und macOS ist der Import ungenutzt (und `-D warnings` würde ihn
+// als Fehler melden).
+#[cfg(target_os = "linux")]
 use std::io::Read;
 
 /// Eine Aufnahmequelle: liefert rohe 16-Bit-Mono-Bytes bei 48 kHz.
@@ -49,12 +53,14 @@ pub trait Wiedergabe {
 // ---------------------------------------------------------------- PipeWire
 
 /// Aufnahme über `parec` (PipeWire/PulseAudio, Linux).
+#[cfg(target_os = "linux")]
 pub struct ParecAufnahme {
     kind: std::process::Child,
     aus: std::io::BufReader<std::process::ChildStdout>,
     geraet: String,
 }
 
+#[cfg(target_os = "linux")]
 impl ParecAufnahme {
     pub fn neu(geraet: &str) -> std::io::Result<Self> {
         let mut befehl = std::process::Command::new("parec");
@@ -86,6 +92,7 @@ impl ParecAufnahme {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl Aufnahme for ParecAufnahme {
     fn lies(&mut self, ziel: &mut [u8]) -> std::io::Result<()> {
         self.aus.read_exact(ziel)
@@ -100,6 +107,7 @@ impl Aufnahme for ParecAufnahme {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl Drop for ParecAufnahme {
     fn drop(&mut self) {
         let _ = self.kind.kill();
@@ -108,12 +116,14 @@ impl Drop for ParecAufnahme {
 }
 
 /// Wiedergabe über `pacat` (PipeWire/PulseAudio, Linux).
+#[cfg(target_os = "linux")]
 pub struct PacatWiedergabe {
     kind: std::process::Child,
     ein: std::process::ChildStdin,
     geraet: String,
 }
 
+#[cfg(target_os = "linux")]
 impl PacatWiedergabe {
     pub fn neu(geraet: &str) -> std::io::Result<Self> {
         let mut befehl = std::process::Command::new("pacat");
@@ -145,6 +155,7 @@ impl PacatWiedergabe {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl Wiedergabe for PacatWiedergabe {
     fn schreibe(&mut self, daten: &[u8]) -> std::io::Result<()> {
         use std::io::Write;
@@ -160,6 +171,7 @@ impl Wiedergabe for PacatWiedergabe {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl Drop for PacatWiedergabe {
     fn drop(&mut self) {
         let _ = self.kind.kill();
@@ -253,6 +265,10 @@ mod mit_cpal {
         empfangen: Receiver<Vec<u8>>,
         rest: Vec<u8>,
         name: String,
+        /// Was der Rückruf zuletzt gemeldet hat. Ohne das bliebe ein
+        /// abgelehnter Mikrofonzugriff (macOS) oder ein abgezogenes Gerät
+        /// stumm: Der Strom liefert dann einfach nichts mehr.
+        fehler: Arc<Mutex<Option<String>>>,
     }
 
     impl CpalAufnahme {
@@ -303,6 +319,7 @@ mod mit_cpal {
                 empfangen,
                 rest: Vec::new(),
                 name,
+                fehler,
             })
         }
     }
@@ -313,7 +330,13 @@ mod mit_cpal {
                 match self.empfangen.recv() {
                     Ok(block) => self.rest.extend_from_slice(&block),
                     Err(_) => {
-                        return Err(std::io::Error::other("Aufnahme beendet"));
+                        let grund = self
+                            .fehler
+                            .lock()
+                            .ok()
+                            .and_then(|f| f.clone())
+                            .unwrap_or_else(|| "Aufnahme beendet".to_string());
+                        return Err(std::io::Error::other(grund));
                     }
                 }
             }
@@ -333,6 +356,9 @@ mod mit_cpal {
         senden: Sender<Vec<i16>>,
         rest: Vec<i16>,
         name: String,
+        /// Siehe [`CpalAufnahme::fehler`]: ohne das bliebe ein gestorbener
+        /// Ausgabestrom stumm und ohne Meldung.
+        fehler: Arc<Mutex<Option<String>>>,
     }
 
     impl CpalWiedergabe {
@@ -393,6 +419,7 @@ mod mit_cpal {
                 senden,
                 rest: Vec::new(),
                 name,
+                fehler,
             })
         }
     }
@@ -431,6 +458,9 @@ mod mit_cpal {
 
     impl Wiedergabe for CpalWiedergabe {
         fn schreibe(&mut self, daten: &[u8]) -> std::io::Result<()> {
+            if let Some(grund) = self.fehler.lock().ok().and_then(|f| f.clone()) {
+                return Err(std::io::Error::other(grund));
+            }
             let werte: Vec<i16> = daten
                 .as_chunks::<2>()
                 .0
@@ -487,9 +517,21 @@ pub fn systemgeraete() -> Option<Result<Systemgeraete, String>> {
 
 // -------------------------------------------------------- Auswahl mit Rückfall
 
-/// Öffnet die Aufnahme: erst cpal, dann PipeWire.
+/// Öffnet die Aufnahme.
+///
+/// Je System ein Weg, mit `cpal` als gemeinsamer Abstraktion (WASAPI,
+/// CoreAudio, ALSA):
+///
+/// * **Linux** — zuerst `cpal` (nur mit `--features cpal`, weil ALSA
+///   Entwicklungspakete braucht), sonst der Rückfall über `parec`, der ohne
+///   diese Pakete auskommt.
+/// * **Windows und macOS** — nur `cpal`. Ein Rückfall auf `parec` wäre dort
+///   sinnlos: das Programm gibt es nicht, und ein echter Fehler (etwa ein
+///   abgelehnter Mikrofonzugriff unter macOS) verschwände hinter einem
+///   zweiten, aussichtslosen Versuch.
+#[cfg(target_os = "linux")]
 pub fn aufnahme_oeffnen(geraet: &str) -> std::io::Result<Box<dyn Aufnahme>> {
-    #[cfg(any(feature = "cpal", not(target_os = "linux")))]
+    #[cfg(feature = "cpal")]
     {
         match mit_cpal::CpalAufnahme::neu(geraet) {
             Ok(a) => return Ok(Box::new(a)),
@@ -501,9 +543,21 @@ pub fn aufnahme_oeffnen(geraet: &str) -> std::io::Result<Box<dyn Aufnahme>> {
     Ok(Box::new(ParecAufnahme::neu(geraet)?))
 }
 
-/// Öffnet die Wiedergabe: erst cpal, dann PipeWire.
+#[cfg(not(target_os = "linux"))]
+pub fn aufnahme_oeffnen(geraet: &str) -> std::io::Result<Box<dyn Aufnahme>> {
+    match mit_cpal::CpalAufnahme::neu(geraet) {
+        Ok(a) => Ok(Box::new(a)),
+        Err(fehler) => Err(std::io::Error::other(format!(
+            "Aufnahme nicht möglich: {fehler}"
+        ))),
+    }
+}
+
+/// Öffnet die Wiedergabe. Siehe [`aufnahme_oeffnen`]: derselbe Aufbau je
+/// System.
+#[cfg(target_os = "linux")]
 pub fn wiedergabe_oeffnen(geraet: &str) -> std::io::Result<Box<dyn Wiedergabe>> {
-    #[cfg(any(feature = "cpal", not(target_os = "linux")))]
+    #[cfg(feature = "cpal")]
     {
         match mit_cpal::CpalWiedergabe::neu(geraet) {
             Ok(w) => return Ok(Box::new(w)),
@@ -513,6 +567,16 @@ pub fn wiedergabe_oeffnen(geraet: &str) -> std::io::Result<Box<dyn Wiedergabe>> 
         }
     }
     Ok(Box::new(PacatWiedergabe::neu(geraet)?))
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn wiedergabe_oeffnen(geraet: &str) -> std::io::Result<Box<dyn Wiedergabe>> {
+    match mit_cpal::CpalWiedergabe::neu(geraet) {
+        Ok(w) => Ok(Box::new(w)),
+        Err(fehler) => Err(std::io::Error::other(format!(
+            "Wiedergabe nicht möglich: {fehler}"
+        ))),
+    }
 }
 
 #[cfg(test)]
