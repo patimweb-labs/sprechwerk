@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.0.1](https://github.com/patimweb-labs/sprechwerk/compare/v3.0.0...v3.0.1) (2026-11-19)
+
+
+### Behoben
+
+* **packaging:** Server-Tar nur aus einer Quelle, Windows doppelt raus ([57bfba6](https://github.com/patimweb-labs/sprechwerk/commit/57bfba65c8dcd0b58edea3a4ac55c896f27cb479))
+* **packaging:** Server-Tar nur aus einer Quelle, Windows-Server nicht doppelt ([dd3c855](https://github.com/patimweb-labs/sprechwerk/commit/dd3c855cc2efbdb9c78c11be6a9d44c77676f8bb))
+
 ## [3.0.0](https://github.com/patimweb-labs/sprechwerk/compare/v2.0.3...v3.0.0) (2026-11-19)
 
 
