@@ -4847,7 +4847,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-adapters"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "aec3",
  "anyhow",
@@ -4874,7 +4874,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-audio"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "anyhow",
  "bytes",
@@ -4888,7 +4888,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-cli"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "anyhow",
  "ed25519-dalek",
@@ -4903,7 +4903,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-client"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "anyhow",
  "bytes",
@@ -4925,7 +4925,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-domain"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "hex",
  "serde",
@@ -4935,7 +4935,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-fenster"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -4954,7 +4954,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-ipc"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -4964,7 +4964,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-linkvorschau"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "base64 0.22.1",
  "image",
@@ -4977,7 +4977,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-oberflaeche"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "egui",
  "egui_extras",
@@ -4987,7 +4987,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-protocol"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "hex",
  "serde",
@@ -4999,7 +4999,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-server"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "anyhow",
  "bytes",
@@ -5025,7 +5025,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-server-fenster"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "chrono",
  "dirs",
@@ -5040,7 +5040,7 @@ dependencies = [
 
 [[package]]
 name = "sprechwerk-store"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "rusqlite",
  "serde",

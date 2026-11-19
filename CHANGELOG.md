@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.0.2](https://github.com/patimweb-labs/sprechwerk/compare/v2.0.1...v2.0.2) (2026-11-19)
+
+
+### Behoben
+
+* **flatpak:** AppStream ohne rofiles-fuse ([fe204b6](https://github.com/patimweb-labs/sprechwerk/commit/fe204b6973a74df2831ad4a3ce07f031d381f5a3))
+* **flatpak:** AppStream ohne rofiles-fuse, sonst bricht der Flatpak-Bau ab ([4fa4acb](https://github.com/patimweb-labs/sprechwerk/commit/4fa4acb45184229edf995508d0d9cb8b1ef323c1))
+* **flatpak:** kein SVG im Flatpak, AppStream 1.0 kann es nicht lesen ([0959dbc](https://github.com/patimweb-labs/sprechwerk/commit/0959dbc078aefb5831dfd91ad79baa46b4d0c661))
+
 ## [2.0.1](https://github.com/patimweb-labs/sprechwerk/compare/v2.0.0...v2.0.1) (2026-11-18)
 
 
