@@ -116,21 +116,27 @@ Hexwerk und WLED Ambilight — die Apps gehören sichtbar zusammen.
 
 Damit das Symbol auch in der **Taskleiste** erscheint, reicht die Datei in der
 Anwendung nicht: unter Linux muss eine `.desktop`-Datei die Fensterklasse
-nennen. Deshalb liegen beide im Baum:
+nennen. Deshalb liegen Zeichnung und Eintrag im Baum und werden von den
+Paketen mitinstalliert:
 
 ```
-crates/desktop/icons/                     # was Tauri einbettet (.png/.ico/.icns)
-crates/desktop/packaging/
-  de.weppelmann.Sprechwerk.desktop        # StartupWMClass=sprechwerk-desktop
-  icons/hicolor/<größe>/apps/sprechwerk.png
+packaging/icons/                          # erzeugt von markenwerk (AGENTS.md §8)
+packaging/linux/de.weppelmann.Sprechwerk.desktop        # StartupWMClass=de.weppelmann.Sprechwerk
+packaging/linux/de.weppelmann.Sprechwerk.Server.desktop # dieselbe für den Server
 ```
 
-Installation im Benutzerbereich (ohne root):
+Eingerichtet wird das vom Paket — `.deb`, `.rpm`, AppImage und Flatpak bringen
+Eintrag und Symbole mit. **Nicht** von Hand nach `~/.local/share/applications`
+kopieren: ein Eintrag dort hat denselben Dateinamen wie der aus dem Paket,
+liegt aber früher im Suchpfad und verdeckt ihn. Genau das ist passiert, als
+das Programm noch `sprechwerk-desktop` hieß — der alte Eintrag blieb liegen,
+zeigte auf ein Programm, das es nicht mehr gab, und das Menü startete nichts.
+Wer so etwas vorfindet:
 
 ```bash
-cp -r crates/desktop/packaging/icons/hicolor ~/.local/share/icons/
-cp crates/desktop/packaging/de.weppelmann.Sprechwerk.desktop ~/.local/share/applications/
-gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor
+ls ~/.local/share/applications/*[Ss]prechwerk*
+rm ~/.local/share/applications/de.weppelmann.Sprechwerk.desktop
+kbuildsycoca6 --noincremental      # Plasma; sonst: neu anmelden
 ```
 
 Im Fenster selbst steht dieselbe Zeichnung links neben dem Namen — als Maske

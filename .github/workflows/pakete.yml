@@ -144,11 +144,17 @@ jobs:
           # Fehlerfall da: AppStream liest den Baum dann direkt statt über
           # FUSE, und `bau/files` bleibt nach einem Abbruch stehen, damit der
           # Diagnoseschritt unten hineinschauen kann.
+          # `--default-branch=stable`: ohne das exportiert flatpak-builder nach
+          # `master`, und genau so steht die Anwendung dann in `flatpak list`
+          # und in der Paketverwaltung.
           flatpak-builder --user --install-deps-from=flathub --repo=repo --force-clean \
-            --disable-rofiles-fuse --keep-build-dirs \
+            --disable-rofiles-fuse --keep-build-dirs --default-branch=stable \
             bau "${{ matrix.manifest }}"
+          # Der Zweig ist das vierte Argument. Ohne ihn sucht `build-bundle`
+          # `master` — und der Export heißt seit `--default-branch` `stable`.
           flatpak build-bundle repo "${{ matrix.datei }}-${version}-x86_64.flatpak" \
-            "${{ matrix.id }}" --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+            "${{ matrix.id }}" stable \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
 
       # Nur wenn der Bau scheitert: sagen, woran es lag. Die Ausgabe von
       # AppStream ist knapp — sie nennt den Dateinamen nur mit `-v`, und die
