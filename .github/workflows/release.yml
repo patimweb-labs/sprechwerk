@@ -12,7 +12,7 @@
 #          Windows (`.zip`), macOS Apple Silicon + Intel (`.tar.gz`)
 #        * Fenster (`pakete.yml`): Linux `.deb`/`.rpm`/AppImage, Flatpak,
 #          Windows `.exe`/`.msi`, macOS `.dmg` (Apple Silicon + Intel)
-#        * Container-Abbild `ghcr.io/<repo>`, amd64 + arm64
+#        * Container-Abbild `docker.io/<benutzer>/sprechwerk`, amd64 + arm64
 #        * `SHA256SUMS` über alle Dateien
 #
 # Warum alles in **einer** Datei: Ein Release, das mit dem `GITHUB_TOKEN`
@@ -49,7 +49,7 @@ permissions: {}
 
 env:
   CARGO_TERM_COLOR: always
-  ABBILD: ghcr.io/${{ github.repository }}
+  ABBILD: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/sprechwerk
 
 jobs:
   release-please:
@@ -192,9 +192,10 @@ jobs:
           - { os: ubuntu-24.04, plattform: linux/amd64, kurz: amd64 }
           - { os: ubuntu-24.04-arm, plattform: linux/arm64, kurz: arm64 }
     runs-on: ${{ matrix.os }}
+    # Kein `packages: write` mehr: das Abbild liegt bei Docker Hub, nicht bei
+    # GitHub — angemeldet wird sich mit den Repo-Secrets DOCKERHUB_*.
     permissions:
       contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -204,9 +205,9 @@ jobs:
 
       - uses: docker/login-action@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - id: meta
         uses: docker/metadata-action@v6
@@ -244,7 +245,7 @@ jobs:
     if: ${{ !cancelled() && needs.abbild.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
-      packages: write
+      contents: read
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -256,9 +257,9 @@ jobs:
 
       - uses: docker/login-action@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # `0.1.0`, `0.1` und `latest`. Vor 1.0 kommt ein Bruch als neue
       # Minor-Version (`bump-minor-pre-major`) — deshalb kein Name `0`.

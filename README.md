@@ -255,7 +255,7 @@ Ohne eigenen Bau: `docker run` mit dem Abbild aus dem Release —
 
 ```bash
 docker run -d --name sprechwerk -p 7443:7443/udp \
-  -v sprechwerk-daten:/data ghcr.io/patimweb-labs/sprechwerk:1.2
+  -v sprechwerk-daten:/data smotherer/sprechwerk:2.0
 ```
 
 Fest auf eine Minor-Version statt `latest` setzen, wenn der Betrieb ruhig
