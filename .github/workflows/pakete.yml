@@ -94,6 +94,7 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/*.AppImage
+            dist/flatpak-quelle/*.tar.gz
 
   # Ein Flatpak je Anwendung: eigene Kennung, eigenes Archiv aus `linux`.
   flatpak:
@@ -117,7 +118,7 @@ jobs:
             tar: sprechwerk-server
             datei: Sprechwerk-Server
             artefakt: pakete-flatpak-server
-            glob: "sprechwerk-server-*-linux-x86_64.tar.gz"
+            glob: "flatpak-quelle/sprechwerk-server.tar.gz"
     steps:
       - uses: actions/checkout@v7
         with:
