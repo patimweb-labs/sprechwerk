@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.0.2](https://github.com/patimweb-labs/sprechwerk/compare/v3.0.1...v3.0.2) (2026-11-19)
+
+
+### Behoben
+
+* **audio:** je System ein Weg — cpal überall, PipeWire nur Linux ([ba6cf5e](https://github.com/patimweb-labs/sprechwerk/commit/ba6cf5e70a3aa27a972c6cce86ce3b95958951cf))
+* **audio:** je System ein Weg — cpal überall, PipeWire nur Linux ([7aa60f2](https://github.com/patimweb-labs/sprechwerk/commit/7aa60f2191eab620b898ad815be214bcbf78e736))
+* **flatpak:** Zweig `stable`, Kategorien eindeutig, Doku ohne Handarbeit ([059cdbe](https://github.com/patimweb-labs/sprechwerk/commit/059cdbead2fb590c00b28f52b4b7e622ff7e5239))
+* **flatpak:** Zweig stable, Kategorien eindeutig, Doku ohne Handarbeit ([4938e8b](https://github.com/patimweb-labs/sprechwerk/commit/4938e8b08806d250eadd2788f61dff73b648cc63))
+
 ## [3.0.1](https://github.com/patimweb-labs/sprechwerk/compare/v3.0.0...v3.0.1) (2026-11-19)
 
 
