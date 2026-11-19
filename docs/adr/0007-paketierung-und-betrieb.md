@@ -54,7 +54,7 @@ des Release-PRs erzeugt Tag, Änderungsliste und hängt an das GitHub-Release:
 | Fenster Windows | NSIS-`.exe` (ohne Adminrechte), `.msi` | `windows-2025` |
 | Fenster macOS | `.dmg`, universal (arm64 + x86_64), ab macOS 11 | `macos-15` |
 | Server + CLI | Linux `.tar.gz` je x86_64 und aarch64, Windows `.zip`, macOS `.tar.gz` (universal) — mit eingebauter Verwaltung (ADR 0011) | `server.yml`, eigener Läufer je System |
-| Container | `ghcr.io/patimweb-labs/sprechwerk`, amd64 + arm64 | eigener Läufer je Architektur, kein QEMU; Verwaltung aus `server.yml` |
+| Container | `docker.io/smotherer/sprechwerk`, amd64 + arm64 | eigener Läufer je Architektur, kein QEMU; Verwaltung aus `server.yml` |
 | Prüfsummen | `SHA256SUMS` | — |
 
 Die Fenster-Pakete baut `.github/workflows/pakete.yml`; denselben Baustein ruft
@@ -131,3 +131,16 @@ gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor
 Im Fenster selbst steht dieselbe Zeichnung links neben dem Namen — als Maske
 (`mask-image` auf `symbolic.svg`), damit sie die Textfarbe annimmt und nicht als
 zweite Bilddatei gepflegt werden muss.
+
+## Nachtrag (2026-11-19): Container bei Docker Hub
+
+Das Abbild liegt bei **Docker Hub** statt bei GitHub (`ghcr.io`). Grund ist
+kein Geschmack: das Repository wurde neu aufgesetzt, und das alte GHCR-Paket
+hing weiter am gelöschten Repository — jeder Push scheiterte mit
+`denied: permission_denied: read_package`. Ein GHCR-Paket lässt sich nur von
+der Organisation umhängen; Docker Hub ist davon unabhängig und für einen
+Betreiber außerdem der Ort, an dem er sucht.
+
+Angemeldet wird sich mit zwei Repo-Secrets, `DOCKERHUB_USERNAME` und
+`DOCKERHUB_TOKEN` (Access Token mit *Read & Write*, kein Kontopasswort).
+`packages: write` braucht der Lauf nicht mehr.
