@@ -82,8 +82,13 @@ install -Dm644 crates/oberflaeche/schriften/OFL.txt \
   "$stufe_server/usr/share/doc/$SERVER/IBM-Plex-OFL.txt"
 
 # --- tar.gz: zum Auspacken ohne Paketverwaltung ----------------------------
+# Den Client gibt es als Release-Datei. Den Server liefert `server.yml` für
+# alle vier Systeme (mit README und Beispielkonfiguration); hier entsteht nur
+# die Bauvorlage für sein Flatpak — unter eigenem Pfad, damit sich beide nicht
+# beim Hochladen überschreiben.
 tar -C "$stufe_client/usr/.." -czf "dist/${CLIENT}-${VERSION}-linux-${ARCH}.tar.gz" usr
-tar -C "$stufe_server/usr/.." -czf "dist/${SERVER}-${VERSION}-linux-${ARCH}.tar.gz" usr
+mkdir -p dist/flatpak-quelle
+tar -C "$stufe_server/usr/.." -czf "dist/flatpak-quelle/${SERVER}.tar.gz" usr
 
 # --- deb und rpm -----------------------------------------------------------
 export VERSION

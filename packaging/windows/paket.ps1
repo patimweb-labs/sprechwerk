@@ -35,12 +35,9 @@ Compress-Archive -Force -Path "$client\*" -DestinationPath "$client.zip"
 Remove-Item -Recurse $client
 
 # --- Server ----------------------------------------------------------------
-# Das Opus-DLL bleibt hier weg: der Server verteilt Sprache, er wandelt sie
-# nicht. Dekodiert wird beim Empfänger (docs/AUDIO.md).
-$server = "dist\Sprechwerk-Server-$version-windows-x64"
-New-Item -ItemType Directory -Force $server | Out-Null
-Copy-Item target\release\sprechwerk.exe, target\release\sprechwerk-server-fenster.exe, LICENSE $server
-Compress-Archive -Force -Path "$server\*" -DestinationPath "$server.zip"
-Remove-Item -Recurse $server
+# Hier entsteht **kein** Server-Paket: `server.yml` baut das Serverarchiv für
+# alle vier Systeme (mit README und Beispielkonfiguration). Zwei Quellen für
+# dieselbe Datei hießen zwei Namen im Release und ein Überschreiben beim
+# Hochladen.
 
 Get-ChildItem dist
