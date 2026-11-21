@@ -3,6 +3,12 @@ name = "sprechwerk-protocol"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "sprechwerk: Sprache auf der Leitung — Rahmen, Nachrichten, Sprachkopf, Geheimtext"
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 sprechwerk-domain.workspace = true

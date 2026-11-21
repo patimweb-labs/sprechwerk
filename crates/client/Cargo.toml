@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "sprechwerk: Client-Kern ohne Oberfläche (Verbindung, Sprechpfad, Schlüssel, Einstellungen)"
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 # Was ein Client tut, steht hier — unabhängig davon, wer es anzeigt (Fenster,
 # Server-Fenster, Tests). Kein Oberflächen-Crate darf hier hinein.

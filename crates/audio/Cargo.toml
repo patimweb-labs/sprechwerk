@@ -1,9 +1,14 @@
 [package]
 name = "sprechwerk-audio"
 version.workspace = true
-edition = "2021"
-license = "MIT"
+edition.workspace = true
+license.workspace = true
 description = "sprechwerk: Aufnahme, Wiedergabe, Opus, Vorlauf"
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 # **Warum kein `cpal` und kein gebündeltes Opus?**
 # `cpal` braucht `alsa-lib-devel`, `audiopus` baut Opus mit `cmake`. Beides

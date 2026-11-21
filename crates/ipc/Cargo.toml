@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "sprechwerk: Vertrag zwischen Fenster und Logik (Befehle, Ereignisse, Modell)"
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 sprechwerk-domain.workspace = true

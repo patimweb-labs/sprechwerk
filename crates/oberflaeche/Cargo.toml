@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "sprechwerk: Bausatz für die Fenster — Themes aus Tokens, Texte, Schriften, Bausteine"
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 # Gemeinsam für Client-Fenster und Server-Fenster. Nur egui, kein Fenster-
 # rahmen (eframe), kein Netz — damit beide Programme dieselbe Optik haben,

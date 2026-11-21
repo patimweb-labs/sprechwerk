@@ -20,9 +20,19 @@ members = [
 version = "3.0.2"
 edition = "2021"
 license = "MIT"
+authors = ["Patrick Weppelmann"]
+repository = "https://github.com/patimweb-labs/sprechwerk"
+homepage = "https://github.com/patimweb-labs/sprechwerk"
+keywords = ["voice", "chat", "quic", "end-to-end", "self-hosted"]
+categories = ["network-programming", "cryptography", "multimedia::audio"]
 # Keine `rust-version`: die Rust-Fassung legt `rust-toolchain.toml` fest (eine
 # Stelle, dieselbe für Entwickler, CI und Docker). Ein Feld, das kein Crate
 # erbt, war hier nur eine zweite, falsche Angabe (1.80).
+#
+# `repository` und `homepage` sind dieselbe Adresse: es gibt keine eigene
+# Projektseite, und eine erfundene wäre schlechter als keine. `keywords` und
+# `categories` erben alle Crates mit — die Nomenklatur von crates.io, nicht
+# unsere.
 
 [workspace.dependencies]
 sprechwerk-domain = { path = "crates/domain" }
