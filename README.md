@@ -605,4 +605,9 @@ TeamSpeak 3 auf Protokollebene liegt als Nachbardokumentation
 
 ## Lizenz
 
-MIT — siehe [`LICENSE`](LICENSE).
+MIT — siehe [`LICENSE`](LICENSE). Keine Platzgrenze, keine Lizenzdatei.
+
+„TeamSpeak“ und „Discord“ sind Marken der jeweiligen Inhaber. Sie werden hier
+nur zur Beschreibung genannt: sprechwerk ist ein eigenständiges Projekt, steht
+in keiner Verbindung zu beiden und ist **nicht** TeamSpeak-3-kompatibel — kein
+TS3-Client kann sich verbinden, und es enthält keinen Code daraus.
