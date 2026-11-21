@@ -14,13 +14,13 @@ pub mod sperren;
 use crate::logik;
 use crate::modell::{Ansicht, Hinweis, Oberflaeche};
 use crate::texte::{t, tf};
-use crate::thema::{self, fett, Ton};
+use crate::thema::{self, Ton};
 use eframe::egui::{self, RichText, Stroke};
 use sprechwerk_client::sitzung::Aktion;
 use sprechwerk_ipc::{Befehl, Verbindung};
 pub use sprechwerk_oberflaeche::bausteine::{
-    self, hauptknopf, hauptknopf_mit, icon, icon_knopf, icon_text_knopf, karte, knopf, pegelbalken,
-    Icon,
+    self, hauptknopf, hauptknopf_mit, icon, icon_knopf, icon_text_knopf, karte, knopf, marke,
+    pegelbalken, Icon,
 };
 
 /// Text in einer Bedeutungsfarbe.
@@ -101,11 +101,7 @@ pub fn kopf(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>) 
                     ui,
                     |ui| {
                         if !kompakt || servername.is_none() {
-                            ui.label(
-                                RichText::new("sprechwerk")
-                                    .font(egui::FontId::new(thema::FONT_SIZE_LG, fett()))
-                                    .color(f.accent_default),
-                            );
+                            marke(ui, &f, o.thema());
                             ui.add_space(thema::SPACE_3);
                         }
                         if let Some(name) = &servername {

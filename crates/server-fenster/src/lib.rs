@@ -12,7 +12,8 @@ use eframe::egui::{self, RichText, Stroke};
 use sprechwerk_domain::Role;
 use sprechwerk_oberflaeche::bausteine::{
     auswahl, fakten, feld, feldbreite, hauptknopf_mit, icon_knopf, icon_text_knopf, karte, knopf,
-    kopierbar, leer, rand, rollenabzeichen, seite, seitenkopf, status, status_klein, text, Icon,
+    kopierbar, leer, marke, rand, rollenabzeichen, seite, seitenkopf, status, status_klein, text,
+    Icon,
 };
 use sprechwerk_oberflaeche::texte::{rolle, rolle_kurz, t, tf, Sprache};
 use sprechwerk_oberflaeche::thema::{self, fett, Thema, Ton};
@@ -200,11 +201,7 @@ pub fn zeichnen(ui: &mut egui::Ui, m: &mut Modell) -> Vec<Aktion> {
                     ui,
                     |ui| {
                         if breit {
-                            ui.label(
-                                RichText::new("sprechwerk")
-                                    .font(egui::FontId::new(thema::FONT_SIZE_LG, fett()))
-                                    .color(f.accent_default),
-                            );
+                            marke(ui, &f, m.thema);
                             ui.label(text(&f, t(s, "srv.title"), Ton::Leise));
                             ui.add_space(thema::SPACE_3);
                         }
