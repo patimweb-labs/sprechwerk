@@ -1,20 +1,8 @@
 # Marke
 
-Hier liegen die erzeugten Dateien der Marke — nicht die Quelle.
-
-Die Quelle ist ein ASCII-Raster im Nachbar-Repository:
-`weppelmann-ui/apps/markenwerk/marken/sprechwerk.pm` (Zeichen) und
-`weppelmann-ui/apps/markenwerk/src/schrift.ts` (Wortmarke). Geändert wird dort,
-danach:
-
-```bash
-scripts/marke-bauen.sh [pfad/zu/apps/markenwerk]
-```
-
-Das Skript rendert in `apps/markenwerk`, kopiert SVG und PNG nach
-`packaging/icons` (die Paketskripte lesen von dort), baut ICO und ICNS und legt
-die beiden Logofassungen hier ab. Ein frischer Lauf in einem leeren Verzeichnis
-muss dieselben `sha256sum` ergeben (AGENTS.md §8.7).
+Hier liegt die Vorlage und das, was aus ihr für README und Doku entsteht.
+**Die Quelle sind die SVGs in [`../assets/`](../assets/)** — nicht dieses
+Verzeichnis und kein ASCII-Raster.
 
 | Datei | Zweck |
 |---|---|
@@ -22,10 +10,21 @@ muss dieselben `sha256sum` ergeben (AGENTS.md §8.7).
 | `logo-dark.svg` | Zeichen + Wortmarke für dunklen Grund (Wortmarke `#E9E5DC`) |
 | `logo-light.svg` | dasselbe für hellen Grund (Wortmarke `#0E1319`) |
 
-`entwurf.png` ist die Referenz, nicht das Ergebnis: daran werden die Formen
-gemessen (zwei Blasen, Fasen als Treppe, Schwanz unten, Welle aus fünf Balken;
-Wortmarke breit und fett, Strich ein Fünftel der Höhe). Erzeugt wird trotzdem
-nur aus den beiden Rastern oben.
+`entwurf.png` ist die Referenz, nicht das Ergebnis: daran sind die Formen
+gemessen (zwei Blasen, Treppen als Fasen, Schwanz unten, Welle aus fünf Balken;
+Wortmarke breit und fett, Strich knapp ein Viertel der Höhe). Die Maßtabelle
+steht in [ADR 0015](../adr/0015-logo-und-farben.md).
+
+Geändert wird in `assets/`. Danach:
+
+```bash
+packaging/icons/erzeugen.sh
+```
+
+Das Skript zeichnet die Icons (`packaging/icons/`) und legt die beiden
+Logofassungen hier ab. Ein zweiter Lauf in einem leeren Verzeichnis muss
+dieselben Bilder ergeben (AGENTS.md §8.7).
 
 Die Farben und die Abweichung von der einfarbigen Markenregel stehen in
-[ADR 0014](../adr/0014-marke-zwei-farben.md).
+[ADR 0015](../adr/0015-logo-und-farben.md); die Vorgängerregel in
+[ADR 0014](../adr/0014-marke-zwei-farben.md) ist ersetzt.

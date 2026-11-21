@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/marke/logo-dark.svg">
-    <img src="docs/marke/logo-light.svg" alt="sprechwerk — zwei Sprechblasen, Wortmarke" width="620">
+    <img src="docs/marke/logo-light.svg" alt="sprechwerk — zwei Sprechblasen, Wortmarke" width="700">
   </picture>
 </p>
 
