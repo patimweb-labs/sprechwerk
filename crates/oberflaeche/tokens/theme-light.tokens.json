@@ -56,10 +56,10 @@
     },
     "signal": {
       "default": {
-        "$value": "{color.orange.700}"
+        "$value": "{color.orange.600}"
       },
       "hover": {
-        "$value": "{color.orange.800}"
+        "$value": "{color.orange.700}"
       }
     },
     "status": {

@@ -103,7 +103,7 @@ bleibt als Herkunftsnachweis der Marke stehen.
 | Theme | Fläche | Akzent (`tuerkis`) | Signal (`orange`) |
 |---|---|---|---|
 | dark | `#090C10` / `#0E1319` | `#2EE6C8` | `#F7931E` |
-| light | `#F6F2EA` / `#FFFDF8` | `#0A6E63` (abgedunkelt) | `#A55B00` (abgedunkelt) |
+| light | `#F6F2EA` / `#FFFDF8` | `#0A6E63` (abgedunkelt) | `#B8640A` (abgedunkelt) |
 | mono | `#0A0A0A` / `#101010` | `#E8E6E1` | `#D6D3CE` |
 
 Im hellen Theme ist der Akzent dunkles Türkis, nicht das helle aus dem Zeichen:
