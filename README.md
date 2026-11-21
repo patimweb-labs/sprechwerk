@@ -177,9 +177,11 @@ Lizenzbedingungen (Stand 2026) und können sich ändern.
 
 ## Stand heute
 
-Lauffähig und geprüft: **360 Tests** in einem Arbeitsbereich — Server,
-Client-Kern und beide Fenster samt Oberflächentests (über AccessKit, ohne Server
-und Soundkarte) — dazu Messskripte, die einen echten Server starten.
+Lauffähig und geprüft: **ein Testlauf über den ganzen Arbeitsbereich** (`cargo
+test --workspace`) — Server, Client-Kern und beide Fenster samt
+Oberflächentests (über AccessKit, ohne Server und Soundkarte) — dazu
+Messskripte, die einen echten Server starten. Die Zahl der Tests steht im Lauf
+selbst; hier steht sie nicht, weil sie mit jedem PR veraltet.
 
 * **Durchsatz und Antwortzeit** — Durchlauf einer Nachricht durch den Server
   p99 **21–29 µs**, Beitritt p95 **1,8–2,8 ms**, Aufpreis der Quantensicherheit
