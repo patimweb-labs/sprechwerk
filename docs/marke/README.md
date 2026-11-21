@@ -18,8 +18,14 @@ muss dieselben `sha256sum` ergeben (AGENTS.md §8.7).
 
 | Datei | Zweck |
 |---|---|
+| `entwurf.png` | Vorlage des Nutzers, an der Zeichen und Wortmarke hängen |
 | `logo-dark.svg` | Zeichen + Wortmarke für dunklen Grund (Wortmarke `#E9E5DC`) |
 | `logo-light.svg` | dasselbe für hellen Grund (Wortmarke `#0E1319`) |
+
+`entwurf.png` ist die Referenz, nicht das Ergebnis: daran werden die Formen
+gemessen (zwei Blasen, Fasen als Treppe, Schwanz unten, Welle aus fünf Balken;
+Wortmarke breit und fett, Strich ein Fünftel der Höhe). Erzeugt wird trotzdem
+nur aus den beiden Rastern oben.
 
 Die Farben und die Abweichung von der einfarbigen Markenregel stehen in
 [ADR 0014](../adr/0014-marke-zwei-farben.md).
