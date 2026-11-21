@@ -19,3 +19,9 @@ serde_json.workspace = true
 ed25519-dalek = { version = "2", features = ["rand_core", "pkcs8"] }
 getrandom = "0.2"
 hex = "0.4"
+
+[dev-dependencies]
+# Für die Ende-zu-Ende-Prüfung des Referenzclients: der Dienst läuft im
+# Hintergrundfaden mit eigener Laufzeit, der Client als echter Prozess — nur so
+# ist prüfbar, dass sein Abschied ankommt (das Fenster zum Prozessende).
+sprechwerk-server = { path = "../server" }

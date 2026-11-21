@@ -276,16 +276,32 @@ async fn bediene(verbindung: quinn::Connection, kern: Arc<Mutex<Kern>>) -> anyho
     enum Anmeldung {
         Ok(MemberId, ServerFrame),
         Abgelehnt(ServerFrame),
+        /// Abgelehnt mit eigenem Schließcode (Passwort): der Grund muss beim
+        /// Client ankommen, nicht nur „closed by peer: 0".
+        AbgelehntMitGrund(ServerFrame, u32, &'static str),
+    }
+
+    /// Wie das Serverpasswort zur Anmeldung steht.
+    #[derive(Clone, Copy)]
+    enum Passwort {
+        Offen,
+        Stimmt,
+        Fehlt,
+        Falsch,
     }
     let anmeldung = {
         let mut k = kern.lock().expect("Sperre");
-        let passwort_stimmt = k.konfig.server.passwort.is_empty()
-            || serverpasswort.as_deref() == Some(k.konfig.server.passwort.as_str());
-        if !passwort_stimmt {
-            tracing::info!(%adresse, "Anmeldung: Serverpasswort falsch");
-            Anmeldung::Abgelehnt(Kern::fehler(Fehlercode::AnmeldungAbgelehnt))
+        let passwort = if k.konfig.server.passwort.is_empty() {
+            Passwort::Offen
+        } else if serverpasswort.is_none() {
+            Passwort::Fehlt
+        } else if serverpasswort.as_deref() == Some(k.konfig.server.passwort.as_str()) {
+            Passwort::Stimmt
         } else {
-            match k.anmelden(&kennung, &name, &adresse) {
+            Passwort::Falsch
+        };
+        match passwort {
+            Passwort::Offen | Passwort::Stimmt => match k.anmelden(&kennung, &name, &adresse) {
                 Ok((ich, antwort)) => {
                     let sprechnummer = k.sprechnummer_vergeben();
                     k.teilnehmer.insert(
@@ -301,6 +317,30 @@ async fn bediene(verbindung: quinn::Connection, kern: Arc<Mutex<Kern>>) -> anyho
                     Anmeldung::Ok(ich, antwort)
                 }
                 Err(fehler) => Anmeldung::Abgelehnt(*fehler),
+            },
+            Passwort::Fehlt | Passwort::Falsch => {
+                // **Eigener Grund, eigener Code.** Vorher bekam der Client nur
+                // „closed by peer: 0" — er konnte „Passwort falsch" nicht von
+                // einem Netzfehler unterscheiden (gefunden 2026-11-19).
+                let (code, text) = match passwort {
+                    Passwort::Fehlt => (
+                        sprechwerk_protocol::schliessen::PASSWORT_NOETIG,
+                        "Passwort nötig — der Server verlangt eines",
+                    ),
+                    _ => (
+                        sprechwerk_protocol::schliessen::PASSWORT_FALSCH,
+                        "Passwort falsch",
+                    ),
+                };
+                tracing::info!(%adresse, grund = text, "Anmeldung abgelehnt");
+                Anmeldung::AbgelehntMitGrund(
+                    ServerFrame::Fehler {
+                        code: Fehlercode::AnmeldungAbgelehnt,
+                        text: text.to_string(),
+                    },
+                    code,
+                    text,
+                )
             }
         }
     };
@@ -308,6 +348,15 @@ async fn bediene(verbindung: quinn::Connection, kern: Arc<Mutex<Kern>>) -> anyho
         Anmeldung::Ok(ich, antwort) => (ich, antwort),
         Anmeldung::Abgelehnt(fehler) => {
             schreibe(&mut send, &fehler).await?;
+            return Ok(());
+        }
+        Anmeldung::AbgelehntMitGrund(frame, code, grund) => {
+            // Erst den Grund als Rahmen, dann schließen — beides mit demselben
+            // Text, damit die Meldung auch ankommt, wenn der Rahmen im
+            // Schließen untergeht. Der Serverprozess lebt weiter, also geht
+            // das `CONNECTION_CLOSE` auch wirklich hinaus.
+            let _ = schreibe(&mut send, &frame).await;
+            verbindung.close(code.into(), grund.as_bytes());
             return Ok(());
         }
     };

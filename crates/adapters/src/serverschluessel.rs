@@ -246,6 +246,16 @@ impl Bund {
             .any(|id| !self.schluessel.contains_key(id))
     }
 
+    /// Hält dieser Client alles, was zum Lesen nötig ist?
+    ///
+    /// Erst dann lohnt es, einen Verlauf auszugeben: solange ein Schlüssel
+    /// fehlt (er kommt von einem anderen Mitglied, ADR 0012), stünde bei jeder
+    /// Nachricht „Schlüssel fehlt noch". Ohne aktuellen Schlüssel gibt es
+    /// überhaupt nichts zu lesen.
+    pub fn alle_da(&self) -> bool {
+        self.stand.aktuell.is_some() && !self.fehlt_etwas()
+    }
+
     fn vorhanden(&mut self) -> ClientFrame {
         self.gemeldet = Some(Instant::now());
         ClientFrame::ServerschluesselVorhanden {
@@ -494,10 +504,17 @@ mod tests {
     #[test]
     fn zu_spaet_verwirft_den_vorschlag() {
         let mut b = Bund::laden(None, "fp");
+        // Ohne Schlüssel auf dem Server gibt es nichts zu lesen.
+        assert!(!b.alle_da(), "ein leerer Stand genügt nicht");
         b.stand(Schluesselstand::default());
+        assert!(!b.alle_da(), "ein Vorschlag allein genügt nicht");
         b.stand(stand(&"cd".repeat(16)));
         assert!(!b.kann_schreiben());
         assert!(b.fehlt_etwas());
+        assert!(
+            !b.alle_da(),
+            "der fremde Schlüssel fehlt — der Verlauf bliebe unlesbar"
+        );
         assert!(
             b.schluessel.is_empty(),
             "verworfener Vorschlag wurde gemerkt"

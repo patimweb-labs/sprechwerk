@@ -315,7 +315,7 @@ fn main() -> Result<()> {
             sprechwerk_audio::pcm::wav_schreiben(&pfad, &alle)?;
             println!("Mitschnitt: {pfad} ({} Werte)", alle.len());
         }
-        verbindung.schliessen();
+        verbindung.schliessen().await;
         Ok::<(), anyhow::Error>(())
     })?;
     Ok(())

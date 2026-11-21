@@ -180,7 +180,7 @@ async fn beitrittszeit_bis_zum_ersten_rahmen() {
             .await
             .unwrap();
         zeiten.push(start.elapsed().as_micros());
-        v.schliessen();
+        v.schliessen().await;
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     let p50 = prozent(&zeiten, 0.50);

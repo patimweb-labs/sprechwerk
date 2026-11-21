@@ -311,8 +311,8 @@ async fn verschluesselte_sprache_geht_durch_den_server() {
     assert_eq!(kopf_klar.codec, CODEC_OPUS);
     assert_eq!(nutzlast, b"Opus-Sprachdaten");
 
-    a.schliessen();
-    b.schliessen();
+    a.schliessen().await;
+    b.schliessen().await;
 }
 
 #[tokio::test]
@@ -364,8 +364,8 @@ async fn schluesselpaket_verlaesst_den_raum_nicht() {
         panic!("Paket hat den Raum verlassen")
     }
 
-    a.schliessen();
-    fremd.schliessen();
+    a.schliessen().await;
+    fremd.schliessen().await;
 }
 
 #[tokio::test]
@@ -409,8 +409,8 @@ async fn ohne_recht_kein_verschluesseln() {
     };
     assert!(raeume.iter().find(|r| r.id == raum).unwrap().verschluesselt);
 
-    admin.schliessen();
-    mitglied.schliessen();
+    admin.schliessen().await;
+    mitglied.schliessen().await;
 }
 
 #[test]
@@ -574,7 +574,7 @@ async fn abbruch_mitten_im_gespraech_raeumt_auf_und_dreht_die_epoche() {
 
     // **Abbruch.** `schliessen` schickt kein `Verlassen`, sondern beendet nur
     // die QUIC-Verbindung — für den Server dasselbe wie ein Stromausfall.
-    b.schliessen();
+    b.schliessen().await;
     drop(b);
 
     let mut abwesend = false;

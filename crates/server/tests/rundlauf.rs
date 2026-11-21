@@ -558,7 +558,7 @@ async fn kennung_bleibt_ueber_verbindungen_und_rollen_haften_daran() {
     .await;
 
     // Neu verbinden mit derselben Kennung: Rolle bleibt, Kennung bleibt.
-    bosse.schliessen();
+    bosse.schliessen().await;
     tokio::time::sleep(Duration::from_millis(200)).await;
     let wieder = Verbindung::oeffnen(server.adresse, &bosse_schluessel, "Bosse", None)
         .await

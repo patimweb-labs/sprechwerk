@@ -262,6 +262,13 @@ impl rustls::client::danger::ServerCertVerifier for Zertifikatspruefung {
 /// Eine offene Verbindung.
 pub struct Verbindung {
     conn: quinn::Connection,
+    /// Der Endpunkt, über den die Verbindung läuft.
+    ///
+    /// **Warum er hier bleibt:** beim Beenden muss gewartet werden, bis das
+    /// `CONNECTION_CLOSE` wirklich draußen ist ([`Verbindung::schliessen`]).
+    /// Dafür braucht es den Endpunkt — ohne ihn endet der Prozess zu früh und
+    /// der Server hält das Mitglied weiter für anwesend.
+    endpunkt: quinn::Endpoint,
     send: quinn::SendStream,
     recv: quinn::RecvStream,
     puffer: Vec<u8>,
@@ -361,6 +368,32 @@ impl Verbindung {
         };
         let zertifikat = pruefung.gesehen().unwrap_or_default();
 
+        // Ab hier kann die Gegenstelle schon abgelehnt haben (Passwort): der
+        // Grund steht dann nur im `CONNECTION_CLOSE`, nicht im Lesefehler.
+        match Self::handschlag(
+            conn.clone(),
+            endpunkt,
+            zertifikat,
+            schluessel,
+            name,
+            serverpasswort,
+        )
+        .await
+        {
+            Ok(verbindung) => Ok(verbindung),
+            Err(fehler) => Err(ablehnung_deuten(&conn, fehler)),
+        }
+    }
+
+    /// Schritte 1–3 des ersten Kontakts: Beweis, Anmeldung, Begrüßung.
+    async fn handschlag(
+        conn: quinn::Connection,
+        endpunkt: quinn::Endpoint,
+        zertifikat: String,
+        schluessel: &Schluessel,
+        name: &str,
+        serverpasswort: Option<&str>,
+    ) -> anyhow::Result<Self> {
         // Der Server öffnet den Steuerstrom (siehe Server: ein Strom wird erst
         // mit den ersten Bytes sichtbar).
         let (mut send, mut recv) = conn.accept_bi().await?;
@@ -407,6 +440,7 @@ impl Verbindung {
                 ..
             } => Ok(Self {
                 conn,
+                endpunkt,
                 send,
                 recv,
                 puffer,
@@ -420,6 +454,13 @@ impl Verbindung {
                 verlauf,
                 serverschluessel,
             }),
+            ServerFrame::Fehler {
+                code: sprechwerk_protocol::Fehlercode::AnmeldungAbgelehnt,
+                text,
+            } => {
+                // Der Text ist die Meldung für den Menschen („Passwort falsch").
+                anyhow::bail!("{text}")
+            }
             ServerFrame::Fehler { code, text } => {
                 anyhow::bail!("Anmeldung abgelehnt: {text} ({code:?})")
             }
@@ -502,8 +543,36 @@ impl Verbindung {
     }
 
     /// Schließt die Verbindung sauber.
-    pub fn schliessen(&self) {
+    ///
+    /// **Gefunden 2026-11-19 (Simulation):** hier stand nur `conn.close(…)`.
+    /// Das stellt den Rahmen in die Warteschlange; gesendet wird er von der
+    /// Triebwerk-Aufgabe des Endpunkts. Wer danach sofort den Prozess beendet
+    /// (`sprechwerk-cli` nach `/ende`), verliert ihn — der Server merkt den
+    /// Abschied erst nach dem Leerlauf-Timeout (30 s) und zeigt derweil
+    /// jemanden als anwesend, der längst weg ist. Deshalb wird hier gewartet,
+    /// bis der Endpunkt leer ist, mit einer Obergrenze: ein Abschied darf das
+    /// Beenden nicht aufhalten.
+    pub async fn schliessen(&self) {
+        const FRIST: std::time::Duration = std::time::Duration::from_millis(500);
         self.conn.close(0u32.into(), b"tschuss");
+        let _ = tokio::time::timeout(FRIST, self.endpunkt.wait_idle()).await;
+    }
+}
+
+/// Übersetzt den Schließgrund der Gegenstelle in eine Meldung, die man
+/// versteht.
+///
+/// Ohne das sieht der Nutzer bei falschem Serverpasswort nur
+/// „connection lost / closed by peer: 0" — der Grund steht im Schließcode
+/// (`protocol::schliessen`), nicht im Transportfehler.
+fn ablehnung_deuten(conn: &quinn::Connection, fehler: anyhow::Error) -> anyhow::Error {
+    let Some(quinn::ConnectionError::ApplicationClosed(abbruch)) = conn.close_reason() else {
+        return fehler;
+    };
+    let code = abbruch.error_code.into_inner() as u32;
+    match sprechwerk_protocol::schliessen::text(code) {
+        Some(text) => anyhow::anyhow!(text),
+        None => fehler,
     }
 }
 
