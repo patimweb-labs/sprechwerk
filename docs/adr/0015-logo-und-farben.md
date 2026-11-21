@@ -203,7 +203,9 @@ Ausnahme steht unten.
   bei 16 px bewusst vereinfacht.
 * **Die SVGs sind nicht aus dem Raster ableitbar.** `assets/sprechwerk.pm` ist
   weg; ein `markenwerk render sprechwerk` gibt es nicht mehr.
-* **Die SVGs selbst sind erzeugt.** Sie sind von Hand nachvollziehbar, aber
+* **Die großen SVGs sind erzeugt.** Sie sind von Hand nachvollziehbar, aber
   entstanden aus einem Einmalwerkzeug, das die Treppen und Pfade gerechnet hat;
-  ein Tippfehler in einer Koordinate fällt nur im Bild auf, nicht im Test. Der
-  Test prüft die Farben, nicht die Form.
+  ein Tippfehler in einer Koordinate fällt nur im Bild auf, nicht im Test. Die
+  Tests prüfen die Farben und das Raster, nicht die Form. Die kleinen Fassungen
+  sind davon ausgenommen: ihr Gitter steht als Text in `klein-gitter.py` und
+  lässt sich Zeile für Zeile lesen.
