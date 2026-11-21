@@ -45,13 +45,21 @@
     },
     "accent": {
       "default": {
-        "$value": "{color.accent.400}"
+        "$value": "{color.tuerkis.400}"
       },
       "hover": {
-        "$value": "{color.accent.300}"
+        "$value": "{color.tuerkis.300}"
       },
       "pressed": {
-        "$value": "{color.accent.500}"
+        "$value": "{color.tuerkis.500}"
+      }
+    },
+    "signal": {
+      "default": {
+        "$value": "{color.orange.400}"
+      },
+      "hover": {
+        "$value": "{color.orange.300}"
       }
     },
     "status": {
@@ -67,7 +75,7 @@
     },
     "focus": {
       "ring": {
-        "$value": "{color.accent.400}"
+        "$value": "{color.tuerkis.400}"
       }
     }
   }
