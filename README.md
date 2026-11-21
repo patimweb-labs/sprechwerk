@@ -161,10 +161,10 @@ dass Funktionen fehlen, sondern durch das, was drumherum gewachsen ist.
 | Oberfläche | Windows/macOS/Linux; Mobil-App kostenpflichtig | Fenster in reinem Rust (egui, Linux/Windows/macOS), drei Farbschemata, vier Sprachen; Browser später über WebTransport |
 | Text | dauerhaft, serverseitig gespeichert und lesbar | dauerhaft, aber der Server speichert nur Geheimtext — lesen können die Mitglieder |
 | Reaktionen, Link-Vorschau | nicht vorhanden (nur Text) | Reaktionen, Vorschau; die Seite ruft der Absender ab |
-| Betriebswerkzeug | Abfrage-Schnittstelle, Hoster-Panels | Datei + Umgebungsvariablen + Unterbefehle (`stand`, `rolle`, `protokoll`, `beispiel`, `export`, `import`, `sicherung`, `--gesundheit`), dazu eine Verwaltung im Browser |
+| Betriebswerkzeug | Abfrage-Schnittstelle, Hoster-Panels | Datei + Umgebungsvariablen + Unterbefehle (`stand`, `rolle`, `protokoll`, `beispiel`, `export`, `import`, `sicherung`, `--gesundheit`), dazu das Server-Fenster |
 | Prüfprotokoll im Client | nein | ja, für Administrator und Moderator |
 | Dateien, Status, Video, Plugins | vorhanden (teils seit Jahren) | **nicht vorhanden** — bewusst „später", nicht „gestrichen" |
-| Reife | 20 Jahre, großes Ökosystem | 1.2, ein Projekt, ein Maintainer |
+| Reife | 20 Jahre, großes Ökosystem | 3.x, ein Projekt, ein Maintainer |
 
 **Was TeamSpeak besser kann** — und was wir nicht kleinreden: Mobile Apps für
 iOS und Android, Dateitransfer im Client, eine Plugin-Schnittstelle, etabliertes
