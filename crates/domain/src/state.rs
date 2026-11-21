@@ -84,11 +84,17 @@ pub struct Member {
     pub name: String,
     pub rolle: Role,
     /// Raum, in dem das Mitglied gerade sitzt.
-    #[serde(default)]
+    ///
+    /// **Flüchtig, nicht gespeichert** (`serde(skip)`): Anwesenheit gilt für
+    /// die Laufzeit des Servers. Wird sie mitgespeichert, zeigt ein Neustart
+    /// Leute in Räumen, die längst weg sind, und ein Neuankömmling liest
+    /// „3 anwesend", obwohl niemand da ist — er bekommt dann auch keinen
+    /// Serverschlüssel („es ist kein Mitglied online"). Gefunden 2026-11-19.
+    #[serde(skip)]
     pub raum: Option<RoomId>,
     /// Zeitpunkt des Betretens des aktuellen Raums — Grundlage für die
-    /// Verlaufsregel der Gäste.
-    #[serde(default)]
+    /// Verlaufsregel der Gäste. Ebenfalls flüchtig, wie [`Member::raum`].
+    #[serde(skip)]
     pub raum_seit: Option<i64>,
     pub angelegt_am: i64,
     pub zuletzt_gesehen: i64,
@@ -2081,6 +2087,31 @@ mod tests {
         let seite = s.protokoll_lesen(2, 3);
         assert_eq!(seite.len(), 3);
         assert_eq!(seite[0].laufnummer, s.protokoll[2].laufnummer);
+    }
+
+    #[test]
+    fn anwesenheit_wird_nicht_gespeichert() {
+        // Anwesenheit ist flüchtig: wer in einem Raum sitzt, steht nach dem
+        // Laden wieder „nirgends" — sonst zeigt ein Neustart Leute in Räumen,
+        // die längst weg sind, und ein Neuankömmling liest „2 anwesend",
+        // obwohl nur er da ist (gefunden 2026-11-19).
+        let mut s = zustand();
+        let a = admin(&mut s);
+        let raum = s.raum_anlegen(a, "Vorstand", 1_010).unwrap();
+        s.betreten(a, raum, 1_011).unwrap();
+        assert_eq!(s.mitglied(a).unwrap().raum, Some(raum));
+
+        let text = serde_json::to_string(&s).unwrap();
+        assert!(
+            !text.contains("raum_seit"),
+            "Anwesenheit darf nicht in den Daten stehen: {text}"
+        );
+        let zurueck: State = serde_json::from_str(&text).unwrap();
+        assert_eq!(zurueck.mitglied(a).unwrap().raum, None);
+        assert_eq!(zurueck.mitglied(a).unwrap().raum_seit, None);
+        assert!(zurueck.anwesende(raum).is_empty());
+        // Alles andere bleibt: die Rolle hängt an der Kennung, nicht am Raum.
+        assert_eq!(zurueck.mitglied(a).unwrap().rolle, Role::Administrator);
     }
 
     #[test]

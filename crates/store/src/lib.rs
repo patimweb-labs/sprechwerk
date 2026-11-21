@@ -376,8 +376,15 @@ impl Store {
         state.raeume = raeume;
 
         // Mitglieder
+        //
+        // **`raum` und `raum_seit` werden nicht gelesen** (Spalten bleiben für
+        // alte Datenbanken stehen): Anwesenheit ist flüchtig. Ein Neustart
+        // zeigte sonst Leute in Räumen, die längst weg sind — und ein
+        // Neuankömmling läse „2 anwesend", obwohl nur er da ist (gefunden
+        // 2026-11-19). Dasselbe gilt für den Export (`domain::Member`, dort
+        // `serde(skip)`).
         let mut stmt = self.conn.prepare(
-            "SELECT id, schluessel, name, rolle, raum, raum_seit, angelegt_am, zuletzt_gesehen, stumm, taub FROM mitglieder",
+            "SELECT id, schluessel, name, rolle, angelegt_am, zuletzt_gesehen, stumm, taub FROM mitglieder",
         )?;
         let mut zeilen = stmt.query([])?;
         let mut mitglieder = std::collections::BTreeMap::new();
@@ -386,10 +393,6 @@ impl Store {
             let rolle_text: String = z.get(3)?;
             let rolle = Role::aus_text(&rolle_text)
                 .ok_or_else(|| Error::Wert(format!("unbekannte Rolle: {rolle_text}")))?;
-            let raum = match z.get::<_, Option<String>>(4)? {
-                Some(t) => Some(RoomId::from_text(&t)?),
-                None => None,
-            };
             mitglieder.insert(
                 id,
                 Member {
@@ -397,12 +400,13 @@ impl Store {
                     schluessel: z.get(1)?,
                     name: z.get(2)?,
                     rolle,
-                    raum,
-                    raum_seit: z.get(5)?,
-                    angelegt_am: z.get(6)?,
-                    zuletzt_gesehen: z.get(7)?,
-                    stumm: z.get::<_, i64>(8)? != 0,
-                    taub: z.get::<_, i64>(9)? != 0,
+                    // Flüchtig: nach dem Laden sitzt niemand in einem Raum.
+                    raum: None,
+                    raum_seit: None,
+                    angelegt_am: z.get(4)?,
+                    zuletzt_gesehen: z.get(5)?,
+                    stumm: z.get::<_, i64>(6)? != 0,
+                    taub: z.get::<_, i64>(7)? != 0,
                 },
             );
         }
@@ -563,8 +567,11 @@ impl Store {
                         m.schluessel,
                         m.name,
                         m.rolle.text(),
-                        m.raum.map(|r| r.text()),
-                        m.raum_seit,
+                        // Anwesenheit wird nicht gespeichert (flüchtig):
+                        // sonst steht nach einem Neustart jemand im Raum,
+                        // der längst weg ist.
+                        Option::<String>::None,
+                        Option::<i64>::None,
                         m.angelegt_am,
                         m.zuletzt_gesehen,
                         m.stumm as i64,
@@ -811,6 +818,50 @@ mod tests {
         assert_eq!(geladen.protokoll, s.protokoll);
         assert_eq!(geladen.sperren, s.sperren);
         assert_eq!(geladen.naechste_laufnummer(), s.naechste_laufnummer());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Anwesenheit ist flüchtig: sie steht nicht in der Datenbank, und ein
+    /// alter Eintrag mit Raum weckt niemanden auf.
+    ///
+    /// **Gefunden 2026-11-19:** nach einem Neustart meldete der Raum „3
+    /// anwesend", obwohl niemand verbunden war — wer dann eintrat, bekam
+    /// keinen Serverschlüssel („kein Mitglied online").
+    #[test]
+    fn anwesenheit_ueberlebt_den_neustart_nicht() {
+        let dir = std::env::temp_dir().join(format!("sprechwerk-fluechtig-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut store = Store::oeffnen(dir.join("fluechtig.sqlitedb")).unwrap();
+        let s = zustand();
+        let raum = s
+            .mitglieder
+            .values()
+            .find_map(|m| m.raum)
+            .expect("das Mitglied sitzt im Vorstand");
+        assert_eq!(s.anwesende(raum).len(), 1);
+        store.speichern(&s).unwrap();
+
+        let geladen = store.laden(|| State::neu("egal", Role::Gast, 0)).unwrap();
+        assert!(
+            geladen.mitglieder.values().all(|m| m.raum.is_none()),
+            "nach dem Laden sitzt niemand mehr in einem Raum"
+        );
+        assert!(geladen.mitglieder.values().all(|m| m.raum_seit.is_none()));
+        assert!(geladen
+            .raeume
+            .keys()
+            .all(|r| geladen.anwesende(*r).is_empty()));
+
+        // Ein Alter Bestand (Datenbank von vor dem Fix) weckt niemanden auf.
+        store
+            .conn
+            .execute(
+                "UPDATE mitglieder SET raum = ?1, raum_seit = 1",
+                params![raum.text()],
+            )
+            .unwrap();
+        let geladen = store.laden(|| State::neu("egal", Role::Gast, 0)).unwrap();
+        assert!(geladen.mitglieder.values().all(|m| m.raum.is_none()));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
