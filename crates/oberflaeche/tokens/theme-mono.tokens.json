@@ -54,6 +54,14 @@
         "$value": "#B5B2AD"
       }
     },
+    "signal": {
+      "default": {
+        "$value": "#D6D3CE"
+      },
+      "hover": {
+        "$value": "#FFFFFF"
+      }
+    },
     "status": {
       "ok": {
         "$value": "#B5B2AD"

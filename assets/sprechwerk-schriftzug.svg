@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="912" height="100" viewBox="0 0 912 100">
+  <title>sprechwerk Wortmarke</title>
+  <!-- Nur die Buchstaben, weiß: das Fenster färbt sie mit der Textfarbe ein.
+       Pfade, keine Schrift (ADR 0015). -->
+  <g id="schriftzug" fill="#FFFFFF" fill-rule="nonzero">
+    <path transform="translate(0 0)" d="M74 0 L8 0 A8 8 0 0 0 0 8 L0 60 L51 60 L51 80 L0 80 L0 92 A8 8 0 0 0 8 100 L70 100 A4 4 0 0 0 74 96 L74 40 L23 40 L23 20 L70 20 A4 4 0 0 0 74 16 L74 4 A4 4 0 0 0 70 0 Z"/>
+    <path transform="translate(89 0)" d="M74 0 L8 0 A8 8 0 0 0 0 8 L0 92 A8 8 0 0 0 8 100 L15 100 A8 8 0 0 0 23 92 L23 62 L66 62 A8 8 0 0 0 74 54 L74 8 A8 8 0 0 0 66 0 Z M51 20 L51 37 A6 6 0 0 1 45 43 L34 43 A6 6 0 0 1 28 37 L28 26 A6 6 0 0 1 34 20 L45 20 A6 6 0 0 1 51 26 Z"/>
+    <path transform="translate(178 0)" d="M78 0 L8 0 A8 8 0 0 0 0 8 L0 92 A8 8 0 0 0 8 100 L15 100 A8 8 0 0 0 23 92 L23 62 L70 62 A8 8 0 0 0 78 54 L78 8 A8 8 0 0 0 70 0 Z M36 56 L58 56 L78 100 L56 100 L36 56 Z M53 20 L53 37 A6 6 0 0 1 47 43 L34 43 A6 6 0 0 1 28 37 L28 26 A6 6 0 0 1 34 20 L47 20 A6 6 0 0 1 53 26 Z"/>
+    <path transform="translate(271 0)" d="M63 0 L8 0 A8 8 0 0 0 0 8 L0 92 A8 8 0 0 0 8 100 L59 100 A4 4 0 0 0 63 96 L63 80 L23 80 L23 60 L58 60 L58 40 L23 40 L23 20 L59 20 A4 4 0 0 0 63 16 L63 4 A4 4 0 0 0 59 0 Z"/>
+    <path transform="translate(349 0)" d="M72 0 L28 0 A28 28 0 0 0 0 28 L0 72 A28 28 0 0 0 28 100 L68 100 A4 4 0 0 0 72 96 L72 80 L43 80 A10 10 0 0 1 33 70 L33 30 A10 10 0 0 1 43 20 L68 20 A4 4 0 0 0 72 16 L72 4 A4 4 0 0 0 68 0 Z"/>
+    <path transform="translate(436 0)" d="M0 0 L23 0 L23 40 L55 40 L55 0 L70 0 A8 8 0 0 1 78 8 L78 92 A8 8 0 0 1 70 100 L55 100 L55 60 L23 60 L23 100 L8 100 A8 8 0 0 1 0 92 L0 8 A8 8 0 0 1 8 0 Z"/>
+    <path transform="translate(529 0)" d="M0 0 L23 0 L48 100 L26 100 L0 0 Z M44 0 L66 0 L48 100 L26 100 L44 0 Z M53 0 L75 0 L94 100 L72 100 L53 0 Z M93 0 L116 0 L94 100 L72 100 L93 0 Z"/>
+    <path transform="translate(663 0)" d="M63 0 L8 0 A8 8 0 0 0 0 8 L0 92 A8 8 0 0 0 8 100 L59 100 A4 4 0 0 0 63 96 L63 80 L23 80 L23 60 L58 60 L58 40 L23 40 L23 20 L59 20 A4 4 0 0 0 63 16 L63 4 A4 4 0 0 0 59 0 Z"/>
+    <path transform="translate(741 0)" d="M78 0 L8 0 A8 8 0 0 0 0 8 L0 92 A8 8 0 0 0 8 100 L15 100 A8 8 0 0 0 23 92 L23 62 L70 62 A8 8 0 0 0 78 54 L78 8 A8 8 0 0 0 70 0 Z M36 56 L58 56 L78 100 L56 100 L36 56 Z M53 20 L53 37 A6 6 0 0 1 47 43 L34 43 A6 6 0 0 1 28 37 L28 26 A6 6 0 0 1 34 20 L47 20 A6 6 0 0 1 53 26 Z"/>
+    <path transform="translate(834 0)" d="M0 0 L23 0 L23 100 L8 100 A8 8 0 0 1 0 92 L0 8 A8 8 0 0 1 8 0 Z M24 50 L46 50 L73 0 L51 0 L24 50 Z M24 58 L46 58 L78 100 L56 100 L24 58 Z"/>
+  </g>
+</svg>

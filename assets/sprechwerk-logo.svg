@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>sprechwerk</title>
+  <!-- sprechwerk-Logo: Kachel, zwei Sprechblasen, leichtes Glühen (ADR 0015).
+       Maße aus docs/marke/entwurf.png; PNGs erzeugt packaging/icons/erzeugen.sh. -->
+  <defs>
+    <radialGradient id="glut-tuerkis">
+      <stop offset="0" stop-color="#2EE6C8" stop-opacity="0.30"/>
+      <stop offset="0.55" stop-color="#2EE6C8" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#2EE6C8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="kachel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#131A22"/>
+      <stop offset="1" stop-color="#0E1319"/>
+    </linearGradient>
+  </defs>
+  <g id="kachel">
+    <rect x="1.5" y="1.5" width="509" height="509" rx="92" fill="url(#kachel)"/>
+    <rect x="1.5" y="1.5" width="509" height="509" rx="92" fill="none" stroke="#3E4C5A" stroke-width="3"/>
+  </g>
+  <g id="zeichen" transform="translate(49.72 107.1) scale(1.08)">
+  
+  <g id="blase-hinten">
+    <mask id="loch-hinten" maskUnits="userSpaceOnUse" x="-80" y="-80" width="408" height="450">
+      <rect x="-80" y="-80" width="408" height="450" fill="#FFFFFF"/>
+      <path d="M80 32 L80 48 L64 48 L64 64 L48 64 L48 80 L32 80 L32 158 L168 158 L184 158 L184 142 L200 142 L200 126 L216 126 L216 110 L216 32 L48 32 L80 32 Z" fill="#000000"/>
+    </mask>
+    <ellipse cx="116.56" cy="98.8" rx="163.68" ry="161.5" fill="url(#glut-tuerkis)" mask="url(#loch-hinten)"/>
+    <path d="M43 190 L87 190 L87 202 L75 202 L75 215 L59 215 L59 230 L43 230 Z M80 0 L232 0 L248 0 L248 16 L248 110 L248 126 L232 126 L232 142 L216 142 L216 158 L200 158 L200 174 L184 174 L184 190 L168 190 L16 190 L16 206 L0 206 L0 80 L16 80 L16 64 L32 64 L32 48 L48 48 L48 32 L64 32 L64 16 L80 16 L80 0 Z M80 32 L80 48 L64 48 L64 64 L48 64 L48 80 L32 80 L32 158 L168 158 L184 158 L184 142 L200 142 L200 126 L216 126 L216 110 L216 32 L48 32 L80 32 Z" fill="#2EE6C8" fill-rule="nonzero"/>
+    <path d="M65.5 84 H73.5 A3 3 0 0 1 76.5 87 V103 A3 3 0 0 1 73.5 106 H65.5 A3 3 0 0 1 62.5 103 V87 A3 3 0 0 1 65.5 84 Z" fill="#2EE6C8"/>
+    <path d="M91.5 71 H100.5 A3 3 0 0 1 103.5 74 V116 A3 3 0 0 1 100.5 119 H91.5 A3 3 0 0 1 88.5 116 V74 A3 3 0 0 1 91.5 71 Z" fill="#2EE6C8"/>
+    <path d="M118.5 53 H129.5 A3 3 0 0 1 132.5 56 V134 A3 3 0 0 1 129.5 137 H118.5 A3 3 0 0 1 115.5 134 V56 A3 3 0 0 1 118.5 53 Z" fill="#2EE6C8"/>
+    <path d="M147.5 71 H156.5 A3 3 0 0 1 159.5 74 V116 A3 3 0 0 1 156.5 119 H147.5 A3 3 0 0 1 144.5 116 V74 A3 3 0 0 1 147.5 71 Z" fill="#2EE6C8"/>
+    <path d="M174.5 84 H182.5 A3 3 0 0 1 185.5 87 V103 A3 3 0 0 1 182.5 106 H174.5 A3 3 0 0 1 171.5 103 V87 A3 3 0 0 1 174.5 84 Z" fill="#2EE6C8"/>
+  </g>
+  <g id="blase-vorn" transform="translate(160 48)">
+    <path d="M130 190 L174 190 L174 230 L160 230 L160 215 L145 215 L145 202 L130 202 Z M80 0 L206 0 L222 0 L222 16 L222 142 L222 158 L206 158 L206 174 L190 174 L190 190 L174 190 L16 190 L16 206 L0 206 L0 80 L16 80 L16 64 L32 64 L32 48 L48 48 L48 32 L64 32 L64 16 L80 16 L80 0 Z M80 32 L80 48 L64 48 L64 64 L48 64 L48 80 L32 80 L32 158 L142 158 L158 158 L158 142 L174 142 L174 126 L190 126 L190 110 L190 32 L48 32 L80 32 Z" fill="#F7931E" fill-rule="nonzero"/>
+    <path d="M52.5 84 H60.5 A3 3 0 0 1 63.5 87 V103 A3 3 0 0 1 60.5 106 H52.5 A3 3 0 0 1 49.5 103 V87 A3 3 0 0 1 52.5 84 Z" fill="#F7931E"/>
+    <path d="M78.5 71 H87.5 A3 3 0 0 1 90.5 74 V116 A3 3 0 0 1 87.5 119 H78.5 A3 3 0 0 1 75.5 116 V74 A3 3 0 0 1 78.5 71 Z" fill="#F7931E"/>
+    <path d="M105.5 53 H116.5 A3 3 0 0 1 119.5 56 V134 A3 3 0 0 1 116.5 137 H105.5 A3 3 0 0 1 102.5 134 V56 A3 3 0 0 1 105.5 53 Z" fill="#F7931E"/>
+    <path d="M134.5 71 H143.5 A3 3 0 0 1 146.5 74 V116 A3 3 0 0 1 143.5 119 H134.5 A3 3 0 0 1 131.5 116 V74 A3 3 0 0 1 134.5 71 Z" fill="#F7931E"/>
+    <path d="M161.5 84 H169.5 A3 3 0 0 1 172.5 87 V103 A3 3 0 0 1 169.5 106 H161.5 A3 3 0 0 1 158.5 103 V87 A3 3 0 0 1 161.5 84 Z" fill="#F7931E"/>
+  </g>
+  </g>
+</svg>

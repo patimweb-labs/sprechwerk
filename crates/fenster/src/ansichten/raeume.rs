@@ -208,8 +208,9 @@ fn raumliste(
         });
 }
 
-/// Das Sprechlicht neben dem Namen, wie bei TeamSpeak: ein Quadrat, das
-/// aufleuchtet, solange jemand spricht (und damit mit der Stimme flackert).
+/// Das Sprechlicht neben dem Namen, wie bei TeamSpeak: ein Quadrat in der
+/// Farbe des Sprechsignals (Orange, ADR 0015), das aufleuchtet, solange jemand
+/// spricht (und damit mit der Stimme flackert).
 /// Stumm und taub zeigen statt dessen ihr Icon — das ist wichtiger.
 fn sprechlicht(ui: &mut egui::Ui, f: &thema::Farben, status: logik::Personenstatus) {
     let groesse = thema::FONT_SIZE_MD;
@@ -228,7 +229,7 @@ fn sprechlicht(ui: &mut egui::Ui, f: &thema::Farben, status: logik::Personenstat
                 egui::vec2(thema::SPACE_3, thema::SPACE_3),
             );
             if status == logik::Personenstatus::Spricht {
-                ui.painter().rect_filled(quadrat, 0.0, f.status_ok);
+                ui.painter().rect_filled(quadrat, 0.0, f.signal_default);
             } else {
                 ui.painter().rect_stroke(
                     quadrat,

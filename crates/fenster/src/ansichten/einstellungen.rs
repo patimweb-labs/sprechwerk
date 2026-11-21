@@ -157,7 +157,7 @@ pub fn zeigen(ui: &mut egui::Ui, o: &mut Oberflaeche, aktionen: &mut Vec<Aktion>
                                 egui::vec2(thema::SPACE_3, thema::SPACE_3),
                             );
                             if spricht {
-                                ui.painter().rect_filled(quadrat, 0.0, f.status_ok);
+                                ui.painter().rect_filled(quadrat, 0.0, f.signal_default);
                             } else {
                                 ui.painter().rect_stroke(
                                     quadrat,

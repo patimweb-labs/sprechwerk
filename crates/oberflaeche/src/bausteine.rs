@@ -4,7 +4,7 @@
 //! Bausteine beider Fenster: Karte, Seitenkopf, Pegelbalken, Hauptknopf,
 //! leere Fläche, Kürzel. Sie bekommen Farben aus dem Theme, nie Werte.
 
-use crate::thema::{self, fett, Farben, Ton};
+use crate::thema::{self, fett, Farben, Thema, Ton};
 use egui::{Color32, RichText, Sense, Stroke};
 
 /// Text in einer Bedeutungsfarbe.
@@ -45,6 +45,7 @@ pub fn karte<R>(
 }
 
 /// Schmaler Pegelbalken 0–100 mit optionaler Marke (Sprechschwelle).
+/// Über der Schwelle leuchtet er im Sprechsignal (Orange, ADR 0015).
 pub fn pegelbalken(ui: &mut egui::Ui, f: &Farben, pegel: u8, marke: Option<u8>, breite: f32) {
     let (rect, antwort) =
         ui.allocate_exact_size(egui::vec2(breite, thema::SPACE_2), Sense::hover());
@@ -54,7 +55,7 @@ pub fn pegelbalken(ui: &mut egui::Ui, f: &Farben, pegel: u8, marke: Option<u8>, 
     voll.set_width(rect.width() * pegel.min(100) as f32 / 100.0);
     let farbe = match marke {
         Some(m) if pegel < m => f.text_faint,
-        _ => f.accent_default,
+        _ => f.signal_default,
     };
     p.rect_filled(voll, 0.0, farbe);
     if let Some(m) = marke {
@@ -139,7 +140,7 @@ pub fn pegelregler(
     voll.set_width(voll.width() * pegel.min(100) as f32 / 100.0);
     let farbe = match marke {
         Some(m) if pegel < m => f.text_faint,
-        _ => f.accent_default,
+        _ => f.signal_default,
     };
     p.rect_filled(voll, 0.0, farbe);
     if let Some(m) = marke {
@@ -258,8 +259,8 @@ pub fn kasten<R>(ui: &mut egui::Ui, f: &Farben, inhalt: impl FnOnce(&mut egui::U
         .inner
 }
 
-/// Kürzel-Quadrat (Avatar): Akzent für mich, sonst neutral; grüner Rand, wenn
-/// die Person spricht.
+/// Kürzel-Quadrat (Avatar): Akzent für mich, sonst neutral; Rand im
+/// Sprechsignal (Orange), wenn die Person spricht.
 pub fn kuerzel(ui: &mut egui::Ui, f: &Farben, name: &str, ich: bool, spricht: bool) {
     let groesse = thema::SIZE_CONTROL_SM;
     let (rect, _) = ui.allocate_exact_size(egui::vec2(groesse, groesse), Sense::hover());
@@ -274,7 +275,7 @@ pub fn kuerzel(ui: &mut egui::Ui, f: &Farben, name: &str, ich: bool, spricht: bo
         p.rect_stroke(
             rect.expand(thema::SIZE_FOCUS),
             0.0,
-            Stroke::new(thema::SIZE_FOCUS, f.status_ok),
+            Stroke::new(thema::SIZE_FOCUS, f.signal_default),
             egui::StrokeKind::Outside,
         );
     }
@@ -289,6 +290,45 @@ pub fn kuerzel(ui: &mut egui::Ui, f: &Farben, name: &str, ich: bool, spricht: bo
         buchstabe,
         egui::FontId::new(thema::FONT_SIZE_MD, fett()),
         schrift,
+    );
+}
+
+/// Seitenverhältnisse (Breite zu Höhe) der Marken-SVGs aus `assets/`.
+const ZEICHEN_SEITEN: f32 = 438.0 / 341.0;
+const SCHRIFTZUG_SEITEN: f32 = 909.0 / 100.0;
+
+/// Die Marke im Kopf: das Zeichen und die Wortmarke als SVG aus `assets/`
+/// (ADR 0015) — kein Text, keine Schrift. Im Farbthema bringt das Zeichen
+/// seine türkis-orangen Farben mit; im Mono-Thema nimmt es die Textfarbe an,
+/// damit nichts Farbiges auf einer einfarbigen Fläche steht. Die Wortmarke
+/// wird immer mit der Textfarbe eingefärbt. Beide Fenster zeichnen sie so.
+pub fn marke(ui: &mut egui::Ui, f: &Farben, thema: Thema) {
+    // Die Wortmarke steht in der Höhe ihrer Großbuchstaben; das Zeichen ist
+    // etwas höher als eine Zeile und füllt die Kopfleiste.
+    let hoehe = thema::FONT_SIZE_LG;
+    let zeichen = thema::SIZE_CONTROL_SM - thema::SPACE_1;
+    let bild = if thema == Thema::Mono {
+        egui::Image::new(egui::include_image!(
+            "../../../assets/sprechwerk-symbolic.svg"
+        ))
+        .tint(f.text_default)
+    } else {
+        egui::Image::new(egui::include_image!(
+            "../../../assets/sprechwerk-zeichen.svg"
+        ))
+    };
+    ui.add(
+        bild.fit_to_exact_size(egui::vec2(zeichen * ZEICHEN_SEITEN, zeichen))
+            .alt_text("sprechwerk-Zeichen"),
+    );
+    ui.add_space(thema::SPACE_1);
+    ui.add(
+        egui::Image::new(egui::include_image!(
+            "../../../assets/sprechwerk-schriftzug.svg"
+        ))
+        .tint(f.text_default)
+        .fit_to_exact_size(egui::vec2(hoehe * SCHRIFTZUG_SEITEN, hoehe))
+        .alt_text("sprechwerk"),
     );
 }
 

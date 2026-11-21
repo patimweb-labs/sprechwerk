@@ -108,6 +108,11 @@ danach scheitert.
 
 ## Anwendungssymbol
 
+> Für sprechwerk ersetzt: Zeichen und Wortmarke kommen aus den SVGs in
+> `assets/`, die Icons aus `packaging/icons/erzeugen.sh`
+> ([ADR 0015](0015-logo-und-farben.md)). Der folgende Abschnitt beschreibt den
+> Stand von ADR 0007.
+
 Das Symbol wird **nicht gezeichnet, sondern erzeugt**: `markenwerk` in
 `weppelmann-ui` liest ein ASCII-Raster (`marken/sprechwerk.pm`) und schreibt
 SVG, PNG in allen Desktop-Größen, ein Tray-Bild und eine monochrome Fassung
