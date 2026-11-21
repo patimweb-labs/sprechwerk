@@ -1,6 +1,6 @@
 # ADR 0014 — Marke in zwei Farben: dunkle Fläche, türkis, orange
 
-**Status:** entschieden und umgesetzt (2026-11-21)
+**Status:** ersetzt durch [ADR 0015](0015-logo-und-farben.md) (2026-11-21)
 **Betrifft:** `packaging/icons/`, `docs/marke/`, `README.md`,
 `weppelmann-ui/apps/markenwerk/marken/sprechwerk.pm`,
 `weppelmann-ui/packages/tokens/src/primitives.tokens.json`,

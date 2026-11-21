@@ -44,6 +44,8 @@ Server-Fenster in reinem Rust, Oberfläche mit egui (ADR 0013).
 11. **Icons entstehen aus Text.** Jedes App-Zeichen liegt als ASCII-Raster
     (`assets/<app>.pm`) im Projekt und wird von `apps/markenwerk` erzeugt — nicht
     als fertiges PNG abgelegt, nicht von Hand nachgezeichnet. Siehe §9.
+    **Ausnahme:** sprechwerk hat eine Vorlage des Nutzers übernommen, Quelle sind
+    die SVGs in `assets/` ([ADR 0015](docs/adr/0015-logo-und-farben.md)).
     Tastenkürzel über `Mod`, nie fest `Ctrl`. Siehe PLAN.md §10.
 
 ## 3. Struktur
@@ -149,17 +151,21 @@ Der Stil steht in `docs/marke/icons.md`; hier nur die Regeln, an die sich Code h
 4. **Zwei Strichstärken.** 2 px für die Form, 1–2 px für Binnenlinien.
 5. **Zwei Farben.** Fläche je Anwendung, Zeichnung immer `#E9E5DC`. Werte aus
    `primitives.tokens.json`.
-   **Abweichung für sprechwerk (ADR 0014, 2026-11-21):** Fläche dunkel
-   `#0E1319`, Zeichnung türkis `#2EE6C8`, Schatten orange `#F7931E` (Token
-   `color.marke.sprechwerk.*`). Zwei überlappende Sprechblasen brauchen zwei
-   Farben, sonst verschmelzen sie bei 16 px zu einem Fleck. Achteck-Kachel,
-   2-px-Strichsprache und Mindestabstand gelten unverändert.
-6. **Erzeugen, nicht ablegen:** `node src/cli.ts render <app>` (und `logo <app>`
-   für Zeichen plus Wortmarke) in `apps/markenwerk`, danach die erzeugten
-   Dateien ins Projekt kopieren — hier mit einem Schritt:
-   `scripts/marke-bauen.sh [pfad/zu/apps/markenwerk]`.
+   **Abweichung für sprechwerk (ADR 0015, 2026-11-21):** Keine Achteck-Kachel und
+   kein Raster mehr. Zeichen und Wortmarke sind aus der Vorlage des Nutzers
+   übernommen (`docs/marke/entwurf.png`), also abgerundete Kachel, Pixelblasen
+   und gezeichnete Buchstabenpfade. Zwei überlappende Sprechblasen brauchen zwei
+   Farben, sonst verschmelzen sie bei 16 px zu einem Fleck: Türkis `#2EE6C8`
+   (Akzent) und Orange `#F7931E` (Sprechsignal), Kachel `#131A22` → `#0E1319`.
+   Die 2-px-Strichsprache und der Mindestabstand gelten unverändert.
+6. **Erzeugen, nicht ablegen.** In allen anderen Apps: `node src/cli.ts render
+   <app>` (und `logo <app>` für Zeichen plus Wortmarke) in `apps/markenwerk`.
+   **Für sprechwerk** sind die SVGs in `assets/` die Quelle, die Icons entstehen mit
+   `packaging/icons/erzeugen.sh`; `scripts/marke-bauen.sh` und die Kopplung an
+   `apps/markenwerk` gibt es nicht mehr (ADR 0015).
 7. **Nachweis bei Änderungen:** frischer Lauf in einem leeren Verzeichnis,
-   `sha256sum` gegen die Dateien im Projekt.
+   `sha256sum` gegen die Dateien im Projekt — für sprechwerk: `erzeugen.sh`
+   zweimal laufen lassen und die PNGs vergleichen.
 
 ## 9. Projektspezifisch
 
