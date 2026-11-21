@@ -478,6 +478,9 @@ eigenen Benutzer lesbar (0600, schon beim Anlegen); unter Windows schützt sie
 das Benutzerprofil. Keine Secrets im Code; die Konfiguration kommt aus Datei und
 Umgebung (Beispiel in `.env.example`).
 
+Eine Lücke gefunden? Bitte melden, aber **nicht** als öffentliches Issue:
+[`SECURITY.md`](SECURITY.md).
+
 ## Betrieb
 
 Konfiguration über `sprechwerk.toml` (Pfad: `SPRECHWERK_KONFIG`), jeder Wert auch
