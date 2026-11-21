@@ -1,5 +1,42 @@
 # Changelog
 
+## [3.1.0](https://github.com/patimweb-labs/sprechwerk/compare/v3.0.2...v3.1.0) (2026-11-21)
+
+
+### Neu
+
+* **fenster:** Zeichen und Wortmarke in der Kopfleiste ([478897d](https://github.com/patimweb-labs/sprechwerk/commit/478897d221d697c9e7f5b5b5097637e1862b9e01))
+* **marke:** eigene Pixelraster für 16, 24 und 32 px ([e2d1659](https://github.com/patimweb-labs/sprechwerk/commit/e2d1659ca810f478c9d0a003a9237566626db2b6))
+* **marke:** Logo und Wortmarke aus der Vorlage, SVGs als Quelle ([a66bdaf](https://github.com/patimweb-labs/sprechwerk/commit/a66bdaf8357f12c960ca0b1194df40883351e004))
+* **marke:** neues Zeichen und Logo, erzeugt mit markenwerk ([f55c5f8](https://github.com/patimweb-labs/sprechwerk/commit/f55c5f8fc9b016acc9e4cb37258258d2b70f684f))
+* **thema:** Türkis als Akzent, Orange als Sprechsignal ([6e5fa29](https://github.com/patimweb-labs/sprechwerk/commit/6e5fa29390ae257495ad2b65dc75ba6a7bfd2ab1))
+
+
+### Behoben
+
+* Abschied abwarten, Verlauf nachreichen, Passwortgrund nennen ([7cedb32](https://github.com/patimweb-labs/sprechwerk/commit/7cedb32f9744ceda8a4a7a8e0334d0a89b03c751))
+* Anwesenheit ist flüchtig — Neustart zeigt keine Geister ([35f4264](https://github.com/patimweb-labs/sprechwerk/commit/35f42642c3596e42addf538f02c2b5720ddc60e1))
+* Anwesenheit ist flüchtig, Abschied kommt an, Passwortgrund beim Client ([dce8305](https://github.com/patimweb-labs/sprechwerk/commit/dce8305291e0c6da64c5839126e9a3d44fcc4a1d))
+* **marke:** Icons ohne Zeitstempel, damit zwei Läufe gleich sind ([d5e60b5](https://github.com/patimweb-labs/sprechwerk/commit/d5e60b5821d62e02ca44409e1471fa2ebe61f652))
+* **marke:** Schwänze der Blasen laufen als Treppe nach außen-unten ([9b54986](https://github.com/patimweb-labs/sprechwerk/commit/9b549864cf29abe8ae5c76a2d91db79a2cdd921e))
+* **marke:** Zeichen neu erzeugt, Entwurf als Referenz ([77e1976](https://github.com/patimweb-labs/sprechwerk/commit/77e1976b60d51242812a60691c792d1fd5143c40))
+* **marke:** Zeichen und Wortmarke neu — Blasen mit Treppe, lesbares W ([21b1fbd](https://github.com/patimweb-labs/sprechwerk/commit/21b1fbd6512f849015a75ea40159b3a1499d009b))
+* **server:** --help startet keinen Server; rundlauf.sh baut den Client mit ([a7aff5e](https://github.com/patimweb-labs/sprechwerk/commit/a7aff5ed9a9fd90fecd4c7f8a481c3ae9a82ad28))
+* **thema:** Signal im hellen Theme heller, bleibt über 3 : 1 ([0eb6313](https://github.com/patimweb-labs/sprechwerk/commit/0eb63133c6ffd753906194defc6c90fb1757bce7))
+
+
+### Dokumentation
+
+* **adr:** 0015 — kleine Fassungen haben ein lesbares Gitter, kein Einmalwerkzeug ([07911d1](https://github.com/patimweb-labs/sprechwerk/commit/07911d127ea173aac3cc26d43dac0edd2ec6d99f))
+* **adr:** 0015 Logo und Farben, 0014 als ersetzt markiert ([20cddb0](https://github.com/patimweb-labs/sprechwerk/commit/20cddb059042437fca284969e4dea624a2d3b8af))
+* **adr:** Flaechenfarbe auf neutral.900 begruenden ([00c3d31](https://github.com/patimweb-labs/sprechwerk/commit/00c3d310d24129d725cade870126587f1bec9776))
+* **adr:** Marke in zwei Farben fuer sprechwerk (ADR 0014) ([3199003](https://github.com/patimweb-labs/sprechwerk/commit/31990032ed0c203a12cb6e163df571236cbb69e3))
+
+
+### Bau und Pakete
+
+* toten Tauri-Verweis im Arbeitsbereich entfernen ([53fc7cb](https://github.com/patimweb-labs/sprechwerk/commit/53fc7cb61a6765375a657e911fc758da0ea6de55))
+
 ## [3.0.2](https://github.com/patimweb-labs/sprechwerk/compare/v3.0.1...v3.0.2) (2026-11-19)
 
 
