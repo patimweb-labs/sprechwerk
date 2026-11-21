@@ -9,16 +9,17 @@
 # Aufruf aus dem Wurzelverzeichnis: packaging/icons/erzeugen.sh
 # Braucht: ImageMagick mit librsvg (SVG-Delegate) *oder* rsvg-convert oder resvg.
 #
-# 16, 24 und 32 px kommen aus dem vereinfachten Zeichen (`sprechwerk-klein.svg`),
-# alles darüber aus dem vollen Logo; die SVGs bleiben als `scalable` und
-# `symbolic` daneben liegen.
+# 16, 24 und 32 px haben je ein eigenes Pixelraster (`sprechwerk-16.svg`,
+# `-24`, `-32`, erzeugt von `klein-gitter.py`); alles darüber kommt aus dem
+# vollen Logo. Die kleinen Raster werden in ihrer eigenen Größe gezeichnet und
+# **nicht** skaliert: eine Skalierung legte die Rechtecke zwischen die Pixel und
+# der Zeichner glättete sie (ADR 0015).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 QUELLE=assets
 ZIEL=packaging/icons
 GROSS="$QUELLE/sprechwerk-logo.svg"
-KLEIN="$QUELLE/sprechwerk-klein.svg"
 TEMPORAER="$(mktemp -d)"
 trap 'rm -rf "$TEMPORAER"' EXIT
 
@@ -40,14 +41,46 @@ else
   exit 1
 fi
 
+# zeichne_genau <svg> <ziel>   in der Größe, die im SVG steht (viewBox = Kante)
+# Ohne `--width`/`-resize`: das Rechteckraster liegt schon auf den Pixeln.
+if command -v resvg >/dev/null; then
+  zeichne_genau() { resvg --background '#00000000' "$1" "$2"; }
+elif command -v rsvg-convert >/dev/null; then
+  zeichne_genau() { rsvg-convert --background-color='#00000000' -o "$2" "$1"; }
+else
+  zeichne_genau() {
+    magick -background none "$1" -strip \
+      -define png:exclude-chunks=date,time "PNG32:$2"
+  }
+fi
+
 # --- PNGs -----------------------------------------------------------------
-# Klein (vereinfachtes Zeichen), damit die Blasen bei 16 px lesbar bleiben.
+# Klein: je Größe das eigene Raster, unskaliert gezeichnet.
 for n in 16 24 32; do
-  zeichne "$KLEIN" "$n" "$TEMPORAER/icon-$n.png"
+  zeichne_genau "$QUELLE/sprechwerk-$n.svg" "$TEMPORAER/icon-$n.png"
 done
 for n in 48 64 128 256 512 1024; do
   zeichne "$GROSS" "$n" "$TEMPORAER/icon-$n.png"
 done
+
+# --- Prüfen: die kleinen Fassungen liegen auf dem Raster -------------------
+# Ein geglättetes PNG hat Dutzende Farben und eine Kante, die nicht stimmt; ein
+# pixelgenaues hat nur die Farben, die im SVG stehen (Kachel, Trennung, zwei
+# Blasen) und genau so viele Pixel wie die viewBox.
+if command -v magick >/dev/null; then
+  for n in 16 24 32; do
+    kante=$(magick identify -format '%w' "$TEMPORAER/icon-$n.png")
+    farben=$(magick identify -format '%k' "$TEMPORAER/icon-$n.png")
+    if [ "$kante" != "$n" ]; then
+      echo "$n px: PNG ist $kante px breit — das Raster wurde skaliert." >&2
+      exit 1
+    fi
+    if [ "$farben" -gt 6 ]; then
+      echo "$n px: $farben Farben — das PNG ist geglättet, nicht pixelgenau." >&2
+      exit 1
+    fi
+  done
+fi
 
 # hicolor: alle Größen, wie es die Paketskripte und Flatpak erwarten.
 for n in 16 24 32 48 64 128 256 512 1024; do

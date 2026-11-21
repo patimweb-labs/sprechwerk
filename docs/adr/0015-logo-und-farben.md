@@ -40,7 +40,7 @@ dort 382 × 285):
 | Steg (Kontur) | 31 px | 32 |
 | Treppenstufe der Ecken | 15,5 px, 5 Stufen an zwei Ecken | 16, 5 Stufen |
 | Welle | 5 Balken, 13–17 px breit, Lücke 12, Höhen 22/48/84/48/22 | 14/15/17/15/14, Lücke 12, gleiche Höhen |
-| Schwanz | 44 px breit, 47 tief, zweite Stufe 18 × 15 | 44, 47, 18 × 15 |
+| Schwanz | drei Stufen, Keil 44 breit, 40 tief | 44/29/15 breit, 12–15 hoch |
 | Wortmarke | Großbuchstaben 100 hoch, Strich 23, `SPRECHWERK` 909 breit | 100 hoch, Strich 23, 909 breit |
 | Buchstabenbreiten | S 74 · P 74 · R 78 · E 63 · C 72 · H 78 · W 119 · K 78 | dieselben, Lücke 15 |
 
@@ -69,7 +69,9 @@ diese Marke.
 | `sprechwerk-zeichen.svg` | dasselbe ohne Kachel, mit Rand für das Glühen |
 | `sprechwerk-hell.svg` | helle Fassung (Kachel `#FFFDF8` → `#F6F2EA`) |
 | `sprechwerk-mono.svg` | Mono-Fassung (weiße Zeichnung, Trennlinie in der Fläche) |
-| `sprechwerk-klein.svg` | vereinfacht für 16, 24 und 32 px: zwei Treppenstufen, dickerer Steg, drei Balken, kein Glühen |
+| `sprechwerk-16.svg` | eigenes Raster für 16 px: 1-px-Umriss, eine Welle je Blase, kein Glühen |
+| `sprechwerk-24.svg` | eigenes Raster für 24 px: 2-px-Umriss, drei Balken |
+| `sprechwerk-32.svg` | eigenes Raster für 32 px: 2-px-Umriss, fünf Balken |
 | `sprechwerk-wortmarke.svg` | Zeichen + `SPRECHWERK`, Buchstaben als Pfade |
 | `sprechwerk-schriftzug.svg` | nur die Buchstaben, weiß — im Fenster eingefärbt |
 | `sprechwerk-symbolic.svg` | einfarbig weiß, beide Blasen (Schreibtisch-Icon, Mono-Theme) |
@@ -78,17 +80,31 @@ Die Buchstaben der Wortmarke sind **Pfade, keine Schrift**: keine
 Font-Abhängigkeit, kein Ausweichen auf eine Ersatzschrift, wenn Plex Sans ein
 Zeichen nicht hat. Die Blasen sind Rechtecke auf einem 16er-Raster; die Ecken
 sind Treppen aus fünf Stufen an der oberen linken und der unteren rechten Ecke
-und einer Stufe an den beiden anderen — so steht es in der Vorlage.
+und einer Stufe an den beiden anderen — so steht es in der Vorlage. Der Schwanz
+läuft als Treppe aus drei Stufen nach außen-unten aus (hinten nach unten-links,
+vorn nach unten-rechts), an der Außenkante bündig: ein zusammenhängender Keil,
+kein Tropfen.
+
+Die drei kleinen Fassungen sind **nicht** aus dem großen Zeichen abgeleitet,
+sondern Pixel für Pixel gezeichnet: Quelle ist das ASCII-Gitter in
+`packaging/icons/klein-gitter.py`, das die SVGs schreibt (`k` Kachel, `t`
+Türkis, `o` Orange, `.` nichts; die 1-px-Trennung um die vordere Blase rechnet
+das Skript). Die SVGs bestehen nur aus ganzzahligen Rechtecken und tragen
+`shape-rendering="crispEdges"`.
 
 `packaging/icons/erzeugen.sh` zeichnet daraus die PNGs
 (`packaging/icons/hicolor/<n>x<n>/apps/sprechwerk.png` für 16, 24, 32, 48, 64,
 128, 256, 512 und 1024), kopiert `scalable` und `symbolic`, setzt ICO und ICNS
 und legt `docs/marke/logo-dark.svg` und `logo-light.svg` für README und Doku
-ab. 16, 24 und 32 px kommen aus `sprechwerk-klein.svg`: bei 16 px ist ein
-Balken von 14 Rastereinheiten noch keinen halben Pixel breit und die fünf
-Stufen einer Ecke sind ein grauer Fleck; drei dickere Balken und zwei Stufen
-bleiben erkennbar. Gerendert wird mit `resvg`, `rsvg-convert`
-oder ImageMagick — was zuerst da ist.
+ab. 16, 24 und 32 px kommen aus je einer eigenen Klein-Fassung: bei 16 px ist
+ein Balken von 14 Rastereinheiten noch keinen halben Pixel breit, die fünf
+Stufen einer Ecke sind ein grauer Fleck und drei Balken berühren den Umriss —
+sie lesen sich dann als Klammern `]I[`. Darum hat jede Größe ihr eigenes
+Raster mit weniger, dickeren Balken. Gezeichnet wird in der Größe, die im SVG
+steht, **ohne** Skalierung; `erzeugen.sh` prüft danach, dass das PNG so viele
+Pixel wie die viewBox und höchstens sechs Farben hat — ein geglättetes Bild
+hat Dutzende. Gerendert wird mit `resvg`, `rsvg-convert` oder ImageMagick — was
+zuerst da ist.
 
 `scripts/marke-bauen.sh` und `weppelmann-ui/apps/markenwerk/marken/sprechwerk.pm`
 sind entfallen: das Raster beschreibt dieses Logo nicht, und ein Lauf von
@@ -147,6 +163,12 @@ steht.
 verlangt, dass Türkis, Orange, die Kachelfarben und die Mono-Zeichnung der
 Tokens darin vorkommen. Wer eine Farbe nur an einer der beiden Stellen ändert,
 bekommt einen roten Test.
+Zwei weitere Tests halten die kleinen Fassungen:
+`kleine_fassungen_tragen_dieselben_farben` verlangt dieselben Tokenwerte auch
+in `sprechwerk-16/24/32.svg`, und `kleine_fassungen_liegen_auf_dem_raster`
+prüft, dass jede Koordinate ganzzahlig ist, im Feld liegt und `crispEdges`
+gesetzt ist — ein halber Pixel ist genau der Fehler, der das Zeichen klein
+verschwimmen lässt.
 
 ## Was gegenüber der Vorlage fehlt
 
