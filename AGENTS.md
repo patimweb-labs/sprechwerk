@@ -147,10 +147,17 @@ Der Stil steht in `docs/marke/icons.md`; hier nur die Regeln, an die sich Code h
    macht der Generator (`inKachel`), nicht das Zeichen. `form = voll` schaltet es ab.
 3. **Zeichnung mit Abstand.** Mindestens ein Pixel zur Kante, auch an der Fase.
 4. **Zwei Strichstärken.** 2 px für die Form, 1–2 px für Binnenlinien.
-5. **Zwei Farben.** Fläche je Anwendung (`#C9862C` sprechwerk), Zeichnung immer
-   `#E9E5DC`. Werte aus `primitives.tokens.json`.
-6. **Erzeugen, nicht ablegen:** `node src/cli.ts render <app>` in `apps/markenwerk`,
-   danach die erzeugten Dateien ins Projekt kopieren.
+5. **Zwei Farben.** Fläche je Anwendung, Zeichnung immer `#E9E5DC`. Werte aus
+   `primitives.tokens.json`.
+   **Abweichung für sprechwerk (ADR 0014, 2026-11-21):** Fläche dunkel
+   `#0E1319`, Zeichnung türkis `#2EE6C8`, Schatten orange `#F7931E` (Token
+   `color.marke.sprechwerk.*`). Zwei überlappende Sprechblasen brauchen zwei
+   Farben, sonst verschmelzen sie bei 16 px zu einem Fleck. Achteck-Kachel,
+   2-px-Strichsprache und Mindestabstand gelten unverändert.
+6. **Erzeugen, nicht ablegen:** `node src/cli.ts render <app>` (und `logo <app>`
+   für Zeichen plus Wortmarke) in `apps/markenwerk`, danach die erzeugten
+   Dateien ins Projekt kopieren — hier mit einem Schritt:
+   `scripts/marke-bauen.sh [pfad/zu/apps/markenwerk]`.
 7. **Nachweis bei Änderungen:** frischer Lauf in einem leeren Verzeichnis,
    `sha256sum` gegen die Dateien im Projekt.
 
