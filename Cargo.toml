@@ -1,7 +1,5 @@
 [workspace]
 resolver = "2"
-# Die Fensteranwendung ist Tauri und bringt eine eigene [workspace]-Tabelle mit.
-exclude = ["crates/desktop"]
 members = [
     "crates/domain",
     "crates/protocol",
