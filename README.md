@@ -541,8 +541,10 @@ und ein Haken hält vor dem Push an
 
 ## Mitentwickeln
 
-Die verbindlichen Regeln stehen in [`AGENTS.md`](AGENTS.md) — für Menschen wie
-für Werkzeuge. Das Wichtigste in Kürze:
+Der Weg zum ersten Pull Request steht in [`CONTRIBUTING.md`](CONTRIBUTING.md),
+die verbindlichen Regeln in [`AGENTS.md`](AGENTS.md) — für Menschen wie
+für Werkzeuge. Sicherheitslücken bitte **nicht** als Issue, sondern über GitHub
+„Private vulnerability reporting": [`SECURITY.md`](SECURITY.md). Das Wichtigste in Kürze:
 
 * **Oberfläche ohne Backend:** die Fenster hängen über ein Trait (`Kern`) am
   Client; die Oberflächentests setzen ein Beispielmodell ein und bedienen das

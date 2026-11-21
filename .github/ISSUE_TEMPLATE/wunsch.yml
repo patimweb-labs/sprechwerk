@@ -1,0 +1,61 @@
+name: Wunsch
+description: Etwas fehlt oder sollte anders sein.
+title: "wunsch: "
+labels: ["wunsch"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Bevor du schreibst: die README sagt unter „Stand heute", was bewusst noch
+        nicht gebaut ist (Dateien im Chat, Status, Video, Suche), und
+        [SPEC.md](../blob/master/SPEC.md) begründet jede Festlegung. Was dort
+        schon steht, ist kein neuer Wunsch — ein Einwand dagegen ist willkommen.
+
+  - type: textarea
+    id: lage
+    attributes:
+      label: Lage
+      description: Wer braucht das, und wann? Ein Vereinsabend ist ein besserer Beleg als „wäre schön".
+      placeholder: Beim Elternabend teilen wir die Tagesordnung als Datei aus.
+    validations:
+      required: true
+
+  - type: textarea
+    id: wunsch
+    attributes:
+      label: Was soll passieren
+      description: Aus Sicht der Benutzenden, nicht als Lösung im Code.
+    validations:
+      required: true
+
+  - type: textarea
+    id: heute
+    attributes:
+      label: Wie es heute geht
+      description: Was macht man stattdessen, und was kostet das?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: bereich
+    attributes:
+      label: Bereich
+      options:
+        - Sprache
+        - Text und Reaktionen
+        - Rollen, Rechte, Prüfprotokoll
+        - Betrieb und Pakete
+        - Oberfläche und Bedienung
+        - Sonstiges
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: geprueft
+    attributes:
+      label: Vorher geprüft
+      options:
+        - label: README („Stand heute") und SPEC.md habe ich gelesen.
+          required: true
+        - label: Es gibt kein offenes Issue zu demselben Wunsch.
+          required: true

@@ -1,0 +1,91 @@
+name: Fehler
+description: Etwas geht nicht — Absturz, falsches Verhalten, kein Ton.
+title: "fehler: "
+labels: ["fehler"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke für den Bericht. Sicherheitslücken bitte **nicht** hier, sondern
+        über den Reiter Security (siehe [SECURITY.md](../blob/master/SECURITY.md)).
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Aus dem Paketnamen oder dem Release-Tag, z. B. 3.0.2.
+      placeholder: 3.0.2
+    validations:
+      required: true
+
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Betriebssystem und Fassung, bei Linux auch der Schreibtisch (X11/Wayland).
+      placeholder: Ubuntu 24.04, GNOME, Wayland
+    validations:
+      required: true
+
+  - type: dropdown
+    id: teil
+    attributes:
+      label: Server oder Client
+      options:
+        - Client (Fenster zum Mitreden)
+        - Client (Kommandozeile, sprechwerk-cli)
+        - Server (Dienst, sprechwerk)
+        - Server (Fenster, sprechwerk-server-fenster)
+        - Beides / unklar
+    validations:
+      required: true
+
+  - type: textarea
+    id: schritte
+    attributes:
+      label: Schritte
+      description: Was hast du getan, in der Reihenfolge, in der es passiert ist?
+      placeholder: |
+        1. Server mit docker compose up gestartet
+        2. Fenster gestartet, Adresse eingetragen, verbunden
+        3. Raum „Vorstand" betreten
+    validations:
+      required: true
+
+  - type: textarea
+    id: erwartet
+    attributes:
+      label: Erwartet
+      placeholder: Ich höre die anderen und kann schreiben.
+    validations:
+      required: true
+
+  - type: textarea
+    id: tatsaechlich
+    attributes:
+      label: Tatsächlich
+      description: Was passiert stattdessen? Bei Ton auch, was in der Statuszeile steht (Umlaufzeit, verlorene Rahmen).
+    validations:
+      required: true
+
+  - type: textarea
+    id: protokoll
+    attributes:
+      label: Protokoll
+      description: |
+        Server: `SPRECHWERK_LOG=debug` und die Zeilen um den Fehler.
+        Client: die Statuszeile und, wenn es eine Panik war, den Text.
+        **Bitte keine Schlüsseldateien, Serverpasswörter oder echten Gesprächsinhalte.**
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: geprueft
+    attributes:
+      label: Vorher geprüft
+      options:
+        - label: Es gibt kein offenes Issue zu demselben Fehler.
+          required: true
+        - label: Der Bericht enthält keine Schlüssel, Passwörter oder Gesprächsinhalte.
+          required: true
