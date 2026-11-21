@@ -42,6 +42,12 @@ Die Marke von sprechwerk bekommt eine eigene Farbigkeit:
 | Zeichnung (`ink`) | `#2EE6C8` | `color.marke.sprechwerk.ink` |
 | Schatten (`shade`) | `#F7931E` | `color.marke.sprechwerk.shade` |
 
+Der Entwurf des Nutzers nannte für die Fläche „~#111827". Übernommen wurde
+`#0E1319`, das dunkle Canvas des Bausatzes (`color.neutral.900`): ein eigener
+Navy-Ton neben dem vorhandenen Dunkel wäre eine zweite Dunkelfarbe, die niemand
+unterscheiden kann. Türkis `#2EE6C8`, Orange `#F7931E` und Knochenweiß `#E9E5DC`
+stehen so im Entwurf.
+
 Was **bleibt**: die Achteck-Kachel des Generators (22 % Fase), die 2-px-
 Strichsprache, mindestens 1 px Abstand zur Kante und zur Fase, das 32 × 32
 Raster als Quelle und die Regel „erzeugen, nicht ablegen" (§8.6/§8.7).
