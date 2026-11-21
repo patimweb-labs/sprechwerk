@@ -3,6 +3,12 @@ name = "sprechwerk-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "sprechwerk: Referenzclient auf der Kommandozeile"
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [[bin]]
 name = "sprechwerk-cli"

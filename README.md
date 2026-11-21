@@ -161,10 +161,10 @@ dass Funktionen fehlen, sondern durch das, was drumherum gewachsen ist.
 | Oberfläche | Windows/macOS/Linux; Mobil-App kostenpflichtig | Fenster in reinem Rust (egui, Linux/Windows/macOS), drei Farbschemata, vier Sprachen; Browser später über WebTransport |
 | Text | dauerhaft, serverseitig gespeichert und lesbar | dauerhaft, aber der Server speichert nur Geheimtext — lesen können die Mitglieder |
 | Reaktionen, Link-Vorschau | nicht vorhanden (nur Text) | Reaktionen, Vorschau; die Seite ruft der Absender ab |
-| Betriebswerkzeug | Abfrage-Schnittstelle, Hoster-Panels | Datei + Umgebungsvariablen + Unterbefehle (`stand`, `rolle`, `protokoll`, `beispiel`, `export`, `import`, `sicherung`, `--gesundheit`), dazu eine Verwaltung im Browser |
+| Betriebswerkzeug | Abfrage-Schnittstelle, Hoster-Panels | Datei + Umgebungsvariablen + Unterbefehle (`stand`, `rolle`, `protokoll`, `beispiel`, `export`, `import`, `sicherung`, `--gesundheit`), dazu das Server-Fenster |
 | Prüfprotokoll im Client | nein | ja, für Administrator und Moderator |
 | Dateien, Status, Video, Plugins | vorhanden (teils seit Jahren) | **nicht vorhanden** — bewusst „später", nicht „gestrichen" |
-| Reife | 20 Jahre, großes Ökosystem | 1.2, ein Projekt, ein Maintainer |
+| Reife | 20 Jahre, großes Ökosystem | 3.x, ein Projekt, ein Maintainer |
 
 **Was TeamSpeak besser kann** — und was wir nicht kleinreden: Mobile Apps für
 iOS und Android, Dateitransfer im Client, eine Plugin-Schnittstelle, etabliertes
@@ -478,6 +478,9 @@ eigenen Benutzer lesbar (0600, schon beim Anlegen); unter Windows schützt sie
 das Benutzerprofil. Keine Secrets im Code; die Konfiguration kommt aus Datei und
 Umgebung (Beispiel in `.env.example`).
 
+Eine Lücke gefunden? Bitte melden, aber **nicht** als öffentliches Issue:
+[`SECURITY.md`](SECURITY.md).
+
 ## Betrieb
 
 Konfiguration über `sprechwerk.toml` (Pfad: `SPRECHWERK_KONFIG`), jeder Wert auch
@@ -538,8 +541,10 @@ und ein Haken hält vor dem Push an
 
 ## Mitentwickeln
 
-Die verbindlichen Regeln stehen in [`AGENTS.md`](AGENTS.md) — für Menschen wie
-für Werkzeuge. Das Wichtigste in Kürze:
+Der Weg zum ersten Pull Request steht in [`CONTRIBUTING.md`](CONTRIBUTING.md),
+die verbindlichen Regeln in [`AGENTS.md`](AGENTS.md) — für Menschen wie
+für Werkzeuge. Sicherheitslücken bitte **nicht** als Issue, sondern über GitHub
+„Private vulnerability reporting": [`SECURITY.md`](SECURITY.md). Das Wichtigste in Kürze:
 
 * **Oberfläche ohne Backend:** die Fenster hängen über ein Trait (`Kern`) am
   Client; die Oberflächentests setzen ein Beispielmodell ein und bedienen das
@@ -605,4 +610,9 @@ TeamSpeak 3 auf Protokollebene liegt als Nachbardokumentation
 
 ## Lizenz
 
-MIT — siehe [`LICENSE`](LICENSE).
+MIT — siehe [`LICENSE`](LICENSE). Keine Platzgrenze, keine Lizenzdatei.
+
+„TeamSpeak“ und „Discord“ sind Marken der jeweiligen Inhaber. Sie werden hier
+nur zur Beschreibung genannt: sprechwerk ist ein eigenständiges Projekt, steht
+in keiner Verbindung zu beiden und ist **nicht** TeamSpeak-3-kompatibel — kein
+TS3-Client kann sich verbinden, und es enthält keinen Code daraus.

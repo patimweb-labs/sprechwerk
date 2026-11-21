@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Sicherheitslücke melden
+    url: https://github.com/patimweb-labs/sprechwerk/security/advisories/new
+    about: Bitte nicht als öffentliches Issue — GitHub „Private vulnerability reporting". Siehe SECURITY.md.
+  - name: Frage zur Bedienung
+    url: https://github.com/patimweb-labs/sprechwerk/blob/master/README.md
+    about: README, SPEC.md und docs/ beantworten Installation, Betrieb und Verwaltung.

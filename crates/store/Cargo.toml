@@ -3,6 +3,12 @@ name = "sprechwerk-store"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "sprechwerk: SQLite, Migrationen, Export/Import und Sicherungen"
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 sprechwerk-domain.workspace = true
