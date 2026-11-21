@@ -6,7 +6,6 @@ license.workspace = true
 description = "sprechwerk: Referenzclient auf der Kommandozeile"
 authors.workspace = true
 repository.workspace = true
-homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 

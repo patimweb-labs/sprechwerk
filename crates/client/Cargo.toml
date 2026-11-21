@@ -6,7 +6,6 @@ license.workspace = true
 description = "sprechwerk: Client-Kern ohne Oberfläche (Verbindung, Sprechpfad, Schlüssel, Einstellungen)"
 authors.workspace = true
 repository.workspace = true
-homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
