@@ -29,7 +29,12 @@ if command -v resvg >/dev/null; then
 elif command -v rsvg-convert >/dev/null; then
   zeichne() { rsvg-convert --background-color='#00000000' --width "$2" --height "$2" -o "$3" "$1"; }
 elif command -v magick >/dev/null; then
-  zeichne() { magick -background none "$1" -resize "${2}x${2}" "PNG32:$3"; }
+  # -strip und die datumlosen Chunks: sonst schreibt ImageMagick die Uhrzeit ins
+  # PNG und zwei Läufe ergeben verschiedene Prüfsummen (AGENTS.md §8.7).
+  zeichne() {
+    magick -background none "$1" -resize "${2}x${2}" -strip \
+      -define png:exclude-chunks=date,time "PNG32:$3"
+  }
 else
   echo "Kein SVG-Zeichner gefunden: resvg, rsvg-convert oder ImageMagick installieren." >&2
   exit 1
