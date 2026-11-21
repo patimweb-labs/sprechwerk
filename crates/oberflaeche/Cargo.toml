@@ -6,7 +6,6 @@ license.workspace = true
 description = "sprechwerk: Bausatz für die Fenster — Themes aus Tokens, Texte, Schriften, Bausteine"
 authors.workspace = true
 repository.workspace = true
-homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 

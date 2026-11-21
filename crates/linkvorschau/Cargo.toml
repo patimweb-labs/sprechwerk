@@ -6,7 +6,6 @@ license.workspace = true
 description = "sprechwerk: Link-Vorschau, abgerufen vom Absender (ADR 0012 §2)"
 authors.workspace = true
 repository.workspace = true
-homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 

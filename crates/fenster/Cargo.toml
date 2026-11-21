@@ -6,7 +6,6 @@ license.workspace = true
 description = "sprechwerk: Fensteranwendung in reinem Rust (egui)"
 authors.workspace = true
 repository.workspace = true
-homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 

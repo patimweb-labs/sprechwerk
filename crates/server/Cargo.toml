@@ -6,7 +6,6 @@ license.workspace = true
 description = "sprechwerk: Dienst als Bibliothek und Programm `sprechwerk` — Netz, Mitschrift, Sicherung, Verwaltung"
 authors.workspace = true
 repository.workspace = true
-homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
