@@ -700,7 +700,7 @@ async fn lauf<F>(
                 }
                 if matches!(befehl, Befehl::Trennen) {
                     if let Some(v) = netz.take() {
-                        v.schliessen();
+                        v.schliessen().await;
                     }
                     entwuerfe.clear();
                     staende.clear();
@@ -970,7 +970,7 @@ async fn lauf<F>(
     }
 
     if let Some(v) = netz.take() {
-        v.schliessen();
+        v.schliessen().await;
     }
 }
 

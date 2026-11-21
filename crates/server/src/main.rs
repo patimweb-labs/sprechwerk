@@ -19,6 +19,7 @@ const HILFE: &str = r#"sprechwerk — Server
   sprechwerk import <datei>          Zustand aus Text einspielen
   sprechwerk sicherung               Sofortsicherung anlegen
   sprechwerk --gesundheit            Lebenszeichen prüfen (für den Healthcheck)
+  sprechwerk --help                  diese Übersicht (auch: hilfe, -h)
 
 Verwaltung des laufenden Servers (im Container: docker exec … sprechwerk …):
   sprechwerk stand                   Übersicht: Adresse, Fingerabdruck, Mitglieder
@@ -197,11 +198,26 @@ fn main() -> anyhow::Result<()> {
             return verwalten(Auftrag::Rolle { wer, rolle });
         }
         Some("gesundheit") | Some("--gesundheit") => return betrieb_gesundheit(),
-        Some("hilfe") | Some("--hilfe") | Some("-h") => {
+        Some("hilfe") | Some("--hilfe") | Some("--help") | Some("-h") => {
             print!("{}", HILFE);
             return Ok(());
         }
+        // **Gefunden 2026-11-19:** `sprechwerk --help` startete den Server und
+        // legte dabei `daten/` neben dem Programm an. Ein Argument, das keine
+        // Konfigurationsdatei sein kann, wird jetzt abgewiesen — mit der
+        // Übersicht, damit man sieht, was ginge.
+        Some(anderes) if anderes.starts_with('-') => {
+            eprint!("{}", HILFE);
+            anyhow::bail!("unbekannte Angabe: {anderes}");
+        }
         _ => {}
+    }
+
+    // Ein zweiter Wert ist kein gültiger Aufruf: `sprechwerk a b` würde sonst
+    // still `a` als Konfiguration nehmen und `b` verschlucken.
+    if args.next().is_some() {
+        eprint!("{}", HILFE);
+        anyhow::bail!("zu viele Angaben (höchstens eine Konfigurationsdatei)");
     }
 
     let konfig_pfad = std::env::var("SPRECHWERK_KONFIG")

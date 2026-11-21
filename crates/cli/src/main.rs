@@ -13,6 +13,7 @@
 use anyhow::{Context, Result};
 use sprechwerk_adapters::serverschluessel::{Bund, Lesbar};
 use sprechwerk_adapters::{Schluessel, Verbindung};
+use sprechwerk_domain::Message;
 use sprechwerk_protocol::inhalt::Inhalt;
 use sprechwerk_protocol::{ClientFrame, Fehlercode, ServerFrame};
 use std::net::SocketAddr;
@@ -27,6 +28,9 @@ struct Sitzung {
     verbindung: Verbindung,
     schluessel: Schluessel,
     bund: Bund,
+    /// Verlauf, der noch nicht lesbar war: er kommt mit dem `Betreten`, der
+    /// Serverschlüssel (ADR 0012) erst danach von einem anderen Mitglied.
+    nachzutragen: Vec<Message>,
 }
 
 impl Sitzung {
@@ -71,7 +75,32 @@ impl Sitzung {
             self.verbindung.sende(meldung).await?;
         }
         zeige(frame, &self.bund);
+        if let ServerFrame::Betreten { verlauf, .. } = frame {
+            self.nachzutragen = verlauf.clone();
+        }
+        self.verlauf_nachreichen();
         Ok(())
+    }
+
+    /// Gibt den Verlauf aus, sobald der Serverschlüssel da ist.
+    ///
+    /// **Gefunden 2026-11-19:** der Client meldete „3 alte Nachrichten" und
+    /// zeigte keine einzige — der Verlauf kam mit dem Betreten, der Schlüssel
+    /// (ADR 0012) erst danach von einem anderen Mitglied. Bis dahin stünde bei
+    /// jeder Zeile „Schlüssel fehlt noch", also wird nachgereicht, sobald
+    /// nichts mehr fehlt.
+    fn verlauf_nachreichen(&mut self) {
+        if self.nachzutragen.is_empty() || !self.bund.alle_da() {
+            return;
+        }
+        for nachricht in std::mem::take(&mut self.nachzutragen) {
+            println!(
+                "[{}] {}: {}",
+                nachricht.zeit,
+                nachricht.verfasser_name,
+                lesbar(self.bund.lesen(&nachricht))
+            );
+        }
     }
 
     /// Verschlüsselt und sendet einen Text in den aktuellen Raum.
@@ -192,6 +221,9 @@ async fn main() -> Result<()> {
     // `SPRECHWERK_FINGERABDRUCK=3ff0:5a78:…` — ohne den Wert wird angeheftet,
     // was der Server zeigt.
     let erwartet = std::env::var("SPRECHWERK_FINGERABDRUCK").ok();
+    // Kein eigenes `context("Anmeldung")`: der Grund der Ablehnung („Passwort
+    // falsch") ist die Meldung, die der Mensch lesen soll — er soll nicht
+    // hinter einer Sammelüberschrift stehen.
     let mut verbindung = Verbindung::oeffnen_mit(
         server,
         &schluessel,
@@ -199,8 +231,7 @@ async fn main() -> Result<()> {
         passwort.as_deref(),
         erwartet.as_deref(),
     )
-    .await
-    .context("Anmeldung")?;
+    .await?;
     println!(
         "verbunden mit „{}“ als {} ({:?})",
         verbindung.server_name, name, verbindung.rolle
@@ -224,6 +255,7 @@ async fn main() -> Result<()> {
         verbindung,
         schluessel,
         bund,
+        nachzutragen: Vec::new(),
     };
 
     // Raumliste aus der Begrüßung zeigen.
@@ -273,8 +305,8 @@ async fn main() -> Result<()> {
                 Err(_) => break,
             }
         }
-        sitzung.verbindung.schliessen();
-        return Ok(());
+        sitzung.verbindung.schliessen().await;
+        beenden();
     }
 
     // Interaktiv: Eingabe und Empfang parallel.
@@ -334,8 +366,20 @@ async fn main() -> Result<()> {
         }
     }
 
-    sitzung.verbindung.schliessen();
-    Ok(())
+    sitzung.verbindung.schliessen().await;
+    beenden();
+}
+
+/// Beendet den Client **nach** dem Abschied.
+///
+/// [`Verbindung::schliessen`] wartet bereits, bis das `CONNECTION_CLOSE` beim
+/// Endpunkt hinaus ist. Danach bleibt nichts zu tun — und ein hartes Ende macht
+/// sichtbar, dass der Abschied nicht davon abhängt, ob die Laufzeit beim
+/// Aufräumen noch eine Runde dreht. Ohne diese Zeile ging das CLOSE-Paket auf
+/// einer ausgelasteten Maschine verloren, und der Server hielt den Client die
+/// vollen 30 s (Leerlauf-Timeout) für anwesend (gefunden 2026-11-19).
+fn beenden() -> ! {
+    std::process::exit(0)
 }
 
 fn zeige(frame: &ServerFrame, bund: &Bund) {

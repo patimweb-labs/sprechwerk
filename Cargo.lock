@@ -4898,6 +4898,7 @@ dependencies = [
  "sprechwerk-adapters",
  "sprechwerk-domain",
  "sprechwerk-protocol",
+ "sprechwerk-server",
  "tokio",
 ]
 

@@ -5,6 +5,11 @@ PORT=${PORT:-7443}
 DIR=$(mktemp -d)
 trap 'kill "${PID:-}" 2>/dev/null || true; rm -rf "$DIR"' EXIT
 
+# **Gefunden 2026-11-19:** ohne diesen Bau bricht das Skript auf einem frischen
+# Arbeitsverzeichnis ab — die Binärdateien fehlen. Beides bauen, nicht nur den
+# Server.
+cargo build -p sprechwerk-server -p sprechwerk-cli
+
 SPRECHWERK_DATEN="$DIR" SPRECHWERK_PORT="$PORT" SPRECHWERK_BIND=127.0.0.1 \
   SPRECHWERK_VERWALTUNG_AKTIV=0 \
   ./target/debug/sprechwerk > "$DIR/server.log" 2>&1 &

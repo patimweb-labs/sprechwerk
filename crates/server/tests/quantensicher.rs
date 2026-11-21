@@ -317,8 +317,12 @@ async fn der_client_bietet_die_hybride_gruppe_an() {
     // **Der Beweis:** der Client kam bis zur Anmeldung. Wäre die hybride Gruppe
     // nicht angeboten worden, stünde hier ein Handschlagfehler („no common
     // key exchange"), und die Ablehnung des Servers käme nie an.
+    //
+    // Geprüft wird der **Text des Servers**: seit 2026-11-19 gibt der Client
+    // den Grund der Ablehnung unverändert weiter („Passwort falsch" statt
+    // „Anmeldung abgelehnt: …"), damit beim Nutzer ankommt, woran es lag.
     assert!(
-        fehler.contains("Anmeldung abgelehnt"),
+        fehler.contains("Absicht: Handschlag hat geklappt"),
         "der Client muss den Handschlag mit X25519MLKEM768 schaffen, sonst käme \
          die Ablehnung nicht an: {fehler}"
     );
