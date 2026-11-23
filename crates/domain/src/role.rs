@@ -76,6 +76,9 @@ pub enum Capability {
     ProtokollLesen,
     /// Servereinstellungen ändern.
     EinstellungenAendern,
+    /// Einen Port des eigenen Rechners im Raum freigeben und Freigaben
+    /// anderer beitreten (`crates/spielnetz`, ADR 0016 §8).
+    Spielnetz,
 }
 
 /// Die Rechtetabelle. **Diese Funktion ist die einzige Wahrheit** über Rechte.
@@ -93,10 +96,11 @@ pub fn darf(rolle: Role, recht: Capability) -> bool {
                 | RaumVerwalten
                 | PersonEingreifen
                 | ProtokollLesen
+                | Spielnetz
         ),
         Mitglied => matches!(
             recht,
-            RaumBetreten | VerlaufLesen | TextSchreiben | SpracheSenden
+            RaumBetreten | VerlaufLesen | TextSchreiben | SpracheSenden | Spielnetz
         ),
         Gast => matches!(recht, RaumBetreten | TextSchreiben),
     }
@@ -129,6 +133,13 @@ mod tests {
         assert!(darf(Role::Gast, Capability::TextSchreiben));
         assert!(!darf(Role::Gast, Capability::SpracheSenden));
         assert!(!darf(Role::Gast, Capability::VerlaufLesen));
+
+        // Spielnetz (ADR 0016 §8): Administrator, Moderator und Mitglied ja,
+        // Gast nein — wer nur zusehen darf, gibt keinen Port frei.
+        assert!(darf(Role::Administrator, Capability::Spielnetz));
+        assert!(darf(Role::Moderator, Capability::Spielnetz));
+        assert!(darf(Role::Mitglied, Capability::Spielnetz));
+        assert!(!darf(Role::Gast, Capability::Spielnetz));
     }
 
     #[test]

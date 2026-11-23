@@ -11,6 +11,11 @@ categories.workspace = true
 
 # Reine Logik: kein Netz, kein tokio, kein quinn. Server und Fenster reichen
 # Ereignisse hinein und führen die Aktionen aus (ADR 0016 §6).
+#
+# Seit P2 gibt es mit `server` und `client` zwei dünne Netzschichten: der
+# Server führt die Aktionen der `vermittlung` aus, der Client baut die zweite
+# QUIC-Verbindung auf. Deshalb stehen quinn/tokio hier — die Logik in
+# `protokoll`, `krypto` und `vermittlung` bleibt davon unberührt.
 [dependencies]
 sprechwerk-protocol.workspace = true
 # Nur für `verschluesselt::oeffentlich_aus_kennung` (Ed25519 → X25519) und den
@@ -18,6 +23,15 @@ sprechwerk-protocol.workspace = true
 # eine Rechnung auf der Kurve, keine Verbindung — das Crate bringt aber leider
 # auch tokio und quinn mit (ein Paket, eine Abhängigkeitsliste).
 sprechwerk-adapters.workspace = true
+
+# Netzsicht des Moduls (`server`, `client`).
+anyhow.workspace = true
+bytes = "1"
+tokio.workspace = true
+tracing.workspace = true
+quinn.workspace = true
+rustls.workspace = true
+hex.workspace = true
 
 serde.workspace = true
 thiserror.workspace = true

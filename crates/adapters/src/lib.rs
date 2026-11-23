@@ -217,7 +217,11 @@ pub fn kx_gruppen() -> Vec<&'static dyn rustls::crypto::SupportedKxGroup> {
 ///
 /// `ring` kennt kein ML-KEM; deshalb `aws-lc-rs`. Zwei Anbieter nebeneinander
 /// gehen nicht: `rustls` hat genau einen Standard je Prozess.
-fn anbieter() -> rustls::crypto::CryptoProvider {
+///
+/// Öffentlich, weil weitere Verbindungen desselben Programms (das Spielnetz,
+/// ADR 0016 §2) denselben Anbieter und dieselben Gruppen benutzen müssen —
+/// eine zweite Liste wäre eine zweite Wahrheit.
+pub fn anbieter() -> rustls::crypto::CryptoProvider {
     let mut anbieter = rustls::crypto::aws_lc_rs::default_provider();
     anbieter.kx_groups = kx_gruppen();
     anbieter

@@ -26,6 +26,9 @@ tokio.workspace = true
 sprechwerk-domain.workspace = true
 sprechwerk-protocol.workspace = true
 sprechwerk-store.workspace = true
+# Spielnetz (ADR 0016): eigenes Modul, eigene QUIC-Verbindung. Der Kern kennt
+# davon nur eine Momentaufnahme über das Trait `Mitgliedschaft`.
+sprechwerk-spielnetz.workspace = true
 
 anyhow.workspace = true
 tokio.workspace = true

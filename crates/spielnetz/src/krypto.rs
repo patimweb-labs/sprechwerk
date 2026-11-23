@@ -57,6 +57,12 @@
 //! **nur bei Erfolg** übernommen; Datagramme abgelöster Sitzungen werden
 //! verworfen ([`Kryptofehler::Abgeloest`]).
 //!
+//! **Ein Paar, viele Kanäle.** Der Server vergibt je (Teilnehmer, dessen
+//! lokalem Kanal) eine eigene Kanalnummer, weil ein Spiel oft mehrere Sockets
+//! öffnet. Für die Kryptografie zählt nur das Paar: **alle Kanäle eines Paares
+//! teilen sich ein Siegel und einen Zähler**; die Kanalnummer steht allein im
+//! Datagrammkopf und geht nicht in die Ableitung ein.
+//!
 //! # Auf der Leitung
 //!
 //! ```text

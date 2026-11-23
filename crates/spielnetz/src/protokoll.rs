@@ -35,6 +35,11 @@ pub const VERSION: u16 = 1;
 pub type AngebotId = u32;
 
 /// Kanalnummer eines UDP-Paares, **je Angebot** vergeben.
+///
+/// Der Gastgeber vergibt sie je (Teilnehmer, dessen lokaler Kanal): ein Spiel
+/// mit mehreren Sockets bekommt für jeden eine eigene Nummer. Alle Kanäle
+/// eines Paares teilen sich Siegel und Zähler; die Nummer steht nur im
+/// Datagrammkopf und geht nicht in die Schlüsselableitung ein.
 pub type Kanal = u16;
 
 /// Größte UDP-Nutzlast, die getunnelt wird (ADR 0016 §7).
@@ -135,6 +140,9 @@ pub enum ServerRahmen {
     /// Beitritt angenommen.
     Beigetreten { angebot: AngebotId },
     /// An den Gastgeber: Kanal `kanal` gehört ab jetzt zu Teilnehmer `von`.
+    ///
+    /// Je (Teilnehmer, dessen lokaler Kanal) einer — ein Teilnehmer kann
+    /// mehrere Sockets offen haben und bekommt für jeden einen eigenen Rahmen.
     Kanal {
         angebot: AngebotId,
         kanal: Kanal,

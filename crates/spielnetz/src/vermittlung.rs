@@ -124,17 +124,11 @@ impl Eintrag {
         self.angebot.teilnehmer.retain(|t| t != kennung);
         self.offene_stroeme.remove(kennung);
         self.naechste_stromnummer.remove(kennung);
-        let eigene: Vec<(String, Kanal)> = self
-            .kanal_hin
-            .keys()
-            .filter(|(t, _)| t == kennung)
-            .cloned()
-            .collect();
-        for schluessel in eigene {
-            if let Some(kanal) = self.kanal_hin.remove(&schluessel) {
-                self.kanal_her.remove(&kanal);
-            }
-        }
+        // Alle Kanäle dieses Teilnehmers, nicht nur der erste.
+        self.kanal_hin
+            .retain(|(teilnehmer, _), _| teilnehmer != kennung);
+        self.kanal_her
+            .retain(|_, (teilnehmer, _)| teilnehmer != kennung);
     }
 }
 
@@ -642,6 +636,14 @@ impl Vermittlung {
             eimer.stand -= bytes as f64;
         }
         platz
+    }
+
+    /// Ist `kennung` (noch) Teilnehmer dieser Freigabe? Die Datenebene fragt
+    /// das nach jedem `await`, damit ein Rauswurf dazwischen nicht verloren geht.
+    pub fn ist_teilnehmer(&self, angebot: AngebotId, kennung: &str) -> bool {
+        self.angebote
+            .get(&angebot)
+            .is_some_and(|e| e.ist_teilnehmer(kennung))
     }
 
     /// Alle Angebote eines Raums, sortiert nach Nummer (für Tests und Anzeige).
@@ -1491,7 +1493,34 @@ mod tests {
         let (_, erster, meldung1) = v.datagramm_hin(B, 1, 3).expect("Zuordnung");
         let (_, zweiter, meldung2) = v.datagramm_hin(B, 1, 4).expect("Zuordnung");
         assert_ne!(erster, zweiter);
-        assert!(meldung1.is_some() && meldung2.is_some());
+        // Je lokalem Kanal ein eigener Rahmen an den Gastgeber.
+        assert_eq!(
+            meldung1,
+            Some(senden(
+                A,
+                ServerRahmen::Kanal {
+                    angebot: 1,
+                    kanal: erster,
+                    von: B.to_string()
+                }
+            ))
+        );
+        assert_eq!(
+            meldung2,
+            Some(senden(
+                A,
+                ServerRahmen::Kanal {
+                    angebot: 1,
+                    kanal: zweiter,
+                    von: B.to_string()
+                }
+            ))
+        );
+        // Bekannte Paare melden sich nicht erneut.
+        assert_eq!(
+            v.datagramm_hin(B, 1, 3),
+            Some((A.to_string(), erster, None))
+        );
         // Antworten gehen an den jeweils richtigen lokalen Kanal.
         assert_eq!(v.datagramm_her(A, 1, erster), Some((B.to_string(), 3)));
         assert_eq!(v.datagramm_her(A, 1, zweiter), Some((B.to_string(), 4)));

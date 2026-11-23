@@ -27,6 +27,54 @@ pub struct Konfig {
     pub sicherung: Sicherung,
     pub verwaltung: Verwaltung,
     pub anhaenge: Anhaenge,
+    pub spielnetz: Spielnetz,
+}
+
+/// Spielnetz (ADR 0016 §3): Ports im Raum freigeben, vermittelt über den
+/// Server, Ende zu Ende verschlüsselt.
+///
+/// **Vorgabe: aus.** Solange `aktiv` falsch ist, wird der ALPN
+/// `sprechwerk-spielnetz/1` nicht angeboten — der Handschlag scheitert, und
+/// keine Zeile des Moduls läuft.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Spielnetz {
+    /// Modul anbieten.
+    pub aktiv: bool,
+    /// Freigaben je Mitglied (ADR 0016 §7).
+    pub freigaben_je_mitglied: u8,
+    /// Teilnehmer je Freigabe.
+    pub teilnehmer_je_freigabe: u8,
+    /// Gleichzeitige TCP-Ströme je Teilnehmer.
+    pub stroeme_je_teilnehmer: u8,
+    /// Durchsatz je Freigabe in kbit/s; 0 = unbegrenzt.
+    pub kbit_je_freigabe: u32,
+}
+
+impl Default for Spielnetz {
+    fn default() -> Self {
+        // Eine Stelle, nicht zwei: die Vorgaben stehen in `Grenzen`.
+        let g = sprechwerk_spielnetz::Grenzen::default();
+        Self {
+            aktiv: false,
+            freigaben_je_mitglied: g.freigaben_je_mitglied,
+            teilnehmer_je_freigabe: g.teilnehmer_je_freigabe,
+            stroeme_je_teilnehmer: g.stroeme_je_teilnehmer,
+            kbit_je_freigabe: g.kbit_je_freigabe,
+        }
+    }
+}
+
+impl Spielnetz {
+    /// Die Grenzen, die das Modul dem Client beim Anmelden nennt.
+    pub fn grenzen(&self) -> sprechwerk_spielnetz::Grenzen {
+        sprechwerk_spielnetz::Grenzen {
+            freigaben_je_mitglied: self.freigaben_je_mitglied,
+            teilnehmer_je_freigabe: self.teilnehmer_je_freigabe,
+            stroeme_je_teilnehmer: self.stroeme_je_teilnehmer,
+            kbit_je_freigabe: self.kbit_je_freigabe,
+        }
+    }
 }
 
 /// Grenzen für Anhänge (ADR 0012 §3). **Vorgabe: keine** (Entscheidung des
@@ -265,6 +313,12 @@ impl Konfig {
         if let Some(w) = zahl("SPRECHWERK_ANHAENGE_GESAMT_MB")? {
             self.anhaenge.gesamt_mb = w;
         }
+        if let Some(w) = ja("SPRECHWERK_SPIELNETZ_AKTIV") {
+            self.spielnetz.aktiv = w;
+        }
+        if let Some(w) = zahl("SPRECHWERK_SPIELNETZ_KBIT")? {
+            self.spielnetz.kbit_je_freigabe = w;
+        }
         Ok(())
     }
 
@@ -382,6 +436,18 @@ port = 7444               # TCP, nur dieser Rechner bzw. dieser Container
 # sie nicht lesen. Ohne Grenze kann jedes Mitglied den Datenträger füllen.
 max_mb = 0                # je Datei; 0 = unbegrenzt
 gesamt_mb = 0             # alle zusammen; 0 = unbegrenzt
+
+[spielnetz]
+# Spiele im Raum freigeben (ADR 0016): ein Gastgeber gibt einen Port frei,
+# Teilnehmer spiegeln ihn auf 127.0.0.1. Eigene QUIC-Verbindung, Ende zu Ende
+# verschlüsselt; der Server vermittelt nur.
+# Vorgabe: aus. Solange aus, wird der ALPN nicht angeboten und keine Zeile des
+# Moduls läuft.
+aktiv = false
+freigaben_je_mitglied = 2   # gleichzeitige Freigaben je Mitglied
+teilnehmer_je_freigabe = 16 # wer einer Freigabe beitreten darf
+stroeme_je_teilnehmer = 32  # gleichzeitige TCP-Ströme je Teilnehmer
+kbit_je_freigabe = 20000    # Durchsatz je Freigabe; 0 = unbegrenzt
 "#
         .to_string()
     }
@@ -467,6 +533,57 @@ mod tests {
         assert_eq!(k.verwaltung.port, 7444);
         // Anhänge: in der Vorgabe ohne Grenze (Entscheidung des Nutzers).
         assert_eq!((k.anhaenge.je_datei(), k.anhaenge.gesamt()), (None, None));
+        // Spielnetz: in der Vorgabe aus (ADR 0016 §3) — das Beispiel sagt das
+        // ausdrücklich, damit niemand ein Modul erbt, das er nicht will.
+        assert!(!k.spielnetz.aktiv);
+        assert_eq!(
+            k.spielnetz.grenzen(),
+            sprechwerk_spielnetz::Grenzen::default()
+        );
+        let _ = std::fs::remove_file(&pfad);
+    }
+
+    #[test]
+    fn spielnetz_ist_in_der_vorgabe_aus() {
+        let k = Konfig::laden("/gibt/es/nicht.toml").unwrap();
+        assert!(
+            !k.spielnetz.aktiv,
+            "ein Modul schaltet sich nicht selbst an"
+        );
+        assert_eq!(k.spielnetz.freigaben_je_mitglied, 2);
+        assert_eq!(k.spielnetz.teilnehmer_je_freigabe, 16);
+        assert_eq!(k.spielnetz.stroeme_je_teilnehmer, 32);
+        assert_eq!(k.spielnetz.kbit_je_freigabe, 20_000);
+    }
+
+    #[test]
+    fn spielnetz_schaltet_ueber_die_umgebung_an() {
+        let pfad = datei("[spielnetz]\naktiv = false\n");
+        std::env::set_var("SPRECHWERK_SPIELNETZ_AKTIV", "ja");
+        std::env::set_var("SPRECHWERK_SPIELNETZ_KBIT", "500");
+        let k = Konfig::laden(&pfad).unwrap();
+        std::env::remove_var("SPRECHWERK_SPIELNETZ_AKTIV");
+        std::env::remove_var("SPRECHWERK_SPIELNETZ_KBIT");
+        assert!(
+            k.spielnetz.aktiv,
+            "SPRECHWERK_SPIELNETZ_AKTIV=ja schaltet an"
+        );
+        assert_eq!(k.spielnetz.kbit_je_freigabe, 500);
+        let _ = std::fs::remove_file(&pfad);
+    }
+
+    #[test]
+    fn spielnetz_kommt_aus_der_datei() {
+        let pfad = datei(
+            "[spielnetz]\naktiv = true\nfreigaben_je_mitglied = 1\nteilnehmer_je_freigabe = 4\nstroeme_je_teilnehmer = 8\nkbit_je_freigabe = 0\n",
+        );
+        let k = Konfig::laden(&pfad).unwrap();
+        assert!(k.spielnetz.aktiv);
+        let g = k.spielnetz.grenzen();
+        assert_eq!(g.freigaben_je_mitglied, 1);
+        assert_eq!(g.teilnehmer_je_freigabe, 4);
+        assert_eq!(g.stroeme_je_teilnehmer, 8);
+        assert_eq!(g.kbit_je_freigabe, 0, "0 heißt unbegrenzt");
         let _ = std::fs::remove_file(&pfad);
     }
 

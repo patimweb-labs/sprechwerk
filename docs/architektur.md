@@ -60,6 +60,7 @@ flowchart TB
 | `ipc` | Modell für die Oberfläche bauen | Fenster, Sockets |
 | `client` | Aktionen ausführen, Zustand melden | zeichnen |
 | `oberflaeche` | Themes, Texte, Bausteine | Netz, Client, Server kennen |
+| `spielnetz` | Rahmen, Krypto, Vermittlung; Server- und Clientseite der zweiten QUIC-Verbindung | `Kern`, Räume, Rollen kennen (nur über `Mitgliedschaft`) |
 | `fenster` | Modell zeichnen, Aktionen erzeugen, reine Logik in `logik.rs` | eigene Wahrheit über Server, Räume, Chat halten |
 | `server::verwaltung` | Stand zeigen, Rollen als Betreiber setzen (ADR 0013) | Räume, Sperren, Konfiguration ändern |
 
@@ -75,6 +76,28 @@ Räume, Rollen und Nachrichten liegen im Server in `domain`-Strukturen und werde
 nach jeder Änderung in die Datenbank geschrieben (`crates/store`). Es gibt keine
 zweite Wahrheit in der Query-Schicht oder im Fenster. Alles, was ein Client
 sieht, ist eine Ansicht dieses einen Zustands.
+
+## Spielnetz (ADR 0016)
+
+Ein zweites Protokoll auf **demselben** UDP-Port, unterschieden am ALPN:
+`sprechwerk/1` ist die Sitzung, `sprechwerk-spielnetz/1` das Spielnetz. Ist das
+Modul aus (`[spielnetz] aktiv = false`, Vorgabe), wird der zweite ALPN nicht
+angeboten, der Handschlag scheitert — und keine Zeile des Moduls läuft.
+
+```text
+Sitzung   sprechwerk/1              → Rechte, Räume, Sprache, Text
+Spielnetz sprechwerk-spielnetz/1    → Freigaben, getunnelte Ströme/Datagramme
+```
+
+Die Grenze zum Serverkern ist ein Trait: `spielnetz::Mitgliedschaft::stand()`
+liefert eine Momentaufnahme (Kennung, Name, Raum, `darf`), mehr weiß das Modul
+nicht. Was daraus folgt, entscheidet `spielnetz::vermittlung::Vermittlung` —
+ein Zustandsautomat ohne Netz, der Ereignisse hineinnimmt und Aktionen
+zurückgibt. `spielnetz::server::Modul` führt diese Aktionen aus; der Kern wird
+dafür nicht umgebaut, er bekommt nur nach jeder Änderung ein `anstossen()`.
+
+Durch die Ströme und Datagramme geht ausschließlich Geheimtext (ADR 0012,
+ADR 0016 §5): der Server sieht Köpfe und Mengen, nicht Inhalte.
 
 ## Sprache
 
