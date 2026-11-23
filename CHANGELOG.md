@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.1.1](https://github.com/patimweb-labs/sprechwerk/compare/v3.1.0...v3.1.1) (2026-11-23)
+
+
+### Behoben
+
+* **audio:** Opus auch unter eigenem Homebrew-Präfix finden ([77629f7](https://github.com/patimweb-labs/sprechwerk/commit/77629f717ca5b860ee8fd51aadb08d5ce184bf5f))
+* **audio:** PipeWire-Tests nur unter Linux bauen ([a80222b](https://github.com/patimweb-labs/sprechwerk/commit/a80222bc8db8e93bd1cb48236a6069eaac04aeb4))
+* **audio:** Tests und Opus-Suche unter macOS ([3537cc1](https://github.com/patimweb-labs/sprechwerk/commit/3537cc1da5d4802afd2f78fe2246654e8371d14d))
+
 ## [3.1.0](https://github.com/patimweb-labs/sprechwerk/compare/v3.0.2...v3.1.0) (2026-11-21)
 
 
