@@ -13,6 +13,8 @@
 //! * [`server`] — nimmt die Spielnetz-Verbindungen an, prüft die Anmeldung und
 //!   leitet Ströme und Datagramme weiter.
 //! * [`client`] — baut die zweite QUIC-Verbindung auf und meldet sich an.
+//! * [`tunnel`] — macht daraus echte Spielverbindungen: lokale Ports,
+//!   Ströme, Kanäle, Pumpen.
 //!
 //! # Was hier bewusst fehlt
 //!
@@ -33,6 +35,7 @@ pub mod client;
 pub mod krypto;
 pub mod protokoll;
 pub mod server;
+pub mod tunnel;
 pub mod vermittlung;
 
 pub use client::{anmelden, Anmeldefehler, Steuerung};
@@ -41,4 +44,5 @@ pub use protokoll::{
     ServerRahmen, StromKopf, ALPN, MAX_UDP_NUTZLAST, VERSION,
 };
 pub use server::{Mitgliedschaft, Modul, Stand};
+pub use tunnel::{Lage, Teilnahme, Tunnel};
 pub use vermittlung::{Aktion, Ereignis, Vermittlung};

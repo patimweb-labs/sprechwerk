@@ -564,10 +564,11 @@ impl Modul {
                 her.abort();
             }
         }
-        tokio::select! {
-            _ = &mut hin => her.abort(),
-            _ = &mut her => hin.abort(),
-        }
+        // Beide Richtungen zu Ende laufen lassen: TCP kennt halbes Schließen.
+        // Ein Spiel, das seine Schreibseite schließt, wartet oft noch auf die
+        // Antwort; `kopiere` reicht das Ende mit `finish` weiter. Abbrechen
+        // darf nur `Trennen` (dann enden beide Aufgaben).
+        let _ = tokio::join!(&mut hin, &mut her);
 
         {
             let mut inner = self.inner.lock().expect("Sperre");
