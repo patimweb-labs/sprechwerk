@@ -76,14 +76,27 @@ Stufe 1 leitet **alles über den Server**. Dafür sieht kein Spieler die
 
 * Je Paar (Gastgeber, Teilnehmer) ein gemeinsames Geheimnis aus X25519 der
   beiden Kennungen (`oeffentlich_aus_kennung`, wie ADR 0012).
-* HKDF-SHA256 mit Salz = Angebotsnummer und Info
-  `sprechwerk-spielnetz/1 hin` bzw. `… her` ergibt je Richtung einen
-  ChaCha20-Poly1305-Schlüssel.
-* **TCP:** je Strom Blöcke `[u16 Länge][Geheimtext]`, Nonce = Blockzähler
-  je Richtung und Strom (die Stromnummer geht in die Ableitung ein).
-* **UDP:** je Datagramm `Kopf (8 Byte) | Zähler (8 Byte) | Geheimtext`.
-  Zählerstände, die schon gesehen wurden, werden verworfen (Wiederholschutz,
-  Fenster wie bei IPsec).
+* HKDF-SHA256-Extract mit Salz = Angebotsnummer ergibt den Paarschlüssel.
+* **Jede Seite bringt für jede Sitzung eigenen Zufall mit.** Sonst ergäbe ein
+  zweites Beitreten zu derselben Freigabe dieselben Schlüssel mit Zählern ab
+  0, und ein umgebauter Server könnte durch Wiedereinspielen eines alten
+  Salzes erzwingen, dass eine Seite Nonces wiederholt. Bei ChaCha20 heißt das:
+  Klartext fällt heraus.
+* **TCP:** Beide Seiten schicken als erste Bytes ihrer Richtung 16
+  Zufallsbytes. Die Schlüssel je Richtung entstehen aus beiden Salzen
+  (`Info …tcp hin` bzw. `…tcp her`). Der Teilnehmer sendet erst, wenn das Salz
+  des Gastgebers da ist (eine Laufzeit mehr beim Verbindungsaufbau). Danach
+  Blöcke `[u16 Länge][Geheimtext]`, Nonce = Blockzähler.
+* **UDP:** Jeder Absender wählt beim Beitreten bzw. beim ersten Datagramm 8
+  Zufallsbytes als Sitzung. Datagramm: `Kopf (8) | Sitzung (8) | Zähler (8) |
+  Geheimtext`. Der Richtungsschlüssel entsteht aus Paarschlüssel und Sitzung.
+  Wiederholte Zähler werden verworfen (Gleitfenster wie bei IPsec), abgelöste
+  Sitzungen ebenfalls.
+
+**Restrisiko:** Ein umgebauter Server kann eine *ganze* früher mitgeschnittene
+UDP-Sitzung erneut einspielen, bevor die neue beginnt. Lesen oder fälschen
+kann er nicht. Das ist dieselbe Grenze wie in ADR 0012 (Mitgliederliste vom
+Server).
 
 Der Server sieht: wer was freigibt (Name, Port, Art), wer beitritt, wie viel
 Verkehr fließt. Er sieht nicht, was fließt. Das entspricht der Tabelle in
@@ -105,7 +118,7 @@ schmales Trait. So bleibt das Modul prüfbar, ohne Server zu starten.
 | Teilnehmer je Freigabe | 16 | typische Vereinsrunde |
 | TCP-Ströme je Teilnehmer | 32 | Spiele öffnen selten mehr als eine Handvoll |
 | Durchsatz je Freigabe | 20 000 kbit/s, 0 = unbegrenzt | schützt die Leitung des Betreibers und damit die Sprache |
-| UDP-Datagramm | ≤ 1 150 Byte Nutzlast | QUIC-Datagramm minus Kopf, Zähler und Prüfsumme; größere werden verworfen und gezählt |
+| UDP-Datagramm | ≤ 1 100 Byte Nutzlast | QUIC-Datagramm minus Kopf, Sitzung, Zähler und Prüfsumme; größere werden verworfen und gezählt |
 
 ### 8. Rechte
 
@@ -148,4 +161,4 @@ Port und bekommt auch keinen.
 * Ein neues Crate und eine zweite Verbindung je Client, der das Modul nutzt.
 * Bandbreite des Betreibers (Stufe 1 leitet alles durch), begrenzt durch §7.
 * Broadcast-Spiele gehen erst mit Stufe 3.
-* UDP-Spiele mit Paketen über 1 150 Byte verlieren diese Pakete.
+* UDP-Spiele mit Paketen über 1 100 Byte verlieren diese Pakete.

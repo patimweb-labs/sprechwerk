@@ -9,6 +9,7 @@ members = [
     "crates/server",
     "crates/cli",
     "crates/audio",
+    "crates/spielnetz",
     "crates/linkvorschau",
     "crates/client",
     "crates/oberflaeche",
