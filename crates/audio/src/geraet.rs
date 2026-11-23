@@ -579,7 +579,9 @@ pub fn wiedergabe_oeffnen(geraet: &str) -> std::io::Result<Box<dyn Wiedergabe>> 
     }
 }
 
-#[cfg(test)]
+// Beide Tests prüfen den PipeWire-Rückfall, den es nur unter Linux gibt; ohne
+// die Einschränkung baut `cargo test` unter macOS und Windows nicht.
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
 

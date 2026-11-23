@@ -96,13 +96,17 @@ fn bibliothek() -> Result<&'static Bibliothek> {
 /// Der bloße Name reicht nicht überall:
 /// * **macOS** sucht `dlopen("libopus.0.dylib")` weder im App-Bundle
 ///   (`Sprechwerk.app/Contents/Frameworks`, wohin das Paket Opus legt) noch
-///   unter Homebrew auf Apple Silicon (`/opt/homebrew/lib`).
+///   unter Homebrew auf Apple Silicon (`/opt/homebrew/lib`). Liegt Homebrew
+///   woanders, nennt `HOMEBREW_PREFIX` (gesetzt von `brew shellenv`) den Ort.
 /// * **Windows** fände `opus.dll` neben der `.exe` zwar auch über den Namen —
 ///   der volle Pfad schließt aber aus, dass eine fremde `opus.dll` aus dem
 ///   aktuellen Verzeichnis zuerst geladen wird.
 ///
 /// Rein (keine Dateisystemzugriffe), damit die Reihenfolge prüfbar ist.
-fn kandidaten(programm_ordner: Option<&std::path::Path>) -> Vec<std::ffi::OsString> {
+fn kandidaten(
+    programm_ordner: Option<&std::path::Path>,
+    homebrew: Option<&std::path::Path>,
+) -> Vec<std::ffi::OsString> {
     let mut liste = Vec::new();
     if let Some(ordner) = programm_ordner {
         for name in ["opus.dll", "libopus.0.dylib", "libopus.so.0"] {
@@ -116,7 +120,10 @@ fn kandidaten(programm_ordner: Option<&std::path::Path>) -> Vec<std::ffi::OsStri
         );
     }
     liste.extend(NAMEN.iter().map(std::ffi::OsString::from));
-    // Homebrew: Apple Silicon und Intel.
+    // Homebrew: eigenes Präfix, dann Apple Silicon und Intel.
+    if let Some(praefix) = homebrew {
+        liste.push(praefix.join("lib/libopus.0.dylib").into_os_string());
+    }
     for pfad in [
         "/opt/homebrew/lib/libopus.0.dylib",
         "/usr/local/lib/libopus.0.dylib",
@@ -130,7 +137,8 @@ fn laden() -> Result<Bibliothek> {
     let mut letzter = String::new();
     let programm = std::env::current_exe().ok();
     let ordner = programm.as_deref().and_then(std::path::Path::parent);
-    for name in kandidaten(ordner) {
+    let homebrew = std::env::var_os("HOMEBREW_PREFIX").map(std::path::PathBuf::from);
+    for name in kandidaten(ordner, homebrew.as_deref()) {
         // Nicht vorhandene Pfade gar nicht erst versuchen: sonst nennt die
         // Fehlermeldung am Ende einen Pfad, den es nie gab, statt des Namens.
         if std::path::Path::new(&name).is_absolute() && !std::path::Path::new(&name).exists() {
@@ -337,7 +345,7 @@ mod tests {
     #[test]
     fn opus_neben_dem_programm_kommt_vor_dem_systemweiten() {
         let ordner = std::path::Path::new("/Programme/Sprechwerk.app/Contents/MacOS");
-        let liste = kandidaten(Some(ordner));
+        let liste = kandidaten(Some(ordner), None);
         let stelle = |gesucht: &str| {
             liste
                 .iter()
@@ -356,8 +364,17 @@ mod tests {
     }
 
     #[test]
+    fn eigenes_homebrew_praefix_kommt_vor_den_festen_pfaden() {
+        let liste = kandidaten(None, Some(std::path::Path::new("/Users/a/brew")));
+        let stelle = |gesucht: &str| liste.iter().position(|k| k.to_string_lossy() == gesucht);
+        let eigen = stelle("/Users/a/brew/lib/libopus.0.dylib").expect("eigenes Präfix fehlt");
+        let fest = stelle("/opt/homebrew/lib/libopus.0.dylib").expect("fester Pfad fehlt");
+        assert!(eigen < fest);
+    }
+
+    #[test]
     fn ohne_programmpfad_bleiben_die_namen() {
-        let liste = kandidaten(None);
+        let liste = kandidaten(None, None);
         assert_eq!(
             liste.first().map(|k| k.to_string_lossy().into_owned()),
             Some("libopus.so.0".into())
