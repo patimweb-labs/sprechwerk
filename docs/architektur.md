@@ -99,6 +99,22 @@ dafür nicht umgebaut, er bekommt nur nach jeder Änderung ein `anstossen()`.
 Durch die Ströme und Datagramme geht ausschließlich Geheimtext (ADR 0012,
 ADR 0016 §5): der Server sieht Köpfe und Mengen, nicht Inhalte.
 
+### Im Client hängt das Modul neben der Sitzung
+
+`crates/client/src/spielnetz.rs` (`Spielnetzbetrieb`) führt den Sollzustand:
+Einstellung an/aus und „Sitzung steht“ (Serveradresse + angehefteter
+Fingerabdruck). Beides kommt aus dem Modell, nicht aus einem zweiten Weg —
+`abgleichen` wird nach jeder Zustandsmeldung und nach dem Speichern der
+Einstellungen gerufen und tut nur etwas, wenn sich der Sollzustand geändert
+hat (kein Endlos-Neuversuch bei einem Server ohne Modul). Der Sitzungsthread
+(`anwendung.rs`) bleibt unverändert; angehängt ist das Modul an der Fassade
+(`sitzung.rs`), und sein Stand liegt als `ipc::Spielnetz` im `Zustand`.
+
+Drei Stände folgen direkt aus der Einstellung: `Aus` (Vorgabe, kein Port, keine
+zweite Verbindung), `Wartet` (an, aber keine Sitzung) und `Verbindet`. Danach
+sagt der Server: `NichtAngeboten` (Modul aus), `Abgelehnt` (kein Recht),
+`Bereit` (mit den Freigaben des Raums) — oder es bleibt bei `Fehler`.
+
 ## Sprache
 
 Sprache geht als QUIC-Datagramm daneben, nicht durch den Steuerstrom:

@@ -13,12 +13,14 @@ use crate::anwendung::Anwendung;
 use crate::audio::{self, Geraeteliste};
 use crate::dateien::Dateiablage;
 use crate::einstellungen::Einstellungen;
+use crate::spielnetz::{Spielbefehl, Spielnetzbetrieb, Standblick};
 use crate::sprech::Sprechbetrieb;
 use crate::verschluesselung::Schluesselverwaltung;
 use sprechwerk_audio::Sendeeinstellungen;
-use sprechwerk_ipc::{Antwort, Befehl, Zustand};
+use sprechwerk_ipc::{Antwort, Befehl, Verbindung, Zustand};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// Was der Nutzer will. Ein Summentyp statt vierzig Funktionen: die
 /// Oberfläche erzeugt Werte, die Fassade führt sie aus (AGENTS.md §2.2).
@@ -66,6 +68,8 @@ pub enum Aktion {
         datei: String,
         name: String,
     },
+    /// Spielnetz (ADR 0016): Ports freigeben, beitreten, verlassen.
+    Spielnetz(Spielbefehl),
 }
 
 impl Aktion {
@@ -87,6 +91,7 @@ impl Aktion {
             Aktion::AnhaengeWaehlen => "anhaenge_waehlen",
             Aktion::DateiSpeichernUnter { .. } => "datei_speichern",
             Aktion::DateiExtern { .. } => "datei_extern",
+            Aktion::Spielnetz(befehl) => befehl.name(),
         }
     }
 }
@@ -140,6 +145,11 @@ pub struct Client {
     /// Hierhin werden Dateien zum Öffnen im System entschlüsselt.
     geoeffnet: PathBuf,
     melde: Melder,
+    /// Das Spielnetz (ADR 0016) — neben der Sitzung, nicht in ihr.
+    spielnetz: Arc<Spielnetzbetrieb>,
+    /// Die Einstellung Spielnetz, ohne bei jeder Zustandsmeldung die Datei zu
+    /// lesen. Geschrieben wird sie nur in `EinstellungenSpeichern`.
+    spielnetz_an: Arc<AtomicBool>,
 }
 
 /// Nur **eine** Pegelmessung gleichzeitig: zwei Aufnahmen am selben Gerät
@@ -165,34 +175,88 @@ impl Client {
         let melde: Melder = Arc::new(melde);
         let sprech = Arc::new(Sprechbetrieb::neu());
         let verschluesselung = Arc::new(Schluesselverwaltung::neu());
-        let an_zustand = melde.clone();
-        let anwendung = Anwendung::starten(
-            verzeichnis.join("schluessel"),
-            sprech.clone(),
-            verschluesselung,
-            ablage.clone(),
-            move |zustand| an_zustand(Meldung::Zustand(Box::new(zustand))),
-        );
+        let einstellungen = verzeichnis.join("einstellungen.json");
         let laufzeit = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .thread_name("sprechwerk-aktion")
             .enable_all()
             .build()
             .expect("Laufzeit für Aktionen");
+
+        // ---- Spielnetz (ADR 0016) -------------------------------------
+        //
+        // Es hängt **neben** dem Sitzungsthread: der Sollzustand kommt aus der
+        // Einstellung (hier einmal gelesen) und aus dem, was die Sitzung über
+        // sich meldet. Ändert sich der Stand, wird der zuletzt gemeldete
+        // Zustand mit neuem `spielnetz` noch einmal geschickt — die Oberfläche
+        // zeichnet `render(modell)` und braucht dafür keine zweite Quelle.
+        let spielnetz_an = Arc::new(AtomicBool::new(
+            Einstellungen::laden(&einstellungen).spielnetz,
+        ));
+        let letzter: Arc<Mutex<Zustand>> = Arc::new(Mutex::new(Zustand::neu()));
+        // Der Rückruf braucht den Stand, der Betrieb entsteht aber erst mit
+        // ihm. Der Blick darauf wird deshalb nachgereicht: vorher gibt es
+        // nichts zu melden (es wurde noch kein Zustand gemeldet).
+        let blick: Arc<OnceLock<Standblick>> = Arc::new(OnceLock::new());
+        let spielnetz =
+            Spielnetzbetrieb::neu(laufzeit.handle().clone(), verzeichnis.join("schluessel"), {
+                let blick = blick.clone();
+                let letzter = letzter.clone();
+                let melde = melde.clone();
+                move || {
+                    let Some(blick) = blick.get() else { return };
+                    let stand = blick.stand();
+                    let mut letzter = letzter.lock().expect("Sperre");
+                    if letzter.spielnetz == stand {
+                        return;
+                    }
+                    letzter.spielnetz = stand;
+                    let zustand = letzter.clone();
+                    drop(letzter);
+                    melde(Meldung::Zustand(Box::new(zustand)));
+                }
+            });
+        let _ = blick.set(spielnetz.blick());
+        // Und gleich einmal abgleichen: ist die Einstellung an, steht der Stand
+        // ab dem ersten Bild auf `Wartet` statt fälschlich auf `Aus`.
+        spielnetz.abgleichen(spielnetz_an.load(Ordering::Relaxed), None);
+
+        let an_zustand = melde.clone();
+        let betrieb = spielnetz.clone();
+        let an = spielnetz_an.clone();
+        let letzter_anwendung = letzter.clone();
+        let anwendung = Anwendung::starten(
+            verzeichnis.join("schluessel"),
+            sprech.clone(),
+            verschluesselung,
+            ablage.clone(),
+            move |mut zustand| {
+                // Sollzustand abgleichen, dann den Stand mitgeben. Beides vor
+                // dem Melden: was die Oberfläche sieht, ist schon abgeglichen.
+                betrieb.abgleichen(an.load(Ordering::Relaxed), sitzung_aus(&zustand));
+                zustand.spielnetz = betrieb.stand();
+                *letzter_anwendung.lock().expect("Sperre") = zustand.clone();
+                an_zustand(Meldung::Zustand(Box::new(zustand)));
+            },
+        );
         Self {
             laufzeit,
             anwendung: Arc::new(anwendung),
             sprech,
             ablage,
-            einstellungen: verzeichnis.join("einstellungen.json"),
+            einstellungen,
             geoeffnet,
             melde,
+            spielnetz,
+            spielnetz_an,
         }
     }
 
-    /// Der zuletzt gemeldete Stand.
+    /// Der zuletzt gemeldete Stand (mit dem aktuellen Spielnetz).
     pub fn zustand(&self) -> Zustand {
-        self.anwendung.zustand()
+        let mut zustand = self.anwendung.zustand();
+        zustand.spielnetz = self.spielnetz.stand();
+        zustand
     }
 
     /// Die gespeicherten Einstellungen.
@@ -227,6 +291,8 @@ impl Client {
         let pfad = self.einstellungen.clone();
         let geoeffnet = self.geoeffnet.clone();
         let melde = self.melde.clone();
+        let spielnetz = self.spielnetz.clone();
+        let spielnetz_an = self.spielnetz_an.clone();
         self.laufzeit.spawn(async move {
             let ergebnis = match aktion {
                 Aktion::AnhaengeWaehlen => anhaenge_waehlen(&anwendung).await,
@@ -240,7 +306,17 @@ impl Client {
                     datei,
                     name,
                 } => extern_oeffnen(&anwendung, &geoeffnet, nachricht, datei, name).await,
-                andere => ausfuehren(andere, &anwendung, &sprech, &pfad).await,
+                andere => {
+                    ausfuehren(
+                        andere,
+                        &anwendung,
+                        &sprech,
+                        &pfad,
+                        &spielnetz,
+                        &spielnetz_an,
+                    )
+                    .await
+                }
             };
             melde(Meldung::Rueck {
                 aktion: name,
@@ -255,12 +331,15 @@ async fn ausfuehren(
     anwendung: &Anwendung,
     sprech: &Arc<Sprechbetrieb>,
     pfad: &Path,
+    spielnetz: &Arc<Spielnetzbetrieb>,
+    spielnetz_an: &Arc<AtomicBool>,
 ) -> Result<Ergebnis, String> {
     match aktion {
         Aktion::Befehl(befehl) => match anwendung.befehl(befehl).await {
             Antwort::Fehler { text } => Err(text),
             _ => Ok(Ergebnis::Erledigt),
         },
+        Aktion::Spielnetz(befehl) => spielnetz.befehl(befehl).await.map(|()| Ergebnis::Erledigt),
         Aktion::Verbinden {
             server,
             name,
@@ -341,6 +420,11 @@ async fn ausfuehren(
                     sende_einstellungen(&einstellungen),
                 )?;
             }
+            // Spielnetz: an/aus übernehmen und sofort abgleichen (ADR 0016 §3).
+            // Ohne das wartete ein Einschalten, bis die Sitzung das nächste Mal
+            // etwas meldet.
+            spielnetz_an.store(einstellungen.spielnetz, Ordering::Relaxed);
+            spielnetz.abgleichen(einstellungen.spielnetz, sitzung_aus(&anwendung.zustand()));
             Ok(Ergebnis::Erledigt)
         }
     }
@@ -351,6 +435,17 @@ fn befehl_ergebnis(antwort: Antwort) -> Result<Ergebnis, String> {
         Antwort::Fehler { text } => Err(text),
         _ => Ok(Ergebnis::Erledigt),
     }
+}
+
+/// Die Sitzung, mit der das Spielnetz verbunden wird: nur wenn die Verbindung
+/// **steht** und das Zertifikat bekannt ist (TOFU, ADR 0002 §3) — ohne
+/// Fingerabdruck gäbe es keinen Handschlag, dem man glauben kann.
+fn sitzung_aus(zustand: &Zustand) -> Option<(String, String)> {
+    let Verbindung::Verbunden { server, .. } = zustand.verbindung.as_ref()? else {
+        return None;
+    };
+    let fingerabdruck = zustand.zertifikat.clone()?;
+    Some((server.clone(), fingerabdruck))
 }
 
 /// Dateien wählen (Dialog des Systems) und an den Entwurf hängen. Abbrechen
@@ -575,5 +670,107 @@ mod tests {
         });
         let _ = warte_auf_rueck(&rx);
         assert!(client.einstellungen().vertrauen_fuer("a:1").is_none());
+    }
+
+    // ------------------------------------------------------------- Spielnetz
+
+    /// Sammelt Meldungen, bis eine Aktion zurückkommt, und gibt die dabei
+    /// gemeldeten Spielnetz-Stände mit zurück.
+    fn staende_bis_rueck(rx: &mpsc::Receiver<Meldung>) -> Vec<sprechwerk_ipc::Spielnetz> {
+        let mut staende = Vec::new();
+        loop {
+            match rx.recv_timeout(Duration::from_secs(10)).expect("Meldung") {
+                Meldung::Zustand(zustand) => staende.push(zustand.spielnetz),
+                Meldung::Rueck { ergebnis, .. } => {
+                    assert!(ergebnis.is_ok(), "Aktion fehlgeschlagen: {ergebnis:?}");
+                    return staende;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn spielnetz_ist_in_der_vorgabe_aus() {
+        // ADR 0016 §3: ohne Zutun des Nutzers läuft kein Modul und kein Port.
+        let d = verzeichnis("spielnetz-aus");
+        let client = Client::starten(&d, &d.join("zwischen"), |_| {});
+        assert_eq!(client.zustand().spielnetz, sprechwerk_ipc::Spielnetz::Aus);
+        assert!(!client.einstellungen().spielnetz);
+    }
+
+    #[test]
+    fn spielnetz_einschalten_wird_gemeldet_und_laesst_sich_ausschalten() {
+        let d = verzeichnis("spielnetz-an");
+        let (tx, rx) = mpsc::channel();
+        let tx = std::sync::Mutex::new(tx);
+        let client = Client::starten(&d, &d.join("zwischen"), move |m| {
+            let _ = tx.lock().unwrap().send(m);
+        });
+
+        let mut e = client.einstellungen();
+        e.spielnetz = true;
+        client.ausfuehren(Aktion::EinstellungenSpeichern(Box::new(e)));
+        let staende = staende_bis_rueck(&rx);
+        assert_eq!(
+            staende.last(),
+            Some(&sprechwerk_ipc::Spielnetz::Wartet),
+            "eingeschaltet, aber ohne Sitzung: {staende:?}"
+        );
+        assert_eq!(
+            client.zustand().spielnetz,
+            sprechwerk_ipc::Spielnetz::Wartet
+        );
+        assert!(client.einstellungen().spielnetz, "die Einstellung bleibt");
+
+        // Und wieder aus: der Stand folgt sofort, ohne Sitzung und ohne Port.
+        let mut e = client.einstellungen();
+        e.spielnetz = false;
+        client.ausfuehren(Aktion::EinstellungenSpeichern(Box::new(e)));
+        let staende = staende_bis_rueck(&rx);
+        assert_eq!(
+            staende.last(),
+            Some(&sprechwerk_ipc::Spielnetz::Aus),
+            "ausgeschaltet: {staende:?}"
+        );
+        assert_eq!(client.zustand().spielnetz, sprechwerk_ipc::Spielnetz::Aus);
+    }
+
+    #[test]
+    fn ohne_sitzung_gibt_es_keinen_spielnetz_befehl() {
+        let d = verzeichnis("spielnetz-befehl");
+        let (tx, rx) = mpsc::channel();
+        let tx = std::sync::Mutex::new(tx);
+        let client = Client::starten(&d, &d.join("zwischen"), move |m| {
+            let _ = tx.lock().unwrap().send(m);
+        });
+        client.ausfuehren(Aktion::Spielnetz(Spielbefehl::Beitreten { angebot: 1 }));
+        let (aktion, ergebnis) = warte_auf_rueck(&rx);
+        assert_eq!(aktion, "beitreten");
+        let fehler = ergebnis.expect_err("ohne Verbindung kein Beitreten");
+        assert!(fehler.contains("nicht verbunden"), "{fehler}");
+    }
+
+    #[test]
+    fn sitzung_braucht_verbindung_und_zertifikat() {
+        use sprechwerk_domain::{MemberId, Role};
+        let mut zustand = Zustand::neu();
+        assert!(sitzung_aus(&zustand).is_none(), "getrennt: keine Sitzung");
+        zustand.verbindung = Some(Verbindung::Verbunden {
+            server: "192.0.2.10:7443".into(),
+            server_name: "Verein".into(),
+            ich: MemberId::aus_roh(1),
+            name: "Ada".into(),
+            rolle: Role::Mitglied,
+            kennung: "ab".repeat(32),
+        });
+        assert!(
+            sitzung_aus(&zustand).is_none(),
+            "ohne angeheftetes Zertifikat kein Handschlag, dem man glauben kann"
+        );
+        zustand.zertifikat = Some("3ff0".repeat(16));
+        assert_eq!(
+            sitzung_aus(&zustand),
+            Some(("192.0.2.10:7443".to_string(), "3ff0".repeat(16)))
+        );
     }
 }

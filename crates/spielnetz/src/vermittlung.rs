@@ -30,7 +30,7 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 
 use crate::protokoll::{
-    Angebot, AngebotId, Art, ClientRahmen, Fehler, Grenzen, Grund, Kanal, ServerRahmen,
+    Angebot, AngebotId, Art, ClientRahmen, Fehler, Grenzen, Grund, Kanal, ServerRahmen, Teilnehmer,
 };
 
 /// Was der Server-Kern meldet.
@@ -115,13 +115,13 @@ impl Eintrag {
     }
 
     fn ist_teilnehmer(&self, kennung: &str) -> bool {
-        self.angebot.teilnehmer.iter().any(|t| t == kennung)
+        self.angebot.teilnehmer.iter().any(|t| t.kennung == kennung)
     }
 
     /// Räumt alles auf, was zu einem Teilnehmer gehört. Die Angebotsliste
     /// selbst bleibt Sache des Aufrufers.
     fn teilnehmer_austragen(&mut self, kennung: &str) {
-        self.angebot.teilnehmer.retain(|t| t != kennung);
+        self.angebot.teilnehmer.retain(|t| t.kennung != kennung);
         self.offene_stroeme.remove(kennung);
         self.naechste_stromnummer.remove(kennung);
         // Alle Kanäle dieses Teilnehmers, nicht nur der erste.
@@ -305,8 +305,8 @@ impl Vermittlung {
         let Some(eintrag) = self.angebote.get(&angebot) else {
             return vec![senden(kennung, fehler(Fehler::UnbekanntesAngebot))];
         };
-        let (darf, raum) = match self.mitglieder.get(kennung) {
-            Some(m) => (m.darf, m.raum.clone()),
+        let (darf, raum, name) = match self.mitglieder.get(kennung) {
+            Some(m) => (m.darf, m.raum.clone(), m.name.clone()),
             None => return vec![senden(kennung, fehler(Fehler::NichtAngemeldet))],
         };
         let raum_des_angebots = self.raum_von_angebot(angebot);
@@ -329,8 +329,16 @@ impl Vermittlung {
         }
 
         if let Some(eintrag) = self.angebote.get_mut(&angebot) {
-            eintrag.angebot.teilnehmer.push(kennung.to_string());
-            eintrag.angebot.teilnehmer.sort();
+            // Der Name gehört zur Teilnahme, nicht zum Rahmen: der Server hat
+            // ihn bei der Anmeldung bekommen (ADR 0016 §0 P4).
+            eintrag.angebot.teilnehmer.push(Teilnehmer {
+                kennung: kennung.to_string(),
+                name,
+            });
+            eintrag
+                .angebot
+                .teilnehmer
+                .sort_by(|a, b| a.kennung.cmp(&b.kennung));
         }
         let mut aktionen = vec![senden(kennung, ServerRahmen::Beigetreten { angebot })];
         if let Some(raum) = raum {
@@ -697,7 +705,13 @@ impl Vermittlung {
     fn teilnehmer_von(&self, angebot: AngebotId) -> Vec<String> {
         self.angebote
             .get(&angebot)
-            .map(|e| e.angebot.teilnehmer.clone())
+            .map(|e| {
+                e.angebot
+                    .teilnehmer
+                    .iter()
+                    .map(|t| t.kennung.clone())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -840,6 +854,15 @@ mod tests {
                 } => Some((*angebot, teilnehmer.clone())),
                 _ => None,
             })
+            .collect()
+    }
+
+    /// Die Kennungen der Teilnehmer einer Freigabe (der Name steht daneben).
+    fn kennungen(angebot: &Angebot) -> Vec<String> {
+        angebot
+            .teilnehmer
+            .iter()
+            .map(|t| t.kennung.clone())
             .collect()
     }
 
@@ -1041,6 +1064,34 @@ mod tests {
     }
 
     #[test]
+    fn beitreten_traegt_den_namen_des_teilnehmers_ein() {
+        // P4: die Oberfläche braucht den Namen zum Anzeigen, die Kennung zum
+        // Entfernen — beides steht im Angebot.
+        let mut v = frisch();
+        da(&mut v, A, RAUM);
+        anbieten(&mut v, A, "Minecraft");
+        da(&mut v, B, RAUM);
+        da(&mut v, C, RAUM);
+        let _ = rahmen(&mut v, C, ClientRahmen::Beitreten { angebot: 1 });
+        let _ = rahmen(&mut v, B, ClientRahmen::Beitreten { angebot: 1 });
+        let angebot = &v.angebote_im_raum(RAUM)[0];
+        assert_eq!(
+            angebot.teilnehmer,
+            vec![
+                Teilnehmer {
+                    kennung: B.to_string(),
+                    name: B.to_uppercase(),
+                },
+                Teilnehmer {
+                    kennung: C.to_string(),
+                    name: C.to_uppercase(),
+                },
+            ],
+            "nach Kennung sortiert, jeder mit seinem Namen"
+        );
+    }
+
+    #[test]
     fn beitreten_ueber_der_grenze() {
         let mut v = Vermittlung::neu(Grenzen {
             teilnehmer_je_freigabe: 1,
@@ -1076,7 +1127,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            angebote(&erste, A).map(|l| l[0].teilnehmer.clone()),
+            angebote(&erste, A).map(|l| kennungen(&l[0])),
             Some(vec![B.to_string()])
         );
 
@@ -1087,7 +1138,7 @@ mod tests {
             "beim zweiten Mal nur die Bestätigung, keine neue Liste"
         );
         assert!(trennungen(&zweite).is_empty());
-        assert_eq!(v.angebote_im_raum(RAUM)[0].teilnehmer, vec![B.to_string()]);
+        assert_eq!(kennungen(&v.angebote_im_raum(RAUM)[0]), vec![B.to_string()]);
     }
 
     // ------------------------------------------------------- Verlassen/Entfernen
@@ -1104,7 +1155,7 @@ mod tests {
         assert_eq!(beendet(&aktionen, B), Some((1, Grund::Verlassen)));
         assert_eq!(trennungen(&aktionen), vec![(1, Some(B.to_string()))]);
         assert_eq!(
-            angebote(&aktionen, A).map(|l| l[0].teilnehmer.clone()),
+            angebote(&aktionen, A).map(|l| kennungen(&l[0])),
             Some(Vec::new())
         );
         assert!(v.angebote_im_raum(RAUM)[0].teilnehmer.is_empty());
@@ -1166,7 +1217,7 @@ mod tests {
         assert_eq!(beendet(&aktionen, B), Some((1, Grund::Entfernt)));
         assert_eq!(trennungen(&aktionen), vec![(1, Some(B.to_string()))]);
         assert_eq!(
-            angebote(&aktionen, A).map(|l| l[0].teilnehmer.clone()),
+            angebote(&aktionen, A).map(|l| kennungen(&l[0])),
             Some(Vec::new())
         );
     }
@@ -1267,7 +1318,7 @@ mod tests {
         assert_eq!(beendet(&aktionen, B), Some((1, Grund::RaumVerlassen)));
         assert_eq!(trennungen(&aktionen), vec![(1, Some(B.to_string()))]);
         assert_eq!(
-            angebote(&aktionen, A).map(|l| l[0].teilnehmer.clone()),
+            angebote(&aktionen, A).map(|l| kennungen(&l[0])),
             Some(Vec::new())
         );
     }
@@ -1335,7 +1386,7 @@ mod tests {
         assert!(gesendet(&aktionen, B).is_empty());
         assert_eq!(trennungen(&aktionen), vec![(1, Some(B.to_string()))]);
         assert_eq!(
-            angebote(&aktionen, A).map(|l| l[0].teilnehmer.clone()),
+            angebote(&aktionen, A).map(|l| kennungen(&l[0])),
             Some(Vec::new())
         );
         assert!(v.datagramm_hin(B, 1, 3).is_none());

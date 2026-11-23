@@ -4899,6 +4899,7 @@ dependencies = [
  "sprechwerk-domain",
  "sprechwerk-protocol",
  "sprechwerk-server",
+ "sprechwerk-spielnetz",
  "tokio",
 ]
 
@@ -4919,6 +4920,8 @@ dependencies = [
  "sprechwerk-ipc",
  "sprechwerk-linkvorschau",
  "sprechwerk-protocol",
+ "sprechwerk-server",
+ "sprechwerk-spielnetz",
  "thiserror 2.0.21",
  "tokio",
  "x25519-dalek",

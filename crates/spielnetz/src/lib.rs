@@ -41,7 +41,7 @@ pub mod vermittlung;
 pub use client::{anmelden, Anmeldefehler, Steuerung};
 pub use protokoll::{
     Angebot, AngebotId, Art, ClientRahmen, Datagrammkopf, Fehler, Grenzen, Grund, Kanal,
-    ServerRahmen, StromKopf, ALPN, MAX_UDP_NUTZLAST, VERSION,
+    ServerRahmen, StromKopf, Teilnehmer, ALPN, MAX_UDP_NUTZLAST, VERSION,
 };
 pub use server::{Mitgliedschaft, Modul, Stand};
 pub use tunnel::{Lage, Teilnahme, Tunnel};

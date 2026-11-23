@@ -59,6 +59,20 @@ pub enum Art {
     Udp,
 }
 
+/// Ein Teilnehmer einer Freigabe.
+///
+/// Kennung **und** Name: die Kennung braucht der Gastgeber zum Entfernen und
+/// beide Seiten zum Rechnen (ADR 0016 §5), den Namen die Oberfläche zum
+/// Anzeigen. Ihn erst im Fenster nachzuschlagen ginge nicht — die Spielnetz-
+/// Verbindung kennt die Mitgliederliste der Sitzung nicht.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Teilnehmer {
+    /// Kennung (Hex) — öffentlich, wie beim Gastgeber.
+    pub kennung: String,
+    /// Anzeigename, wie er in der Vermittlung stand.
+    pub name: String,
+}
+
 /// Eine Freigabe im Raum — was alle sehen, die im selben Raum sind.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Angebot {
@@ -70,9 +84,9 @@ pub struct Angebot {
     /// Teilnehmer den Austauschschlüssel aus (ADR 0016 §5).
     pub gastgeber: String,
     pub gastgeber_name: String,
-    /// Kennungen der Teilnehmer, sortiert.
+    /// Teilnehmer, nach Kennung sortiert.
     #[serde(default)]
-    pub teilnehmer: Vec<String>,
+    pub teilnehmer: Vec<Teilnehmer>,
 }
 
 /// Grenzen, die der Server dem Client beim Anmelden nennt (ADR 0016 §7).
@@ -331,7 +345,10 @@ mod tests {
             art: Art::Tcp,
             gastgeber: "ab".repeat(32),
             gastgeber_name: "Ada".to_string(),
-            teilnehmer: vec!["cd".repeat(32)],
+            teilnehmer: vec![Teilnehmer {
+                kennung: "cd".repeat(32),
+                name: "Bosse".to_string(),
+            }],
         }
     }
 

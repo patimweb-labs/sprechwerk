@@ -18,6 +18,10 @@ sprechwerk-adapters.workspace = true
 sprechwerk-ipc = { path = "../ipc" }
 sprechwerk-audio = { path = "../audio" }
 sprechwerk-linkvorschau = { path = "../linkvorschau" }
+# Spielnetz (ADR 0016): die zweite Verbindung hängt **neben** dem Sitzungsthread
+# in `anwendung.rs`, angehängt an der Fassade (`sitzung.rs`). So bleibt das
+# Modul ab- und anschaltbar, ohne den Sitzungscode zu berühren.
+sprechwerk-spielnetz.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 # `fs`, `io-util`: Anhänge lesen und hochladen, ohne das Fenster aufzuhalten.
@@ -33,3 +37,8 @@ anyhow.workspace = true
 bytes = "1"
 hex.workspace = true
 x25519-dalek.workspace = true
+
+[dev-dependencies]
+# Nur die Tests starten einen echten Dienst (Spielnetz über die Fassade): der
+# Server hängt nicht am Client, die Abhängigkeit läuft also nicht im Kreis.
+sprechwerk-server = { path = "../server" }

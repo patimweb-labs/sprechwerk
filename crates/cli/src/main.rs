@@ -16,7 +16,10 @@ use sprechwerk_adapters::{Schluessel, Verbindung};
 use sprechwerk_domain::Message;
 use sprechwerk_protocol::inhalt::Inhalt;
 use sprechwerk_protocol::{ClientFrame, Fehlercode, ServerFrame};
+use sprechwerk_spielnetz::client::Anmeldefehler;
+use sprechwerk_spielnetz::{Art, Lage, Tunnel};
 use std::net::SocketAddr;
+use tokio::sync::watch;
 
 /// Wie lange `--einmal` auf den Serverschlüssel wartet (er kommt von einem
 /// anderen Mitglied, das online sein muss — ADR 0012).
@@ -160,6 +163,7 @@ fn hilfe() {
   --passwort <wort>    Serverpasswort, falls nötig
   --raum <nummer>      Nach der Anmeldung diesen Raum betreten (1 = erster)
   --einmal <text>      Text senden, kurze Zeit zuhören, beenden (für Prüfläufe)
+  --spielnetz          Spielnetz einschalten (Portfreigaben im Raum, ADR 0016)
   --export             Nur den Schlüssel ausgeben (zum Mitnehmen) und beenden
 
 Im laufenden Betrieb:
@@ -171,8 +175,71 @@ Im laufenden Betrieb:
   /wer                 Wer ist da
   /hilfe               diese Übersicht
   /ende                beenden
+
+Spielnetz (nur mit --spielnetz):
+  /spiele              Freigaben im Raum
+  /freigeben <port> <tcp|udp> <name>   eigenen Port freigeben
+  /zurueckziehen <nr>  eigene Freigabe zurücknehmen
+  /beitreten <nr>      Freigabe beitreten (zeigt die lokale Adresse)
+  /verlassen <nr>      Freigabe verlassen
 "#
     );
+}
+
+/// Ein laufendes Spielnetz: der Tunnel und seine Momentaufnahme.
+struct Spielnetz {
+    tunnel: Tunnel,
+    lage: watch::Receiver<Lage>,
+}
+
+/// „tcp“ oder „udp“ für die Anzeige.
+fn art_text(art: Art) -> &'static str {
+    match art {
+        Art::Tcp => "tcp",
+        Art::Udp => "udp",
+    }
+}
+
+/// Die Angebote des Raums, wie sie die Momentaufnahme zuletzt hergibt.
+///
+/// Nummer, Name, Port, Art, Gastgeber, Teilnehmerzahl — und, wenn ich
+/// beigetreten bin, die lokale Adresse (dort verbindet sich das Spiel).
+fn zeige_spiele(spielnetz: Option<&Spielnetz>) {
+    let Some(spielnetz) = spielnetz else {
+        println!("Spielnetz ist aus (--spielnetz fehlt oder der Server bietet es nicht an).");
+        return;
+    };
+    let lage = spielnetz.lage.borrow();
+    if lage.angebote.is_empty() {
+        println!("keine Freigaben im Raum");
+        return;
+    }
+    println!("Freigaben im Raum:");
+    for angebot in &lage.angebote {
+        let eigene = lage.eigene.contains(&angebot.id);
+        let lokal = lage
+            .teilnahmen
+            .iter()
+            .find(|t| t.angebot == angebot.id)
+            .map(|t| t.lokal.to_string());
+        println!(
+            "  {:>2}. {} {}/{} von {}{} — {} Teilnehmer{}",
+            angebot.id,
+            angebot.name,
+            angebot.port,
+            art_text(angebot.art),
+            angebot.gastgeber_name,
+            if eigene { " (meine)" } else { "" },
+            angebot.teilnehmer.len(),
+            match lokal {
+                Some(lokal) => format!(" — bei dir: {lokal}"),
+                None => String::new(),
+            }
+        );
+    }
+    if let Some(meldung) = &lage.meldung {
+        println!("({meldung})");
+    }
 }
 
 #[tokio::main]
@@ -184,6 +251,7 @@ async fn main() -> Result<()> {
     let mut raum: Option<usize> = None;
     let mut einmal: Option<String> = None;
     let mut nur_export = false;
+    let mut spielnetz_an = false;
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -201,6 +269,7 @@ async fn main() -> Result<()> {
             "--passwort" => passwort = args.next(),
             "--raum" => raum = Some(args.next().context("Wert fehlt")?.parse()?),
             "--einmal" => einmal = args.next(),
+            "--spielnetz" => spielnetz_an = true,
             "--export" => nur_export = true,
             "-h" | "--hilfe" => {
                 hilfe();
@@ -309,6 +378,50 @@ async fn main() -> Result<()> {
         beenden();
     }
 
+    // ---- Spielnetz (ADR 0016) ------------------------------------------
+    //
+    // Eine zweite QUIC-Verbindung zum selben Port (eigener ALPN), angemeldet
+    // mit demselben Beweis und **demselben** angehefteten Zertifikat wie die
+    // Sitzung (TOFU, ADR 0002 §3). Ohne `--spielnetz` läuft hier gar nichts.
+    let spielnetz = if spielnetz_an {
+        match Tunnel::starten(
+            server,
+            sitzung.schluessel.clone(),
+            &sitzung.verbindung.zertifikat,
+        )
+        .await
+        {
+            Ok((tunnel, lage)) => {
+                println!("Spielnetz: verbunden. /spiele zeigt die Freigaben im Raum.");
+                Some(Spielnetz { tunnel, lage })
+            }
+            Err(Anmeldefehler::NichtAngeboten) => {
+                println!("Spielnetz: dieser Server bietet es nicht an.");
+                None
+            }
+            Err(Anmeldefehler::Sonst(fehler)) => {
+                println!("Spielnetz: {fehler:#}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+    // Eigener Empfänger, damit die Lage im `select!` gelesen werden kann, ohne
+    // dass die Befehlszweige den Tunnel borgen (jeder Empfänger zählt seine
+    // eigene Sicht — gelesen wird nur hier).
+    let mut lage = spielnetz.as_ref().map(|s| s.lage.clone());
+
+    // Was schon da ist, gleich zeigen: die Liste kommt kurz nach dem Anmelden.
+    // Ohne das könnte eine Freigabe, die zwischen Aufbau und erster Meldung
+    // eintrifft, ungezeigt bleiben.
+    if spielnetz
+        .as_ref()
+        .is_some_and(|s| !s.lage.borrow().angebote.is_empty())
+    {
+        zeige_spiele(spielnetz.as_ref());
+    }
+
     // Interaktiv: Eingabe und Empfang parallel.
     println!("Tippe Text oder /hilfe. Beenden mit /ende.");
     use tokio::io::AsyncBufReadExt;
@@ -322,6 +435,54 @@ async fn main() -> Result<()> {
                 if zeile.is_empty() { continue; }
                 if zeile == "/ende" { break; }
                 if zeile == "/hilfe" { hilfe(); continue; }
+                if zeile == "/spiele" { zeige_spiele(spielnetz.as_ref()); continue; }
+                if let Some(rest) = zeile.strip_prefix("/freigeben ") {
+                    freigeben(spielnetz.as_ref(), rest).await;
+                    continue;
+                }
+                if let Some(rest) = zeile.strip_prefix("/zurueckziehen ") {
+                    match nummer(rest) {
+                        Ok(nr) => match spielnetz.as_ref() {
+                            Some(s) => match s.tunnel.zurueckziehen(nr).await {
+                                Ok(()) => println!("zurückgezogen: {nr}"),
+                                Err(fehler) => eprintln!("nicht zurückgezogen: {fehler}"),
+                            },
+                            None => eprintln!("Spielnetz ist nicht an"),
+                        },
+                        Err(fehler) => eprintln!("{fehler}"),
+                    }
+                    continue;
+                }
+                if let Some(rest) = zeile.strip_prefix("/beitreten ") {
+                    match nummer(rest) {
+                        Ok(nr) => match spielnetz.as_ref() {
+                            Some(s) => match s.tunnel.beitreten(nr).await {
+                                Ok(lokal) => {
+                                    println!("beigetreten: {nr}");
+                                    // Genau das tippt man ins Spiel ein.
+                                    println!("lokale Adresse: {lokal}");
+                                }
+                                Err(fehler) => eprintln!("nicht beigetreten: {fehler}"),
+                            },
+                            None => eprintln!("Spielnetz ist nicht an"),
+                        },
+                        Err(fehler) => eprintln!("{fehler}"),
+                    }
+                    continue;
+                }
+                if let Some(rest) = zeile.strip_prefix("/verlassen ") {
+                    match nummer(rest) {
+                        Ok(nr) => match spielnetz.as_ref() {
+                            Some(s) => match s.tunnel.verlassen(nr).await {
+                                Ok(()) => println!("verlassen: {nr}"),
+                                Err(fehler) => eprintln!("nicht verlassen: {fehler}"),
+                            },
+                            None => eprintln!("Spielnetz ist nicht an"),
+                        },
+                        Err(fehler) => eprintln!("{fehler}"),
+                    }
+                    continue;
+                }
                 if zeile == "/raeume" {
                     sitzung.verbindung.sende(ClientFrame::Ping).await?;
                     println!("(Raumliste wird bei Änderungen geschickt)");
@@ -363,11 +524,73 @@ async fn main() -> Result<()> {
                     Err(fehler) => { eprintln!("Fehler: {fehler}"); break; }
                 }
             }
+            // Jede Änderung der Freigaben zeigen: wer im Raum etwas freigibt,
+            // soll das sehen, ohne danach fragen zu müssen.
+            _ = lage_wechseln(&mut lage) => {
+                zeige_spiele(spielnetz.as_ref());
+            }
         }
     }
 
     sitzung.verbindung.schliessen().await;
     beenden();
+}
+
+/// Wartet auf die nächste Änderung der Spielnetz-Lage (oder nie, ohne Modul).
+async fn lage_wechseln(lage: &mut Option<watch::Receiver<Lage>>) {
+    let Some(empfangen) = lage.as_mut() else {
+        // Ohne Modul gibt es nichts zu beobachten — dieser Zweig darf nie
+        // fertig werden, sonst liefe die Schleife heiß.
+        return std::future::pending::<()>().await;
+    };
+    if empfangen.changed().await.is_err() {
+        // Der Tunnel ist weg: ab hier nichts mehr zu beobachten.
+        *lage = None;
+    }
+}
+
+/// Eine Nummer aus einem Befehl lesen.
+fn nummer(text: &str) -> Result<u32> {
+    text.trim()
+        .parse()
+        .with_context(|| format!("„{}“ ist keine Nummer", text.trim()))
+}
+
+/// `/freigeben <port> <tcp|udp> <name…>` — erst nach diesem Befehl öffnet sich
+/// etwas (ADR 0016 §4: zweimal aktive Zustimmung, hier die erste).
+async fn freigeben(spielnetz: Option<&Spielnetz>, rest: &str) {
+    let mut teile = rest
+        .splitn(3, char::is_whitespace)
+        .filter(|t| !t.is_empty());
+    let (Some(port), Some(art), Some(name)) = (teile.next(), teile.next(), teile.next()) else {
+        eprintln!("Aufruf: /freigeben <port> <tcp|udp> <name>");
+        return;
+    };
+    let Ok(port) = port.parse::<u16>() else {
+        eprintln!("ungültiger Port: {port}");
+        return;
+    };
+    let art = match art {
+        "tcp" => Art::Tcp,
+        "udp" => Art::Udp,
+        anderes => {
+            eprintln!("„{anderes}“ ist weder tcp noch udp");
+            return;
+        }
+    };
+    let name = name.trim();
+    let Some(spielnetz) = spielnetz else {
+        eprintln!("Spielnetz ist aus (--spielnetz fehlt oder der Server bietet es nicht an)");
+        return;
+    };
+    match spielnetz.tunnel.anbieten(name, port, art).await {
+        Ok(nr) => println!(
+            "freigegeben: {nr} — {} {port}/{} im Raum",
+            name,
+            art_text(art)
+        ),
+        Err(fehler) => eprintln!("nicht freigegeben: {fehler}"),
+    }
 }
 
 /// Beendet den Client **nach** dem Abschied.

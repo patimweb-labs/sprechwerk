@@ -306,6 +306,106 @@ pub struct Zustand {
     pub protokoll: Vec<Eintrag>,
     /// Letzte Meldung an den Nutzer (Fehler, Hinweis).
     pub meldung: Option<String>,
+    /// Spielnetz (ADR 0016): an/aus, verbunden, Angebote im Raum.
+    ///
+    /// Ein eigener Summentyp, kein Fächer aus Booleans (AGENTS.md §2.2): die
+    /// Ansicht entscheidet nach `stand`, nicht nach drei Flags. Reine Daten —
+    /// `ipc` kennt das Crate `sprechwerk-spielnetz` nicht.
+    #[serde(default)]
+    pub spielnetz: Spielnetz,
+}
+
+/// Spielnetz-Stand (ADR 0016). Ein Summentyp: die Ansicht folgt dem Zustand.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "stand", rename_all = "snake_case")]
+pub enum Spielnetz {
+    /// Einstellung aus (Vorgabe). Keine Verbindung, kein Port.
+    #[default]
+    Aus,
+    /// Einstellung an, aber keine Sitzung.
+    Wartet,
+    /// Die zweite Verbindung wird aufgebaut.
+    Verbindet,
+    /// Der Server bietet das Modul nicht an (ADR 0016 §3).
+    NichtAngeboten,
+    /// Der Server lehnt ab (z. B. Gast: kein Recht). Text verständlich.
+    Abgelehnt { grund: String },
+    /// Angemeldet: das ist der Stand im eigenen Raum.
+    Bereit {
+        angebote: Vec<Spielangebot>,
+        /// Letzter Hinweis (Grund einer Beendigung, verworfene Datagramme …).
+        meldung: Option<String>,
+    },
+    /// Etwas ist schiefgegangen (Schlüssel, Adresse, Verbindung).
+    Fehler { text: String },
+}
+
+impl Spielnetz {
+    /// Ist das Modul eingeschaltet? `Aus` ist der einzige Zustand, in dem die
+    /// Einstellung es abschaltet — alles andere setzt sie voraus.
+    pub fn ist_an(&self) -> bool {
+        !matches!(self, Spielnetz::Aus)
+    }
+
+    /// Die Angebote, falls es welche gibt (leer in jedem anderen Stand).
+    pub fn angebote(&self) -> &[Spielangebot] {
+        match self {
+            Spielnetz::Bereit { angebote, .. } => angebote,
+            _ => &[],
+        }
+    }
+}
+
+/// Art des freigegebenen Ports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Spielart {
+    Tcp,
+    Udp,
+}
+
+impl Spielart {
+    /// Kurzform für die Anzeige („25565/tcp“).
+    pub fn text(self) -> &'static str {
+        match self {
+            Spielart::Tcp => "tcp",
+            Spielart::Udp => "udp",
+        }
+    }
+}
+
+/// Ein Teilnehmer einer Freigabe — Kennung (zum Entfernen) und Name (zum
+/// Anzeigen). Dieselbe Aufteilung wie im Protokoll (ADR 0016).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Spielteilnehmer {
+    pub kennung: String,
+    pub name: String,
+}
+
+/// Eine Freigabe im Raum, wie die Oberfläche sie zeigt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Spielangebot {
+    /// Nummer beim Server („/beitreten <nr>“).
+    pub id: u32,
+    pub name: String,
+    pub port: u16,
+    pub art: Spielart,
+    /// Name des Gastgebers (nicht die Kennung: die zeigt niemand an).
+    pub gastgeber: String,
+    /// Ist das meine eigene Freigabe?
+    pub eigenes: bool,
+    pub teilnehmer: Vec<Spielteilnehmer>,
+    /// Bin ich beigetreten? Dann: wo das Spiel bei mir erreichbar ist
+    /// (`127.0.0.1:25565`).
+    #[serde(default)]
+    pub lokal: Option<String>,
+}
+
+impl Spielangebot {
+    /// Kurzform für Listen: „25565/tcp“.
+    pub fn ziel(&self) -> String {
+        format!("{}/{}", self.port, self.art.text())
+    }
 }
 
 /// Stand des Serverschlüssels für die Anzeige.
@@ -631,5 +731,101 @@ mod tests {
         assert!(text.contains("\"befehl\":\"text\""), "{text}");
         let zurueck: Befehl = serde_json::from_str(&text).unwrap();
         assert!(matches!(zurueck, Befehl::Text { .. }));
+    }
+
+    // ------------------------------------------------------------- Spielnetz
+
+    fn ein_angebot() -> Spielangebot {
+        Spielangebot {
+            id: 3,
+            name: "Minecraft".into(),
+            port: 25565,
+            art: Spielart::Tcp,
+            gastgeber: "Ada".into(),
+            eigenes: false,
+            teilnehmer: vec![Spielteilnehmer {
+                kennung: "ab".repeat(32),
+                name: "Bosse".into(),
+            }],
+            lokal: Some("127.0.0.1:25565".into()),
+        }
+    }
+
+    #[test]
+    fn spielnetz_ist_in_der_vorgabe_aus() {
+        // ADR 0016 §3: der Client schaltet es ein, nicht der Zufall.
+        assert_eq!(Zustand::neu().spielnetz, Spielnetz::Aus);
+        assert!(!Spielnetz::default().ist_an());
+        assert!(Spielnetz::Wartet.ist_an());
+        assert!(Zustand::default().spielnetz.angebote().is_empty());
+    }
+
+    #[test]
+    fn alter_zustand_ohne_spielnetz_bleibt_lesbar() {
+        // Nachrüsten darf eine gespeicherte oder zwischengespeicherte Form
+        // nicht unlesbar machen: was vor P4 geschrieben wurde, hat das Feld
+        // nicht.
+        let mut z = Zustand::neu();
+        z.spielnetz = Spielnetz::Wartet;
+        let text = serde_json::to_string(&z).expect("JSON");
+        let alt = {
+            let wert: serde_json::Value = serde_json::from_str(&text).expect("JSON");
+            let mut objekt = wert.as_object().expect("Objekt").clone();
+            assert!(objekt.remove("spielnetz").is_some(), "Feld ist im JSON");
+            serde_json::Value::Object(objekt).to_string()
+        };
+        let geladen: Zustand = serde_json::from_str(&alt).expect("JSON ohne spielnetz");
+        assert_eq!(geladen.spielnetz, Spielnetz::Aus, "Vorgabe, nicht Fehler");
+    }
+
+    #[test]
+    fn jeder_spielnetz_stand_ist_umkehrbar() {
+        let staende = [
+            Spielnetz::Aus,
+            Spielnetz::Wartet,
+            Spielnetz::Verbindet,
+            Spielnetz::NichtAngeboten,
+            Spielnetz::Abgelehnt {
+                grund: "dafür fehlt das Recht".into(),
+            },
+            Spielnetz::Bereit {
+                angebote: vec![ein_angebot()],
+                meldung: Some("Freigabe zurückgezogen".into()),
+            },
+            Spielnetz::Fehler {
+                text: "Schlüssel: kein Zugriff".into(),
+            },
+        ];
+        for stand in staende {
+            let text = serde_json::to_string(&stand).expect("JSON");
+            let zurueck: Spielnetz = serde_json::from_str(&text).expect("JSON");
+            assert_eq!(zurueck, stand, "{text}");
+        }
+    }
+
+    #[test]
+    fn spielnetz_json_hat_das_stand_feld() {
+        let text = serde_json::to_string(&Spielnetz::Bereit {
+            angebote: vec![ein_angebot()],
+            meldung: None,
+        })
+        .expect("JSON");
+        assert!(text.contains("\"stand\":\"bereit\""), "{text}");
+        // Die Art steht als kleingeschriebene Zeichenkette, der Port als Zahl.
+        assert!(text.contains("\"art\":\"tcp\""), "{text}");
+        assert!(text.contains("\"port\":25565"), "{text}");
+        assert!(text.contains("\"lokal\":\"127.0.0.1:25565\""), "{text}");
+        assert!(text.contains("\"name\":\"Bosse\""), "{text}");
+
+        let aus = serde_json::to_string(&Spielnetz::Aus).expect("JSON");
+        assert_eq!(aus, "{\"stand\":\"aus\"}", "{aus}");
+        let nicht = serde_json::to_string(&Spielnetz::NichtAngeboten).expect("JSON");
+        assert_eq!(nicht, "{\"stand\":\"nicht_angeboten\"}", "{nicht}");
+    }
+
+    #[test]
+    fn spielangebot_kennt_sein_ziel() {
+        assert_eq!(ein_angebot().ziel(), "25565/tcp");
+        assert_eq!(Spielart::Udp.text(), "udp");
     }
 }

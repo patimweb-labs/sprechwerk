@@ -417,32 +417,18 @@ async fn lauf<F>(
                 }
                 melden(&zustand, &melde);
 
-                let ziel = match server.parse::<std::net::SocketAddr>() {
-                    Ok(z) => z,
-                    Err(_) => match tokio::net::lookup_host(&server).await {
-                        Ok(mut adressen) => match adressen.next() {
-                            Some(a) => a,
-                            None => {
-                                let _ = antwort.send(Err(format!("{server} nicht auflösbar")));
-                                if let Ok(mut z) = zustand.lock() {
-                                    abbilden::getrennt(
-                                        &mut z,
-                                        Some(format!("{server} nicht auflösbar")),
-                                    );
-                                }
-                                melden(&zustand, &melde);
-                                continue;
-                            }
-                        },
-                        Err(fehler) => {
-                            let _ = antwort.send(Err(format!("{server}: {fehler}")));
-                            if let Ok(mut z) = zustand.lock() {
-                                abbilden::getrennt(&mut z, Some(format!("{server}: {fehler}")));
-                            }
-                            melden(&zustand, &melde);
-                            continue;
+                // Dieselbe Auflösung wie das Spielnetz (eine Stelle, zwei
+                // Aufrufer): `host:port` direkt, sonst der Namensdienst.
+                let ziel = match crate::spielnetz::aufloesen(&server).await {
+                    Ok(ziel) => ziel,
+                    Err(text) => {
+                        let _ = antwort.send(Err(text.clone()));
+                        if let Ok(mut z) = zustand.lock() {
+                            abbilden::getrennt(&mut z, Some(text));
                         }
-                    },
+                        melden(&zustand, &melde);
+                        continue;
+                    }
                 };
 
                 let schluessel = match Schluessel::laden_oder_erzeugen(&schluessel_pfad) {
