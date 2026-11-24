@@ -75,6 +75,15 @@ pub struct Einstellungen {
     /// ruft **dieses** Gerät die Seite ab — die Seite sieht also die eigene
     /// Adresse. Wer das nicht will, schaltet es ab; Links bleiben anklickbar.
     pub link_vorschau: bool,
+    /// Spielnetz: Ports im Raum freigeben (ADR 0016 §3).
+    ///
+    /// **Vorgabe: aus.** Solange der Schalter aus ist, gibt es keine zweite
+    /// Verbindung zum Server, keine Angebote zu sehen und keinen offenen
+    /// lokalen Port — das Modul läuft dann gar nicht. Wer einschaltet, sagt
+    /// damit zu, dass andere im selben Raum Ports auf seinem Rechner erreichen
+    /// (und umgekehrt). Nicht zu verwechseln mit dem Schalter des Servers: der
+    /// entscheidet, ob das Modul überhaupt angeboten wird.
+    pub spielnetz: bool,
     /// Angeheftete Server-Zertifikate (TOFU, ADR 0002 §3).
     ///
     /// **Warum an der Adresse und nicht am Favoriten?** Man kann sich mit einem
@@ -187,6 +196,7 @@ impl Default for Einstellungen {
             noisegate: true,
             echounterdrueckung: true,
             link_vorschau: true,
+            spielnetz: false,
             vertrauen: Vec::new(),
         }
     }
@@ -233,6 +243,29 @@ mod tests {
             !e.chat_eingeklappt,
             "der Chat ist offen, bis jemand ihn zuklappt"
         );
+        assert!(
+            !e.spielnetz,
+            "Spielnetz ist aus, bis jemand es einschaltet (ADR 0016 §3)"
+        );
+    }
+
+    #[test]
+    fn alte_datei_ohne_spielnetz_schaltet_das_modul_nicht_an() {
+        // P4 hat das Feld nachgerüstet; eine Datei von vorher darf weder
+        // unlesbar werden noch das Modul einschalten.
+        let verzeichnis =
+            std::env::temp_dir().join(format!("sprechwerk-spielnetz-alt-{}", std::process::id()));
+        let pfad = verzeichnis.join("einstellungen.json");
+        std::fs::create_dir_all(&verzeichnis).unwrap();
+        std::fs::write(
+            &pfad,
+            r#"{"server":"192.0.2.10:7443","name":"Ada","thema":"dark","sprache":"de","passwort":"","mikrofon":"","lautsprecher":"","push_to_talk":false,"ptt_taste":"Leertaste","schwelle":30,"vorlauf_ms":60}"#,
+        )
+        .unwrap();
+        let geladen = Einstellungen::laden(&pfad);
+        assert_eq!(geladen.name, "Ada");
+        assert!(!geladen.spielnetz, "ohne Feld bleibt es aus");
+        let _ = std::fs::remove_dir_all(&verzeichnis);
     }
 
     #[test]

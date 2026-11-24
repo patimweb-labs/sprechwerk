@@ -27,27 +27,54 @@ impl Drop for Testserver {
     }
 }
 
-/// Sucht einen freien UDP-Port (kleine Lücke zwischen Prüfung und Bindung ist
-/// unvermeidlich, deshalb wird der Start mehrfach versucht).
+/// Sucht einen freien UDP-Port, den **dieser Testlauf** noch nicht vergeben hat.
+///
+/// Die Lücke zwischen Prüfung und Bindung ist unvermeidlich. Schlimmer war eine
+/// zweite: wird ein Port nach dem Prüfen wieder freigegeben, teilt das
+/// Betriebssystem ihn gleich darauf erneut zu — zwei gleichzeitig laufende
+/// Tests bekamen denselben Port, und einer scheiterte mit „Server meldet sich
+/// nicht“ (gemessen 2026-11-23: 2 von 15 Läufen). Deshalb merkt sich diese
+/// Funktion, was sie schon herausgegeben hat, und würfelt dann neu.
 fn freier_port() -> u16 {
-    let s = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-    s.local_addr().unwrap().port()
-}
-
-fn verzeichnis(name: &str) -> std::path::PathBuf {
-    let pfad = std::env::temp_dir().join(format!(
-        "sprechwerk-runde-{}-{}-{}",
-        std::process::id(),
-        name,
-        freier_port()
-    ));
-    std::fs::create_dir_all(&pfad).unwrap();
-    pfad
+    use std::sync::Mutex;
+    static VERGEBEN: Mutex<Vec<u16>> = Mutex::new(Vec::new());
+    loop {
+        let s = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let port = s.local_addr().unwrap().port();
+        drop(s);
+        let mut vergeben = VERGEBEN.lock().expect("Sperre");
+        if !vergeben.contains(&port) {
+            vergeben.push(port);
+            return port;
+        }
+    }
 }
 
 impl Testserver {
+    /// Startet einen Server. Der Start wird mehrfach versucht: der Port, den
+    /// `freier_port` prüft, ist im Moment darauf schon wieder weg — ein
+    /// anderer Test (oder ein anderes Programm) kann ihn belegen, und dann
+    /// scheitert das Binden mit „Address already in use“ (gemessen 2026-11-23:
+    /// 3 von 25 Läufen).
     fn starten(name: &str, extra: &[(&str, &str)]) -> Self {
-        let verzeichnis = verzeichnis(name);
+        let mut letzter = String::new();
+        for versuch in 0..5 {
+            match Self::versuchen(name, versuch, extra) {
+                Ok(server) => return server,
+                Err(text) => letzter = text,
+            }
+        }
+        panic!("Server startet nicht:\n{letzter}");
+    }
+
+    fn versuchen(name: &str, versuch: u32, extra: &[(&str, &str)]) -> Result<Self, String> {
+        let verzeichnis = std::env::temp_dir().join(format!(
+            "sprechwerk-runde-{}-{}-{}-{versuch}",
+            std::process::id(),
+            name,
+            freier_port()
+        ));
+        std::fs::create_dir_all(&verzeichnis).map_err(|f| f.to_string())?;
         let port = freier_port();
         let mut befehl = Command::new(env!("CARGO_BIN_EXE_sprechwerk"));
         befehl
@@ -63,7 +90,7 @@ impl Testserver {
         for (schluessel, wert) in extra {
             befehl.env(schluessel, wert);
         }
-        let mut kind = befehl.spawn().expect("Server startet");
+        let mut kind = befehl.spawn().map_err(|f| f.to_string())?;
 
         // Auf die Meldung „lauscht" warten. Bewusst **nicht** über eine
         // Testverbindung: der erste Ankömmling wird Administrator, eine Sonde
@@ -82,7 +109,18 @@ impl Testserver {
             }
             zeile.clear();
         }
-        assert!(bereit, "Server meldet sich nicht:\n{gesamt}");
+        if !bereit {
+            // Der Grund steht auf stderr („binde UDP …"): ohne ihn ist die
+            // Meldung hier nur ein Rätsel.
+            let mut fehler = String::new();
+            if let Some(mut err) = kind.stderr.take() {
+                let _ = std::io::Read::read_to_string(&mut err, &mut fehler);
+            }
+            let _ = kind.kill();
+            let _ = kind.wait();
+            let _ = std::fs::remove_dir_all(&verzeichnis);
+            return Err(format!("{gesamt}{fehler}"));
+        }
         // Restliche Ausgabe im Hintergrund verwerfen, damit der Server nicht an
         // einer vollen Pfeife hängt.
         std::thread::spawn(move || {
@@ -90,11 +128,11 @@ impl Testserver {
             let _ = std::io::Read::read_to_string(&mut leser, &mut rest);
         });
 
-        Self {
+        Ok(Self {
             kind,
             adresse: format!("127.0.0.1:{port}").parse().unwrap(),
             verzeichnis,
-        }
+        })
     }
 
     /// Der Server ist nach dem Start bereits bereit.

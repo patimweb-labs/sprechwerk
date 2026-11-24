@@ -9,6 +9,7 @@ members = [
     "crates/server",
     "crates/cli",
     "crates/audio",
+    "crates/spielnetz",
     "crates/linkvorschau",
     "crates/client",
     "crates/oberflaeche",
@@ -38,6 +39,7 @@ sprechwerk-domain = { path = "crates/domain" }
 sprechwerk-protocol = { path = "crates/protocol" }
 sprechwerk-store = { path = "crates/store" }
 sprechwerk-adapters = { path = "crates/adapters" }
+sprechwerk-spielnetz = { path = "crates/spielnetz" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

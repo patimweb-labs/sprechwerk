@@ -12,7 +12,9 @@ pub mod audio;
 pub mod dateien;
 pub mod einstellungen;
 pub mod sitzung;
+pub mod spielnetz;
 pub mod sprech;
 pub mod verschluesselung;
 
 pub use sitzung::{AudioStand, Client};
+pub use spielnetz::{Spielbefehl, Spielnetzbetrieb};

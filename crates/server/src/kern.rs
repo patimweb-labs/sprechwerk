@@ -1517,6 +1517,7 @@ pub(crate) mod rollenmatrix {
             },
             verwaltung: Default::default(),
             anhaenge: Default::default(),
+            spielnetz: Default::default(),
         };
         let mut kern = Kern::neu(konfig).expect("Kern");
 

@@ -17,6 +17,9 @@ path = "src/main.rs"
 sprechwerk-domain.workspace = true
 sprechwerk-protocol.workspace = true
 sprechwerk-adapters.workspace = true
+# Spielnetz (ADR 0016): der Referenzclient hängt den Tunnel direkt an die
+# Sitzung — gleiche Kennung, gleicher Fingerabdruck.
+sprechwerk-spielnetz.workspace = true
 
 anyhow.workspace = true
 tokio.workspace = true

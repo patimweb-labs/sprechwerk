@@ -182,6 +182,7 @@ Vererbung, keine Leistungsrechte.
 | Rollen vergeben | ja | nein | nein | nein |
 | Prüfprotokoll lesen | ja | ja | nein | nein |
 | Einstellungen ändern | ja | nein | nein | nein |
+| Spielnetz freigeben und beitreten ([ADR 0016](docs/adr/0016-spielnetz.md) §8) | ja | ja | ja | nein |
 
 **[A] „Verlauf lesen" für Gäste:** nur was während ihrer Anwesenheit
 geschrieben wurde. Alle anderen sehen den ganzen Verlauf des Raums, den sie

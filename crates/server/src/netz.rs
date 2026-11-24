@@ -20,6 +20,7 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use quinn::crypto::rustls::QuicServerConfig;
 use sprechwerk_domain::MemberId;
 use sprechwerk_protocol::{ClientFrame, Fehlercode, ServerFrame, PROTOKOLL_VERSION};
+use sprechwerk_spielnetz::Modul;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -59,12 +60,14 @@ pub async fn lauschen(kern: Arc<Mutex<Kern>>, zert: crate::tls::Zertifikat) -> a
     anbieter.clone().install_default().ok();
     let anbieter = Arc::new(anbieter);
 
-    let (adresse, staukontrolle, sprachpuffer) = {
+    let (adresse, staukontrolle, sprachpuffer, spielnetz_aktiv, spielnetz_grenzen) = {
         let k = kern.lock().expect("Sperre");
         (
             k.konfig.adresse(),
             k.konfig.server.staukontrolle.clone(),
             k.konfig.server.sprachpuffer_kib * 1024,
+            k.konfig.spielnetz.aktiv,
+            k.konfig.spielnetz.grenzen(),
         )
     };
 
@@ -75,7 +78,13 @@ pub async fn lauschen(kern: Arc<Mutex<Kern>>, zert: crate::tls::Zertifikat) -> a
         .with_no_client_auth()
         .with_single_cert(zert.kette.clone(), zert.schluessel.clone_key())
         .context("QUIC-Konfiguration")?;
+    // Zwei Protokolle auf **einem** UDP-Port (ADR 0016 §2): die Sitzung und,
+    // nur wenn das Modul an ist, das Spielnetz. Ist es aus, scheitert der
+    // Handschlag am ALPN — und keine Zeile des Moduls läuft.
     tls.alpn_protocols = vec![b"sprechwerk/1".to_vec()];
+    if spielnetz_aktiv {
+        tls.alpn_protocols.push(sprechwerk_spielnetz::ALPN.to_vec());
+    }
 
     let quic = QuicServerConfig::try_from(tls).context("QUIC-Verschlüsselung")?;
     let mut server_config = quinn::ServerConfig::with_crypto(Arc::new(quic));
@@ -115,15 +124,59 @@ pub async fn lauschen(kern: Arc<Mutex<Kern>>, zert: crate::tls::Zertifikat) -> a
     println!("Diesen Wert beim ersten Verbinden bestätigen.");
     println!("──────────────────────────────────────────────────────────────");
 
+    // Das Modul wird **nur** angelegt, wenn es an ist: kein Abgleich, keine
+    // Verbindung, keine Zeile Code (ADR 0016 §3).
+    let modul = if spielnetz_aktiv {
+        println!(
+            "Spielnetz: an ({} kbit/s je Freigabe)",
+            spielnetz_grenzen.kbit_je_freigabe
+        );
+        let modul = Modul::neu(
+            spielnetz_grenzen,
+            crate::spielnetz::Sitzung::neu(kern.clone()),
+        );
+        // Der Abgleich läuft in einer eigenen Aufgabe: er ist die einzige
+        // Stelle, die Raumwechsel und abgemeldete Sitzungen nachführt.
+        tokio::spawn(modul.clone().abgleichen());
+        Some(modul)
+    } else {
+        println!("Spielnetz: aus");
+        None
+    };
+
     while let Some(ankunft) = endpunkt.accept().await {
         let kern = kern.clone();
+        let modul = modul.clone();
         tokio::spawn(async move {
             // `Incoming` ist die unbestätigte Ankunft; erst `await` macht
             // daraus eine Verbindung (TLS-Handshake abgeschlossen).
             let Ok(verbindung) = ankunft.await else {
                 return;
             };
-            if let Err(fehler) = bediene(verbindung, kern).await {
+            // Welches Protokoll wurde ausgehandelt? Der ALPN ist die einzige
+            // Unterscheidung — beide Protokolle teilen sich den UDP-Port.
+            let alpn = verbindung
+                .handshake_data()
+                .and_then(|daten| {
+                    daten
+                        .downcast::<quinn::crypto::rustls::HandshakeData>()
+                        .ok()
+                })
+                .and_then(|daten| daten.protocol);
+            if alpn.as_deref() == Some(sprechwerk_spielnetz::ALPN) {
+                match modul {
+                    Some(modul) => {
+                        if let Err(fehler) = modul.bedienen(verbindung).await {
+                            tracing::debug!(fehler = %fehler, "Spielnetz-Verbindung beendet");
+                        }
+                    }
+                    // Kann nicht vorkommen: der ALPN wird nur angeboten, wenn
+                    // das Modul an ist. Trotzdem sauber schließen.
+                    None => verbindung.close(0u32.into(), b"Spielnetz ist aus"),
+                }
+                return;
+            }
+            if let Err(fehler) = bediene(verbindung, kern, modul).await {
                 tracing::debug!(fehler = %fehler, "Verbindung beendet");
             }
         });
@@ -217,7 +270,11 @@ impl Rahmendrossel {
     }
 }
 
-async fn bediene(verbindung: quinn::Connection, kern: Arc<Mutex<Kern>>) -> anyhow::Result<()> {
+async fn bediene(
+    verbindung: quinn::Connection,
+    kern: Arc<Mutex<Kern>>,
+    modul: Option<Arc<Modul>>,
+) -> anyhow::Result<()> {
     let adresse = verbindung.remote_address().ip().to_string();
     tracing::debug!(%adresse, "Verbindung angenommen");
 
@@ -414,6 +471,12 @@ async fn bediene(verbindung: quinn::Connection, kern: Arc<Mutex<Kern>>) -> anyho
                                 k.senden(ich, a);
                             }
                         }
+                        // **Die einzige Berührung des Sitzungscodes**: nach der
+                        // Sperre anstoßen, damit das Spielnetz Raumwechsel und
+                        // Rechte nachführt (ADR 0016 §6). Billig, ohne Sperre.
+                        if let Some(modul) = &modul {
+                            modul.anstossen();
+                        }
                     }
                     Ok(None) => break Ok(()),
                     Err(fehler) => break Err(fehler),
@@ -451,6 +514,11 @@ async fn bediene(verbindung: quinn::Connection, kern: Arc<Mutex<Kern>>) -> anyho
     {
         let mut k = kern.lock().expect("Sperre");
         k.abmelden(ich);
+    }
+    // Nach dem Abmelden: das Spielnetz muss die Freigaben dieses Mitglieds
+    // beenden (GastgeberWeg) — wieder erst nach der Sperre.
+    if let Some(modul) = &modul {
+        modul.anstossen();
     }
     schreiber.abort();
     let _ = verbindung.closed().await;

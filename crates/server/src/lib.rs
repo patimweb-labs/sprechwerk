@@ -14,5 +14,6 @@ pub mod kern;
 pub mod konfig;
 pub mod mitschrift;
 pub mod netz;
+pub mod spielnetz;
 pub mod tls;
 pub mod verwaltung;
